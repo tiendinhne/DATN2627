@@ -14,7 +14,7 @@ export default function AuthCallbackPage() {
     if (token) {
       // Đồ án có thể thay bằng cookie httpOnly (an toàn hơn) nếu có thời gian làm thêm
       localStorage.setItem('accessToken', token);
-      router.replace('/dashboard');
+      // router.replace('/dashboard');
     } else {
       router.replace('/login?error=google_auth_failed');
     }
