@@ -1,0 +1,19 @@
+{
+  "name": "datn2627",
+  "private": true,
+  "scripts": {
+    "build:shared": "pnpm --filter @datn/shared build",
+    "watch:shared": "pnpm --filter @datn/shared dev",
+    "predev:backend": "pnpm build:shared",
+    "dev:backend": "pnpm --filter @datn/backend start:dev",
+    "dev:frontend": "pnpm --filter @datn/frontend dev",
+    "infra:up": "docker compose -f docker/docker-compose.dev.yml up -d",
+    "infra:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "preverify:schema": "pnpm build:shared",
+    "verify:schema": "pnpm --filter @datn/backend verify:schema"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.12.0"
+}
