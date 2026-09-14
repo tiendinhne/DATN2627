@@ -1,6 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { MessageType } from '@datn/shared';
+
+enum MessageType {
+  TEXT = 'TEXT',
+  FILE = 'FILE',
+  SYSTEM = 'SYSTEM',
+}
 
 @Schema({ timestamps: true, collection: 'messages' })
 export class Message {

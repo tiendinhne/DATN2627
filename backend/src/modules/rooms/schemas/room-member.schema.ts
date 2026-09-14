@@ -1,6 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { RoomRole } from '@datn/shared';
+
+enum RoomRole {
+  HOST = 'HOST',
+  CO_HOST = 'CO_HOST',
+  MEMBER = 'MEMBER',
+  VIEWER = 'VIEWER',
+}
 
 @Schema({ timestamps: true, collection: 'room_members' })
 export class RoomMember {

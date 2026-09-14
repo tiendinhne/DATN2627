@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { RoomStatus } from '@datn/shared';
+
+enum RoomStatus {
+  ACTIVE = 'ACTIVE',
+  DISSOLVED = 'DISSOLVED',
+}
 
 @Schema({ timestamps: true, collection: 'rooms' })
 export class Room {

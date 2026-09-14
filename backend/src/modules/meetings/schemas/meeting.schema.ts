@@ -1,6 +1,21 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { EndReason, MeetingMode, MeetingStatus } from '@datn/shared';
+
+enum MeetingStatus {
+  ACTIVE = 'ACTIVE',
+  ENDED = 'ENDED',
+}
+
+enum MeetingMode {
+  DISCUSSION = 'DISCUSSION',
+  LECTURE = 'LECTURE',
+}
+
+enum EndReason {
+  HOST_ENDED = 'HOST_ENDED',
+  AUTO_EMPTY = 'AUTO_EMPTY',
+  ROOM_DISSOLVED = 'ROOM_DISSOLVED',
+}
 
 @Schema({ timestamps: true, collection: 'meetings' })
 export class Meeting {

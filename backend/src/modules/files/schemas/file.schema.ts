@@ -1,6 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { FilePurpose } from '@datn/shared';
+
+enum FilePurpose {
+  CHAT_ATTACHMENT = 'CHAT_ATTACHMENT',
+  AVATAR = 'AVATAR',
+  WHITEBOARD_IMAGE = 'WHITEBOARD_IMAGE',
+}
 
 @Schema({ timestamps: true, collection: 'files' })
 export class File {
