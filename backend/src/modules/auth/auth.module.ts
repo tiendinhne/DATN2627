@@ -25,7 +25,7 @@ import { GoogleStrategy } from './strategies/google.strategy.js';
         // Ép kiểu "as any" cho signOptions vì @nestjs/jwt yêu cầu kiểu StringValue cụ thể
         // (từ package "ms", ví dụ '7d' | '1h'...), trong khi giá trị đọc từ .env luôn là string thông thường.
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '7d',
+          expiresIn: config.get<string>('JWT_EXPIRE_IN') || '7d',
         } as any,
       }),
     }),

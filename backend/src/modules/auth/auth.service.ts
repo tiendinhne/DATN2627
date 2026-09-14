@@ -51,32 +51,28 @@ export class AuthService {
     return this.buildAuthResponse(user);
   }
 
-  // Được GoogleStrategy gọi sau khi Google xác thực thành công
   async validateGoogleUser(data: {
     googleId: string;
     email?: string;
     displayName: string;
-    avatar?: string;
+    avatarUrl?: string;
   }): Promise<UserDocument> {
     if (!data.email) {
       throw new UnauthorizedException('Không lấy được email từ tài khoản Google');
     }
 
-    // Trường hợp 1: đã từng đăng nhập Google trước đó
     const existingByGoogleId = await this.usersService.findByGoogleId(data.googleId);
     if (existingByGoogleId) return existingByGoogleId;
 
-    // Trường hợp 2: email đã đăng ký local trước đó -> liên kết Google vào tài khoản này
     const existingByEmail = await this.usersService.findByEmail(data.email);
     if (existingByEmail) {
       return this.usersService.linkGoogleAccount(
         existingByEmail.id,
         data.googleId,
-        data.avatar,
+        data.avatarUrl,
       );
     }
 
-    // Trường hợp 3: user hoàn toàn mới -> tạo tài khoản chỉ dùng Google, không có password
     const uniqueUsername = await this.usersService.ensureUniqueUsername(
       data.displayName.toLowerCase(),
     );
@@ -85,7 +81,8 @@ export class AuthService {
       email: data.email,
       username: uniqueUsername,
       googleId: data.googleId,
-      avatar: data.avatar,
+      displayName: data.displayName,
+      avatarUrl: data.avatarUrl,
     });
   }
 
@@ -105,7 +102,8 @@ export class AuthService {
         id: userId,
         email: user.email,
         username: user.username,
-        avatar: user.avatar,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
         provider: user.providers,
       },
     };

@@ -48,34 +48,33 @@ export class UsersService {
     email: string;
     username: string;
     googleId: string;
-    avatar?: string;
+    displayName?: string;
+    avatarUrl?: string;
   }) {
     const user = new this.userModel({
       email: data.email.toLowerCase(),
       username: data.username,
       googleId: data.googleId,
-      avatar: data.avatar,
+      displayName: data.displayName,
+      avatarUrl: data.avatarUrl,
       providers: [AuthProvider.GOOGLE],
     });
     return user.save();
   }
 
-  // Khi user đã có tài khoản local, đăng nhập Google lần đầu bằng cùng email -> gắn thêm googleId
-  async linkGoogleAccount(userId: string, googleId: string, avatar?: string): Promise<UserDocument> {
+  async linkGoogleAccount(userId: string, googleId: string, avatarUrl?: string): Promise<UserDocument> {
     const updated = await this.userModel
       .findByIdAndUpdate(
         userId,
         {
           googleId,
-          ...(avatar ? { avatar } : {}),
+          ...(avatarUrl ? { avatarUrl } : {}),
           $addToSet: { providers: AuthProvider.GOOGLE },
         },
         { new: true },
       )
       .exec();
 
-    // Về lý thuyết không xảy ra vì userId lấy từ user vừa tìm thấy ngay trước đó,
-    // nhưng vẫn xử lý để đảm bảo kiểu dữ liệu trả về không phải null.
     if (!updated) {
       throw new InternalServerErrorException('Không tìm thấy user để liên kết tài khoản Google');
     }

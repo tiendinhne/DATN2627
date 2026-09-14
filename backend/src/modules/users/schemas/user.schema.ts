@@ -16,16 +16,20 @@ export class User {
   @Prop({ required: true, unique: true, trim: true })
   username!: string;
 
-  // select: false -> mặc định không trả password khi query, phải .select('+password') mới lấy được
   @Prop({ required: false, select: false })
   password?: string;
 
-  // sparse: true -> cho phép nhiều user không có googleId mà không vi phạm unique
   @Prop({ required: false, unique: true, sparse: true })
   googleId?: string;
 
   @Prop({ required: false })
-  avatar?: string;
+  displayName?: string;
+
+  @Prop({ required: false })
+  avatarUrl?: string;
+
+  @Prop({ required: false })
+  lastLoginAt?: Date;
 
   @Prop({ type: [String], enum: AuthProvider, default: [AuthProvider.LOCAL] })
   providers!: AuthProvider[];
