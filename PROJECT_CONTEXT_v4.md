@@ -13,7 +13,6 @@
 
 Khi hỗ trợ dự án này, mặc định tuân theo tài liệu. Nếu một yêu cầu mới mâu thuẫn với quyết định đã chốt, phải nói rõ mâu thuẫn đó trước khi làm.
 
-Ba mục còn chưa chốt nằm ở §22.
 
 ---
 
@@ -108,19 +107,6 @@ Lý do (viết được vào báo cáo): mọi realtime event luôn gắn `userI
 
 ## 5. Kiến trúc và topology
 
-```
-  Browser
-    ├── https://app.<domain>     → VERCEL (Next.js, CDN, HTTPS tự động)
-    ├── https://api.<domain>     → NGINX (LB round-robin) ─┬─► backend-1
-    │   REST + Socket.IO (WSS)                             ├─► backend-2
-    │                                                      └─► backend-3
-    │                                                          │
-    │                                            REDIS + MONGODB (shared state)
-    │
-    ├── wss://livekit.<domain>   → LiveKit :7880 (signaling)
-    ├── UDP 7882                 → LiveKit (media SRTP)
-    └── TCP 5349                 → LiveKit TURN/TLS (fallback)
-```
 
 **Media KHÔNG đi qua NGINX.** WebRTC media là UDP/SRTP trực tiếp tới LiveKit. NGINX chỉ proxy HTTP và WebSocket.
 
@@ -145,9 +131,6 @@ Lý do (viết được vào báo cáo): mọi realtime event luôn gắn `userI
 
 **Cross-origin:** frontend `app.<domain>` và backend `api.<domain>` là hai origin khác nhau. Refresh token dùng cookie `Domain=.<domain>; Secure; HttpOnly; SameSite=None`. CORS whitelist chính xác, không dùng `*`. Socket.IO bật `withCredentials`. Access token giữ trong memory, không localStorage.
 
-**Dev local bắt buộc dùng 2 hostname** (`app.localhost` / `api.localhost` trong file hosts). Nếu dev bằng `localhost` cho cả hai thì là cùng origin, vấn đề cookie cross-origin sẽ giấu mặt tới lúc deploy mới lộ.
-
----
 
 ## 6. Nguồn sự thật
 
@@ -700,30 +683,7 @@ Chi tiết đầy đủ ở `DB_DESIGN.md`.
 ## 20. Trạng thái bàn giao
 
 ### Đã xong
-
-| Hạng mục | Ghi chú |
-|---|---|
-| `shared/` package | enum, event envelope, permission matrix, `lww-merge` — **14/14 test pass** |
-| Config Zod fail-fast | |
-| RedisService + DistributedLockService | |
-| Exception filter (http + ws), transform & logging interceptor | |
-| 9 schema + script `verify-schema` | 6 assertion kiểm tra 4 ràng buộc DB |
-| docker-compose.dev | mongo + redis + minio |
-| **Auth module** | local + **Google OAuth** + account linking, Passport strategies, DTO validate |
-| Cấu trúc thư mục 10 module + infrastructure | |
-
-Auth và cấu trúc thư mục do đồng đội làm ở nhánh riêng, **lấy làm chuẩn cho toàn dự án**.
-
-### Việc merge còn lại
-
-1. Khai báo bổ sung dependency đang thiếu ở `backend/package.json`: `@nestjs/config`, `class-validator`, `class-transformer`, `bcryptjs`. Hiện chạy được nhờ npm hoist phẳng (phantom dependency), chuyển sang pnpm strict sẽ vỡ.
-2. Thêm **refresh token rotation** — hiện chỉ có một JWT sống 7 ngày, không logout được, không revoke được.
-3. Sửa **Google callback** không trả token qua query string.
-4. Thay fallback im lặng `process.env.MONGO_URI ?? 'mongodb://localhost...'` bằng `env.schema.ts`. Trên production, thiếu biến sẽ lặng lẽ kết nối nhầm DB.
-5. Bê `shared/` + `common/redis` + filters/interceptors sang, chuyển `shared/` từ CJS sang ESM.
-6. Hoà giải schema `User`: giữ `username`, `providers[]`, `googleId` của đồng đội; bổ sung `displayName`, `lastLoginAt`; đổi `avatar` → `avatarUrl` cho khớp phần còn lại. Tám schema kia bê thẳng.
-7. Chuyển `backend/` và `frontend/` từ npm sang pnpm workspace.
-
+Đọc code
 ### Lộ trình còn lại
 
 ```

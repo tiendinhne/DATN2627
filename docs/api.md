@@ -10,7 +10,7 @@
 - Error: `{ statusCode, error, message, details? }` — dùng chung cho REST và Socket.IO
 - Auth: `Authorization: Bearer <accessToken>`
 
-**[OPEN] Prefix API.** Nhánh đồng đội dùng `/auth/*`. Scaffold dùng `setGlobalPrefix('api/v1')` → `/api/v1/auth/*`. **Phải thống nhất trước khi viết frontend API client.**
+** Prefix API.** dùng `/auth/*`. **Phải thống nhất trước khi viết frontend API client.**
 
 ## 1. Auth [IMPLEMENTED]
 
