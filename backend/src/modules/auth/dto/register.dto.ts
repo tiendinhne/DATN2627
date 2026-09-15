@@ -13,6 +13,11 @@ export class RegisterDto {
   username!: string;
 
   @IsString()
+  @MinLength(1, { message: 'Display name không được để trống' })
+  @MaxLength(60, { message: 'Display name tối đa 60 ký tự' })
+  displayName!: string;
+
+  @IsString()
   @MinLength(6, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
   password!: string;
 }

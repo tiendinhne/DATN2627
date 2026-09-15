@@ -34,10 +34,11 @@ export class UsersService {
     return this.userModel.findById(id).exec();
   }
 
-  async createLocalUser(data: { email: string; username: string; password: string }) {
+  async createLocalUser(data: { email: string; username: string; displayName: string; password: string }) {
     const user = new this.userModel({
       email: data.email.toLowerCase(),
       username: data.username,
+      displayName: data.displayName,
       password: data.password,
       providers: [AuthProvider.LOCAL],
     });
@@ -47,27 +48,29 @@ export class UsersService {
   async createGoogleUser(data: {
     email: string;
     username: string;
+    displayName?: string;
     googleId: string;
-    avatar?: string;
+    avatarUrl?: string;
   }) {
     const user = new this.userModel({
       email: data.email.toLowerCase(),
       username: data.username,
+      displayName: data.displayName || data.username,
       googleId: data.googleId,
-      avatar: data.avatar,
+      avatarUrl: data.avatarUrl,
       providers: [AuthProvider.GOOGLE],
     });
     return user.save();
   }
 
   // Khi user đã có tài khoản local, đăng nhập Google lần đầu bằng cùng email -> gắn thêm googleId
-  async linkGoogleAccount(userId: string, googleId: string, avatar?: string): Promise<UserDocument> {
+  async linkGoogleAccount(userId: string, googleId: string, avatarUrl?: string): Promise<UserDocument> {
     const updated = await this.userModel
       .findByIdAndUpdate(
         userId,
         {
           googleId,
-          ...(avatar ? { avatar } : {}),
+          ...(avatarUrl ? { avatarUrl } : {}),
           $addToSet: { providers: AuthProvider.GOOGLE },
         },
         { new: true },

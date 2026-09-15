@@ -1,7 +1,11 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { UsersService } from '../users/users.service.js';
+import { RefreshToken } from './schemas/refresh-token.schema.js';
 import { RegisterDto } from './dto/register.dto.js';
 import type { UserDocument } from '../users/schemas/user.schema.js';
 
@@ -10,6 +14,7 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    @InjectModel(RefreshToken.name) private refreshTokenModel: Model<RefreshToken>,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -26,6 +31,7 @@ export class AuthService {
     const user = await this.usersService.createLocalUser({
       email: dto.email,
       username: dto.username,
+      displayName: dto.displayName,
       password: hashedPassword,
     });
 
@@ -56,7 +62,7 @@ export class AuthService {
     googleId: string;
     email?: string;
     displayName: string;
-    avatar?: string;
+    avatarUrl?: string;
   }): Promise<UserDocument> {
     if (!data.email) {
       throw new UnauthorizedException('Không lấy được email từ tài khoản Google');
@@ -72,7 +78,7 @@ export class AuthService {
       return this.usersService.linkGoogleAccount(
         existingByEmail.id,
         data.googleId,
-        data.avatar,
+        data.avatarUrl,
       );
     }
 
@@ -84,12 +90,13 @@ export class AuthService {
     return this.usersService.createGoogleUser({
       email: data.email,
       username: uniqueUsername,
+      displayName: data.displayName,
       googleId: data.googleId,
-      avatar: data.avatar,
+      avatarUrl: data.avatarUrl,
     });
   }
 
-  private buildAuthResponse(user: UserDocument) {
+  private async buildAuthResponse(user: UserDocument) {
     const userId = this.getUserId(user);
     const payload = {
       sub: userId,
@@ -98,21 +105,36 @@ export class AuthService {
       provider: user.providers,
     };
     const accessToken = this.jwtService.sign(payload);
+    const refreshToken = await this.generateRefreshToken(userId);
 
     return {
       accessToken,
+      refreshToken,
       user: {
         id: userId,
         email: user.email,
         username: user.username,
-        avatar: user.avatar,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
         provider: user.providers,
       },
     };
   }
 
-  // Mongoose Document không khai báo sẵn property "id" trong kiểu TypeScript,
-  // nên lấy trực tiếp từ "_id" và convert sang string cho nhất quán.
+  private async generateRefreshToken(userId: string): Promise<string> {
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await this.refreshTokenModel.create({
+      userId,
+      tokenHash,
+      expiresAt,
+    });
+
+    return token;
+  }
+
   private getUserId(user: UserDocument): string {
     return (user as any)._id.toString();
   }

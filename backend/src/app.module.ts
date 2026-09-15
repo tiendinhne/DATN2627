@@ -3,6 +3,13 @@ import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from './modules/users/users.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { RoomsModule } from './modules/rooms/rooms.module.js';
+import { MeetingsModule } from './modules/meetings/meetings.module.js';
+import { RoomMembersModule } from './modules/room-members/room-members.module.js';
+import { ChatModule } from './modules/chat/chat.module.js';
+import { WhiteboardModule } from './modules/whiteboard/whiteboard.module.js';
+import { RealtimeModule } from './modules/realtime/realtime.module.js';
+import { RedisService } from './common/services/redis.service.js';
 
 @Module({
   imports: [
@@ -12,7 +19,14 @@ import { AuthModule } from './modules/auth/auth.module.js';
     ),
     UsersModule,
     AuthModule,
-    // Các module khác của hệ thống (rooms, chat, whiteboard...) khai báo tiếp ở đây
+    RoomsModule,
+    MeetingsModule,
+    RoomMembersModule,
+    ChatModule,
+    WhiteboardModule,
+    RealtimeModule,
   ],
+  providers: [RedisService],
+  exports: [RedisService],
 })
 export class AppModule {}

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { MongooseModule } from '@nestjs/mongoose';
 import type { JwtModuleOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -9,9 +10,13 @@ import { AuthController } from './auth.controller.js';
 import { LocalStrategy } from './strategies/local.strategy.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { GoogleStrategy } from './strategies/google.strategy.js';
+import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema.js';
 
 @Module({
   imports: [
+    MongooseModule.forFeature([
+      { name: RefreshToken.name, schema: RefreshTokenSchema },
+    ]),
     UsersModule,
     PassportModule.register({
       session: false,
@@ -22,10 +27,8 @@ import { GoogleStrategy } from './strategies/google.strategy.js';
       inject: [ConfigService],
       useFactory: (config: ConfigService): JwtModuleOptions => ({
         secret: config.get<string>('JWT_SECRET'),
-        // Ép kiểu "as any" cho signOptions vì @nestjs/jwt yêu cầu kiểu StringValue cụ thể
-        // (từ package "ms", ví dụ '7d' | '1h'...), trong khi giá trị đọc từ .env luôn là string thông thường.
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '7d',
+          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '15m',
         } as any,
       }),
     }),
