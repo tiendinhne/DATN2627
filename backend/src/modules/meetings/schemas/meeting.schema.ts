@@ -6,7 +6,7 @@ export type MeetingDocument = Meeting & Document;
 
 @Schema({ timestamps: true, collection: 'meetings' })
 export class Meeting {
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
   roomId!: Types.ObjectId;
 
   @Prop({ required: true, trim: true, maxlength: 100 })
@@ -24,13 +24,13 @@ export class Meeting {
   @Prop({ default: () => new Date() })
   startedAt?: Date;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   endedAt?: Date | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false, default: null })
   endedBy?: Types.ObjectId | null;
 
-  @Prop({ type: String, enum: EndReason, default: null })
+  @Prop({ type: String, enum: EndReason, required: false, default: null })
   endReason?: EndReason | null;
 
   @Prop({ default: 0 })

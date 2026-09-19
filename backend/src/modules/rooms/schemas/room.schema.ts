@@ -27,15 +27,14 @@ export class Room {
   @Prop({ default: 0 })
   meetingCount?: number;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   dissolvedAt?: Date | null;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   deletedAt?: Date | null;
 }
 
 export const RoomSchema = SchemaFactory.createForClass(Room);
 
-RoomSchema.index({ joinCode: 1 }, { unique: true });
 RoomSchema.index({ ownerId: 1, status: 1 });
 RoomSchema.index({ status: 1, updatedAt: -1 });

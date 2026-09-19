@@ -25,10 +25,10 @@ export class User {
   @Prop({ required: false, unique: true, sparse: true })
   googleId?: string;
 
-  @Prop({ default: null })
+  @Prop({ type: String, required: false, default: null })
   avatarUrl?: string | null;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   lastLoginAt?: Date | null;
 
   @Prop({ type: [String], enum: AuthProvider, default: [AuthProvider.LOCAL] })
@@ -36,5 +36,3 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
-
-UserSchema.index({ email: 1 }, { unique: true });

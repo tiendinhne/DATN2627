@@ -96,3 +96,10 @@ Trạng thái: tất cả **[CONFIRMED]** trừ khi ghi khác. Không quay lại
 **Decision:** Mọi lần persist whiteboard dùng update có điều kiện `{ meetingId, lastSeq: { $lt: incomingSeq } }`.
 **Reason:** Nhiều instance có thể cùng debounce-persist một board; ghi mù thì bản cũ đè bản mới.
 **Status:** CONFIRMED.
+
+## ADR-016 — Backend dev chỉ chạy qua Docker Compose, không chạy song song native
+**Decision:** `docker-compose up` (service `backend`) là cách duy nhất để chạy backend khi dev. `docker-compose.yml` dùng `env_file: ./backend/.env` làm nguồn config chung, chỉ `environment:` override 3 biến bắt buộc khác khi chạy trong container: `MONGO_URI`, `REDIS_URL`, `LIVEKIT_URL` (phải trỏ hostname service Docker `mongo`/`redis`/`livekit`, không phải `localhost`). `npm run start:dev` native trong `backend/` vẫn chạy được (hữu ích khi cần breakpoint debug trong IDE) nhưng **không được chạy đồng thời** với container backend.
+**Reason:** Trước đây `docker-compose.yml` hard-code riêng một bộ biến môi trường (kể cả `JWT_SECRET`) tách biệt với `backend/.env` — hai nguồn lệch nhau khiến token ký ở container này không verify được ở container/process kia, và chạy cả 2 cùng lúc còn gây `EADDRINUSE` trên port 3001.
+**Alternatives:** Giữ nguyên 2 bộ config riêng, chỉ nhắc dev cẩn thận không chạy trùng port.
+**Rejected because:** Lỗi con người (quên đổi 1 trong 2 file khi thêm biến mới) chắc chắn tái diễn; `env_file` loại hẳn nguồn lỗi này bằng cấu trúc, không cần kỷ luật cá nhân.
+**Status:** CONFIRMED. Đã verify: rebuild + chạy container, test full flow `register → login → /auth/me` qua cổng 3001 của container, JWT ký/verify khớp.

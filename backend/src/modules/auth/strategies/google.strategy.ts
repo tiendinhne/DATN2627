@@ -5,6 +5,12 @@ import type { VerifyCallback, Profile } from 'passport-google-oauth20';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth.service.js';
 
+// Google OAuth là optional feature: nếu chưa cấu hình (chưa tạo credentials
+// trên Google Cloud Console), app vẫn phải chạy được với local login.
+export function isGoogleOAuthConfigured(): boolean {
+  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(
@@ -38,7 +44,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       googleId: id,
       email: emails?.[0]?.value,
       displayName,
-      avatar: photos?.[0]?.value,
+      avatarUrl: photos?.[0]?.value,
     });
     done(null, user);
   }

@@ -30,12 +30,10 @@ export class File {
   @Prop({ type: Types.ObjectId, ref: 'Room', default: null })
   roomId?: Types.ObjectId | null;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   deletedAt?: Date | null;
 }
 
 export const FileSchema = SchemaFactory.createForClass(File);
 
-FileSchema.index({ storageKey: 1 }, { unique: true });
 FileSchema.index({ meetingId: 1, createdAt: -1 });
-FileSchema.index({ uploaderId: 1 });

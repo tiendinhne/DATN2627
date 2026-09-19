@@ -10,8 +10,6 @@
 Đây là tài liệu bàn giao.
 
 Khi hỗ trợ dự án này, mặc định tuân theo tài liệu. Nếu một yêu cầu mới mâu thuẫn với quyết định đã chốt, phải nói rõ mâu thuẫn đó trước khi làm.
-
-
 ---
 
 ## 1. Mục tiêu và ba trụ cột
@@ -478,23 +476,6 @@ Metric: join success rate, join latency p50/p95, CPU %, RAM, network in/out, pac
 ## 18. Deployment và ngân sách
 
 ## 19. Stack và cấu trúc code
-
-### 19.1 Version hiện tại
-
-| | Version |
-|---|---|
-| NestJS | 12 |
-| Mongoose | 9 |
-| TypeScript | 6 |
-| Next.js | 15 (App Router) |
-| Module system | **ESM** (`"type": "module"`, `moduleResolution: nodenext`) |
-| Package manager | **pnpm** workspace |
-| Password hash | **bcryptjs** |
-| AI provider | **Gemini** (sau `AiProvider` interface) |
-| Layout engine | **elkjs** |
-| Object storage | MinIO (dev) → Cloudflare R2 (prod) |
-| Test | vitest |
-| Lint | oxlint + prettier |
 
 **ESM:** mọi import tương đối **phải có đuôi `.js`** (`'./auth.service.js'`). Đây là quy tắc bắt buộc, dễ quên. Cần test sớm `@socket.io/redis-adapter` và `@nestjs/schedule` dưới ESM trong giai đoạn spike.
 

@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { UsersService } from '../users/users.service.js';
 import { RefreshToken } from './schemas/refresh-token.schema.js';

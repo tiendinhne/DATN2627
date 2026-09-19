@@ -10,7 +10,7 @@ export class ParticipantSession {
   @Prop({ required: true })
   joinedAt!: Date;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   leftAt?: Date | null;
 }
 
@@ -40,4 +40,3 @@ export const MeetingParticipantSchema = SchemaFactory.createForClass(MeetingPart
 
 MeetingParticipantSchema.add({ sessions: [ParticipantSessionSchema] });
 MeetingParticipantSchema.index({ meetingId: 1, userId: 1 }, { unique: true });
-MeetingParticipantSchema.index({ meetingId: 1 });

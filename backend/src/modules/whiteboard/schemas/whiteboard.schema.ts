@@ -29,11 +29,10 @@ export class Whiteboard {
   @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null })
   clonedFrom?: Types.ObjectId | null;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   lastPersistedAt?: Date | null;
 }
 
 export const WhiteboardSchema = SchemaFactory.createForClass(Whiteboard);
 
-WhiteboardSchema.index({ meetingId: 1 }, { unique: true });
 WhiteboardSchema.index({ roomId: 1, updatedAt: -1 });

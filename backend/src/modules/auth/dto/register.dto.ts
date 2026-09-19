@@ -14,7 +14,7 @@ export class RegisterDto {
 
   @IsString()
   @MinLength(1, { message: 'Display name không được để trống' })
-  @MaxLength(60, { message: 'Display name tối đa 60 ký tự' })
+  @MaxLength(20, { message: 'Display name tối đa 20 ký tự' })
   displayName!: string;
 
   @IsString()

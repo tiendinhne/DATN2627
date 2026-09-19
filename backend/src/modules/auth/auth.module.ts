@@ -9,7 +9,7 @@ import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { LocalStrategy } from './strategies/local.strategy.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
-import { GoogleStrategy } from './strategies/google.strategy.js';
+import { GoogleStrategy, isGoogleOAuthConfigured } from './strategies/google.strategy.js';
 import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema.js';
 
 @Module({
@@ -34,7 +34,15 @@ import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, GoogleStrategy],
+  providers: [
+    AuthService,
+    LocalStrategy,
+    JwtStrategy,
+    // Chỉ đăng ký GoogleStrategy khi có đủ credentials, tránh crash toàn app
+    // (OAuth2Strategy throw cứng lúc khởi tạo nếu thiếu clientID) khi Google Cloud
+    // chưa được cấu hình. Xem docs/DOCKER_NOTES.md.
+    ...(isGoogleOAuthConfigured() ? [GoogleStrategy] : []),
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

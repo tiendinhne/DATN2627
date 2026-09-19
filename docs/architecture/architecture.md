@@ -5,7 +5,7 @@
 ```
 Browser
  ├─ https://app.<domain>    → Vercel (Next.js 15, CDN, HTTPS tự động)
- ├─ https://api.<domain>    → NGINX (LB round-robin) ─┬─► backend-1 (NestJS)
+ ├─ https://api.<domain>    → NGINX () ─┬─► backend-1 (NestJS)
  │   REST + Socket.IO (WSS)                           ├─► backend-2
  │                                                    └─► backend-3
  │                                                        │

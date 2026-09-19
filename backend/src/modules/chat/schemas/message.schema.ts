@@ -30,7 +30,7 @@ export class Message {
   @Prop({ required: true })
   clientMsgId!: string;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   deletedAt?: Date | null;
 }
 

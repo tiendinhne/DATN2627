@@ -11,16 +11,16 @@ export class RefreshToken {
   @Prop({ required: true, unique: true })
   tokenHash!: string;
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true })
   expiresAt!: Date;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, required: false, default: null })
   revokedAt?: Date | null;
 
-  @Prop({ default: null })
+  @Prop({ type: String, required: false, default: null })
   replacedByTokenHash?: string | null;
 
-  @Prop({ default: null })
+  @Prop({ type: String, required: false, default: null })
   userAgent?: string | null;
 }
 

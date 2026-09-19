@@ -1,7 +1,6 @@
 # WebRTC / LiveKit
 
-Trạng thái: **[PLANNED]** — chưa có code. Toàn bộ mục này là thiết kế đã chốt.
-
+Trạng thái: **[PLANNED]** — chưa có code. Toàn bộ mục này là thiết kế
 ## 1. Phân chia trách nhiệm
 
 Backend **không phải** media server. Backend: auth, sinh access token, nhận webhook, business logic.

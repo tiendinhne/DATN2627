@@ -1,5 +1,5 @@
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
@@ -34,12 +34,12 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
-  const redisIoAdapter = new RedisIoAdapter(app);
+  const redisIoAdapter = new RedisIoAdapter();
   await redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
+  await app.listen(3001, '0.0.0.0');
   console.log(`Backend is running on: ${await app.getUrl()}`);
   console.log(`WebSocket server listening on port ${port}`);
 }
