@@ -88,6 +88,8 @@ Meeting 10 người ở 360p ≈ **20 GB egress mỗi giờ**. Hệ thống có 
 
 Phải xác nhận bằng benchmark. Nếu thực đo thấp hơn, báo cáo ghi **số thực đo kèm phân tích điểm nghẽn** — điều đó có giá trị học thuật cao hơn một con số đẹp không kiểm chứng được.
 
+Đây là **mục tiêu thiết kế, chưa phải kết quả**. Phải xác nhận bằng benchmark. Nếu thực đo thấp hơn thì báo cáo ghi số thực đo kèm phân tích điểm nghẽn — điều đó có giá trị học thuật cao hơn một con số đẹp không kiểm chứng được.
+
 ## 7. Benchmark [PLANNED]
 
 Không mời được 20 người thật, và một laptop không chạy nổi 20 browser có camera.
@@ -108,7 +110,3 @@ Không mời được 20 người thật, và một laptop không chạy nổi 2
 Metric: join success rate, join latency p50/p95, CPU %, RAM, network in/out, packet loss, jitter, whiteboard op latency p95, event loss sau reconnect.
 
 **Mọi con số phải đo thực tế.** Không lấy số trong docs của LiveKit. Mỗi kịch bản chạy ≥ 3 lần, báo cáo trung bình + độ lệch.
-
-## 8. Ngoài phạm vi [REJECTED]
-
-Recording/egress (tiêu CPU nặng, cạnh tranh trực tiếp mục tiêu đo scalability), transcription, breakout room, virtual background, LiveKit multi-node, multi-region.

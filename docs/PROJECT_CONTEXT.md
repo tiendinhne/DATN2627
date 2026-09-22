@@ -34,12 +34,11 @@ Trụ cột 1 và 2 là **hai loại scalability khác nhau**, không được n
 | Cách chứng minh | Benchmark tăng dần N | 2+ instance sau LB, user khác instance vẫn đồng bộ |
 
 Một tính năng chưa có cách đo và chưa giải thích được đánh đổi thì chưa coi là xong.
-
 ---
 
 ## 2. Phạm vi
 
-**Trong phạm vi:** Auth (local + Google OAuth), room, meeting lifecycle, audio/video/screen share, chat, presence, collaborative whiteboard, whiteboard persistence, AI sinh diagram/mindmap/flowchart, upload file, import/export dữ liệu hàng loạt, horizontal scale + load balancer, Docker, HTTPS + domain thật, benchmark.
+**Trong phạm vi:** Auth (local + Google OAuth), room, meeting lifecycle, audio/video/screen share, chat, presence, collaborative whiteboard, whiteboard persistence, AI sinh diagram/mindmap/flowchart, upload file, import/export dữ liệu , horizontal scale + load balancer, Docker, HTTPS + domain thật, benchmark.
 
 **Ngoài phạm vi:** Mobile native app · tự huấn luyện AI model · phần mềm thiết kế đồ hoạ · **recording/egress** · transcription · breakout room · virtual background · multi-region · LiveKit multi-node · admin panel toàn hệ thống.
 
@@ -77,10 +76,7 @@ Lý do (viết được vào báo cáo): mọi realtime event luôn gắn `userI
 
 ## 5. Kiến trúc và topology
 
-
 **Media KHÔNG đi qua NGINX.** WebRTC media là UDP/SRTP trực tiếp tới LiveKit. NGINX chỉ proxy HTTP và WebSocket.
-
-**Backend không đặt trên Vercel.** Vercel có WebSocket từ 6/2026 nhưng vẫn beta: kết nối bị đóng khi chạm max duration (Hobby mặc định 5 phút), không sticky-route theo room, và serverless không giữ được process thường trú. Vercel chỉ host Next.js frontend. Nhờ vậy NGINX trở thành load balancer thực thụ — đúng thứ GVHD yêu cầu.
 
 **Bảng port:**
 
@@ -122,13 +118,6 @@ Lý do (viết được vào báo cáo): mọi realtime event luôn gắn `userI
 
 GVHD nêu rõ: nhân bản server mà code không hỗ trợ distributed thì **việc scale vô nghĩa** 
 
-**Ánh xạ sang bài toán web:** với web server, "chia việc" đã do load balancer làm sẵn vì mỗi request/connection là một đơn vị độc lập. Vấn đề thật nằm ở **chia sẻ trạng thái**. Nếu instance A giữ danh sách socket trong RAM, thì 3 instance không phải là một hệ thống mạnh gấp 3 mà là 3 hệ thống rời rạc cãi nhau về sự thật.
-
-```
-Đếm số nguyên tố:  vấn đề = chia công việc
-Web server:        vấn đề = chia sẻ trạng thái
-```
-
 ### 7.1 Checklist stateless
 
 | State | ❌ Sai | ✅ Đúng |
@@ -146,14 +135,6 @@ Web server:        vấn đề = chia sẻ trạng thái
 **Quy tắc kiểm tra khi code:** *"Nếu request tiếp theo của user này rơi vào instance khác, có còn đúng không?"* Nếu không → state đang sai chỗ.
 
 ### 7.2 Socket.IO Redis adapter — bắt buộc từ ngày đầu
-
-Không đợi tới khi chạy nhiều instance mới bật. Viết stateless từ commit đầu tiên, vì nếu code single-instance trước rồi gỡ ra sau thì phải rà toàn bộ codebase bằng tay, và việc đổi sync → async sẽ lan lên toàn bộ call chain.
-
-### 7.3 Sticky session — không dùng
-
-Ép `transports: ['websocket']` ở client, NGINX round-robin thuần, **không dùng `ip_hash`**.
-
-Lý do: sticky session mâu thuẫn trực tiếp với tinh thần stateless — nó giấu vấn đề chứ không giải quyết, và khi auto-scale thu hồi instance sẽ mất kết nối hàng loạt. Rủi ro mất fallback polling được bù bằng cơ chế resync theo `seq`, nên mất kết nối không mất dữ liệu.
 
 ### 7.4 LiveKit webhook trong môi trường đa instance
 
@@ -178,32 +159,7 @@ Auto-scale sẽ thu hồi instance đang có kết nối. Cần: `GET /health` (
 Socket.IO Redis adapter đã lo toàn bộ fan-out giữa các instance, và backend không giữ state trong RAM nên không có cache nào cần invalidate cross-instance. Thêm một message bus nữa sẽ vi phạm nguyên tắc "mỗi công nghệ phải có lý do" mà không giải quyết vấn đề nào có thật.
 
 ## 8. Bandwidth — ràng buộc quyết định mục tiêu
-
-```
-Server egress ≈ N × (N − 1) × bitrate_per_stream
-```
-
-| N bật cam | 720p @1.5 Mbps | 360p @0.5 Mbps |
-|---|---|---|
-| 6 | ~45 Mbps | ~15 Mbps |
-| 10 | ~135 Mbps | ~45 Mbps |
-| 20 | ~570 Mbps | ~190 Mbps |
-
-Meeting 10 người ở 360p tiêu **~20 GB egress mỗi giờ**. Hệ thống có thể chết vì network trước khi chết vì CPU — đây là phát hiện phải nêu trong báo cáo.
-
-**Bật ngay từ đầu, không để tối ưu sau:** simulcast, dynacast, adaptive stream, giới hạn resolution theo layout (grid ≥5 người → 180p/360p; speaker view → 720p), chỉ subscribe video của tile trong viewport (paginate 9 tile/trang), audio-only mode cho meeting đông.
-
-**Mục tiêu participant:**
-
-| Kịch bản | Mục tiêu |
-|---|---|
-| Video 360p + audio, tất cả publish | **8–12 participant** |
-| 1 người screen share + còn lại subscribe | **20–30 participant** |
-| Audio-only | **20–30 participant** |
-
-Đây là **mục tiêu thiết kế, chưa phải kết quả**. Phải xác nhận bằng benchmark. Nếu thực đo thấp hơn thì báo cáo ghi số thực đo kèm phân tích điểm nghẽn — điều đó có giá trị học thuật cao hơn một con số đẹp không kiểm chứng được.
-
----
+đọc mục 6,7 docs/architecture/webrtc.md
 
 ## 9. Realtime contract (Socket.IO)
 
@@ -275,9 +231,6 @@ version cao hơn thắng
 hoà version → versionNonce nhỏ hơn thắng
 isDeleted = true là trạng thái (tombstone), KHÔNG xoá khỏi mảng
 ```
-
-Không dùng CRDT/Yjs.
-
 **Luồng:**
 
 ```
@@ -458,26 +411,13 @@ Permission được biểu diễn dưới dạng **dữ liệu** (bảng tra) tr
 
 Không mời được 20 người thật, và một laptop không chạy nổi 20 browser có camera. Dùng **`livekit-cli load-test`** sinh publisher/subscriber giả, k6 hoặc script Node cho REST + Socket.IO. **Máy sinh tải phải tách khỏi máy chạy SFU**, nếu không số liệu CPU vô nghĩa.
 
-| # | Kịch bản | Biến |
-|---|---|---|
-| B1 | N publisher video+audio, all subscribe | N = 2,4,6,8,10,12 |
-| B2 | 1 screen share + N subscriber | N = 5,10,20,30 |
-| B3 | Audio-only | N = 10,20,30 |
-| B4 | Join/leave churn 20% mỗi 30s | N = 10 |
-| B5 | Whiteboard concurrent | 5 / 10 client vẽ liên tục 3 phút |
-| B6 | Reconnect sau ngắt mạng 10s | |
-
-Metric: join success rate, join latency p50/p95, CPU %, RAM, network in/out, packet loss, jitter, whiteboard op latency p95, event loss sau reconnect.
-
 **Mọi con số trong báo cáo phải đo thực tế.** Không lấy số trong docs của LiveKit làm số của mình. Mỗi kịch bản chạy ≥ 3 lần, báo cáo trung bình + độ lệch.
 
 ---
 
-## 18. Deployment và ngân sách
+## 18. Deployment
 
 ## 19. Stack và cấu trúc code
-
-**ESM:** mọi import tương đối **phải có đuôi `.js`** (`'./auth.service.js'`). Đây là quy tắc bắt buộc, dễ quên. Cần test sớm `@socket.io/redis-adapter` và `@nestjs/schedule` dưới ESM trong giai đoạn spike.
 
 ### 19.2 Cấu trúc thư mục
 
@@ -488,9 +428,6 @@ Metric: join success rate, join latency p50/p95, CPU %, RAM, network in/out, pac
 - Module CRUD thuần giữ layered đơn giản: controller → service → schema.
 
 ### 19.3 Database
-
-9 collection: `users` · `refresh_tokens` · `rooms` · `room_members` · `meetings` · `meeting_participants` · `messages` · `whiteboards` · `files`.
-
 Chi tiết đầy đủ ở `DB_DESIGN.md`.
 
 ## 23. Nguyên tắc làm việc
@@ -508,29 +445,3 @@ Chi tiết đầy đủ ở `DB_DESIGN.md`.
 **P10 — Validate mọi input.** REST, WebSocket, file import, AI response, webhook, env. Không ngoại lệ.
 
 ---
-
-## 24. Định nghĩa hoàn thành
-
-Nhiều user thực hiện trọn vẹn:
-
-```
-Login (local hoặc Google) → Create/Join Room → Create/Join Meeting
-  → Audio + Video → Screen Share → Chat → Upload file
-  → Collaborative Whiteboard
-  → AI generate diagram/mindmap/flowchart → Edit together
-  → Import/Export members
-  → Persist → End Meeting → Review
-```
-
-Và hệ thống:
-
-- Chạy bằng Docker Compose
-- Deploy trên hosting thật, **có domain riêng + HTTPS** (GVHD)
-- Có TURN, kết nối được từ mạng chặn UDP
-- **Chạy ≥2 backend instance sau load balancer, đồng bộ đúng giữa các instance** (GVHD)
-- **Chứng minh bằng thí nghiệm rằng scale không có code distributed thì vô nghĩa (E1 vs E2)** (GVHD)
-- Có import/export với dialog mô tả format và màn hình review (GVHD)
-- Input validation ở mọi entry point (GVHD)
-- Persistence và realtime sync ổn định qua reconnect và qua chuyển instance
-- **Có số liệu benchmark đo thực tế** khi tăng participant và khi tăng số instance
-- Mọi lựa chọn kỹ thuật giải thích được trong báo cáo

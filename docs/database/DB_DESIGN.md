@@ -1,5 +1,5 @@
 # DECISIONS + DATABASE DESIGN
-**Trạng thái:** đã chốt, bắt đầu code được.
+**Trạng thái:** đang thực hiện và có thể chỉnh sửa( /superpower:brainstorm  rõ ràng lại) nếu có thay đổi
 
 ---
 # PHẦN B — TỔNG QUAN DATABASE
@@ -62,7 +62,7 @@ export enum EndReason     { HOST_ENDED = 'HOST_ENDED', AUTO_EMPTY = 'AUTO_EMPTY'
 export enum MessageType   { TEXT = 'TEXT', FILE = 'FILE', SYSTEM = 'SYSTEM' }
 export enum FilePurpose   { CHAT_ATTACHMENT = 'CHAT_ATTACHMENT', AVATAR = 'AVATAR', WHITEBOARD_IMAGE = 'WHITEBOARD_IMAGE' }
 ```
-
+hiện tại enums.ts đang ở backend, chưa di chuyển sang thư mục dùng chung
 ---
 
 ## C.1 `users`

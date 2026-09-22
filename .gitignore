@@ -154,3 +154,8 @@ vite.config.ts.timestamp-*
 playground-*.mongodb.js
 
 docs/task 
+# Riêng máy: override cục bộ
+.claude/settings.local.json
+
+# Chứa secret, mỗi máy tự tạo
+scripts/dev.ps1
