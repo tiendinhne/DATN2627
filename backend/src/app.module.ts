@@ -9,6 +9,7 @@ import { RoomMembersModule } from './modules/room-members/room-members.module.js
 import { ChatModule } from './modules/chat/chat.module.js';
 import { WhiteboardModule } from './modules/whiteboard/whiteboard.module.js';
 import { RealtimeModule } from './modules/realtime/realtime.module.js';
+import { AiAssistantModule } from './modules/ai-assistant/ai-assistant.module.js';
 import { RedisService } from './common/services/redis.service.js';
 
 @Module({
@@ -25,6 +26,7 @@ import { RedisService } from './common/services/redis.service.js';
     ChatModule,
     WhiteboardModule,
     RealtimeModule,
+    AiAssistantModule,
   ],
   providers: [RedisService],
   exports: [RedisService],
