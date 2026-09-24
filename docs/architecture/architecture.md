@@ -68,7 +68,7 @@ backend/src/
     ├── realtime/        gateways, adapters (Redis IO adapter), dto
     └── health/          liveness + readiness cho LB/ASG
 
-shared/src/{enums, events, permissions, whiteboard, errors}
+shared/src/{enums, events, permissions, whiteboard, errors} **hiẹn tại đang ở backend
 frontend/src/{features, components, hooks, services, stores, lib, types}
 infrastructure/{docker, nginx, livekit, redis}
 ```
@@ -108,7 +108,7 @@ Listener phải **idempotent** và **không được ném lỗi làm hỏng lu�
 ```
 User
  ├── owns / joins ──► Room  (lâu dài, join code + link)
- │                     ├── RoomMember (HOST | CO_HOST | MEMBER | VIEWER)
+ │                     ├── RoomMember (HOST|MEMBER)
  │                     └── has many ──► Meeting
  │                                       ├── MeetingParticipant
  │                                       ├── Message
@@ -118,7 +118,7 @@ User
 
 **Lifecycle:**
 - Room: `ACTIVE → DISSOLVED` (chỉ HOST, soft delete)
-- Meeting: `ACTIVE → ENDED` (HOST/CO_HOST chủ động, hoặc auto khi 0 participant 10 phút)
+- Meeting: `ACTIVE → ENDED` (HOST chủ động, hoặc auto khi 0 participant 3 phút)
 - Một room tối đa 1 meeting ACTIVE (enforce bằng unique partial index)
-- Host disconnect: grace 120s → CO_HOST → participant join sớm nhất thành `ACTING_HOST`; host gốc quay lại lấy lại quyền
-- Chỉ HOST/CO_HOST được tạo và kết thúc meeting
+- Host disconnect: grace 120s  participant join sớm nhất thành `ACTING_HOST`; host gốc quay lại lấy lại quyền
+- Chỉ HOST được tạo và kết thúc meeting

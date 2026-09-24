@@ -46,32 +46,9 @@ Recording bị loại có chủ đích: egress transcode tiêu CPU rất nặng,
 
 ## 4. Domain model và lifecycle
 
-```
-User
- ├── owns / joins ──► Room  (lâu dài, join code + link)
- │                     ├── RoomMember (HOST | CO_HOST | MEMBER | VIEWER)
- │                     └── has many ──► Meeting
- │                                       ├── MeetingParticipant
- │                                       ├── Message
- │                                       ├── Whiteboard (1–1)
- │                                       └── LiveKit Room (1–1, name = meetingId)
-```
-
-- **Room ≠ Meeting.** Room lâu dài, Meeting là phiên. Room chỉ mất khi host dissolve.
-- **LiveKit room name = `meeting._id.toString()`.** Không tạo field riêng, tránh lệch dữ liệu.
-- **Whiteboard thuộc Meeting**, quan hệ 1–1. Meeting mới có thể `cloneFrom: previousMeetingId`.
-- **Một whiteboard = một canvas vô hạn**, không có nhiều page/tab.
-- **Một room tối đa 1 meeting ACTIVE**, enforce bằng unique partial index.
-- **Chỉ HOST/CO_HOST được `endMeeting`.** Member rời không kết thúc meeting.
-- **Host disconnect:** grace 120s → CO_HOST, không có thì participant join sớm nhất thành `ACTING_HOST`. Host gốc quay lại lấy lại quyền.
-- **Auto-end:** 0 participant liên tục 10 phút → ENDED, lưu snapshot cuối.
-- **Chỉ HOST/CO_HOST được tạo meeting.**
-- **Meeting mode** quyết định quyền theo phiên: `DISCUSSION` dùng role gốc; `LECTURE` chỉ HOST/CO_HOST được publish media và vẽ, còn lại hạ xuống VIEWER.
-
 **Không hỗ trợ guest.** Mọi người dùng bắt buộc đăng nhập. Link join: `/join/:code` → chưa login → redirect `/login?returnUrl=...` → login xong tự resolve code và vào meeting.
 
 Lý do (viết được vào báo cáo): mọi realtime event luôn gắn `userId` thật nên audit, presence, permission nhất quán; không cần cơ chế token ẩn danh song song nên giảm bề mặt tấn công; LiveKit token luôn sinh từ identity đã xác thực.
-
 ---
 
 ## 5. Kiến trúc và topology
@@ -360,29 +337,10 @@ Frontend hiển thị lỗi **ngay tại field**, không chỉ toast chung.
 ---
 
 ## 15. Permission
-
 Enforce ở **backend**, cả REST guard lẫn Socket.IO handler. Frontend chỉ ẩn/hiện UI.
-
-| Hành động | HOST | CO_HOST | MEMBER | VIEWER |
-|---|:--:|:--:|:--:|:--:|
-| Dissolve room | ✅ | ❌ | ❌ | ❌ |
-| Đổi role | ✅ | ❌ | ❌ | ❌ |
-| Quản lý / kick member | ✅ | ✅ | ❌ | ❌ |
-| Import members / Export | ✅ | ✅ | ❌ | ❌ |
-| Tạo / kết thúc meeting | ✅ | ✅ | ❌ | ❌ |
-| Publish media, screen share | ✅ | ✅ | ✅¹ | ❌ |
-| Chat | ✅ | ✅ | ✅ | ✅ |
-| Vẽ whiteboard | ✅ | ✅ | ✅¹ | ❌ |
-| Xoá element người khác / clear board | ✅ | ✅ | ❌ | ❌ |
-| Gọi AI generate | ✅ | ✅ | ✅¹ | ❌ |
-| Upload file | ✅ | ✅ | ✅¹ | ❌ |
-
-¹ Ở `LECTURE` mode, MEMBER bị hạ xuống quyền VIEWER cho các mục này.
-
 Permission được biểu diễn dưới dạng **dữ liệu** (bảng tra) trong `shared/`, không phải chuỗi if-else, dùng chung cho backend và frontend.
-
 **Role map thẳng sang LiveKit token grant** (`canPublish: false` cho VIEWER) → quyền media enforce ngay ở SFU, không chỉ ẩn nút ở UI. Token TTL 6 giờ, cấp lại mỗi lần join meeting.
-
+Lưu ý nhỏ: token đã cấp thì không tự cập nhật. Nếu cần đổi quyền ngay giữa buổi họp (ví dụ host tắt quyền nói của ai đó), bạn phải gọi API updateParticipant của LiveKit từ backend để đổi permission trực tiếp, chứ chờ họ join lại thì quá chậm.
 ---
 
 ## 16. Security

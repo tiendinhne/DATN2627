@@ -52,19 +52,15 @@ Trạng thái: tất cả **[CONFIRMED]** trừ khi ghi khác. Không quay lại
 **Status:** CONFIRMED. Nếu sau này cần job nặng thì thêm `EventBusPort` — port đã có chỗ.
 
 ## ADR-008 — Không hỗ trợ guest
-**Decision:** Mọi user bắt buộc đăng nhập. `/join/:code` → chưa login → `/login?returnUrl=...` → login xong tự resolve code.
+**Decision:** Mọi user bắt buộc đăng nhập.
 **Reason:** Mọi realtime event gắn `userId` thật → audit/presence/permission nhất quán; LiveKit token luôn sinh từ identity đã xác thực; giảm bề mặt tấn công.
 **Alternatives:** guest join bằng link.
 **Rejected because:** `userId` trở thành nullable ở mọi guard, schema, LiveKit identity → lan rất rộng.
 **Status:** CONFIRMED. Nếu sau này thật sự cần, làm bằng User record có flag `isGuest`, **không** làm nullable userId.
 
 ## ADR-009 — Quyền theo phiên bằng `Meeting.mode`
-**Decision:** `Meeting.mode: DISCUSSION | LECTURE`. `DISCUSSION` dùng role gốc của `RoomMember`; `LECTURE` chỉ HOST/CO_HOST được publish media và vẽ, còn lại hạ xuống VIEWER.
-**Reason:** Role gắn RoomMember là room-level, không biểu diễn được "tuần này thảo luận, tuần sau nghe giảng".
-**Alternatives:** `MeetingParticipant.roleOverride` (2 tầng resolve).
-**Rejected because:** permission resolve được gọi ở 30–50 chỗ; 2 tầng làm chữ ký hàm phức tạp mà không cần thiết cho phạm vi này.
-**Status:** CONFIRMED.
-
+Bỏ phần chia mode này, cập nhật lại tất cả tài liệu sau nếu mâu thuẫn.
+Phần này không nằm trong scope hiện tại
 ## ADR-010 — Không có role ADMIN hệ thống
 **Decision:** Bỏ chức năng import users. Import/export chỉ áp dụng cho room members (+ export chat/meeting/whiteboard).
 **Status:** CONFIRMED.

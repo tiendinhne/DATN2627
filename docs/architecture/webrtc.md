@@ -98,6 +98,7 @@ Không mời được 20 người thật, và một laptop không chạy nổi 2
 - k6 hoặc script Node cho REST + Socket.IO
 - **Máy sinh tải phải tách khỏi máy chạy SFU**, nếu không số liệu CPU vô nghĩa
 
+chỉ là kịch bản, giữ mọi thứ ở mức sinh viên chứ không phải là 1 production
 | # | Kịch bản | Biến |
 |---|---|---|
 | B1 | N publisher video+audio, all subscribe | N = 2,4,6,8,10,12 |

@@ -468,25 +468,3 @@ export class File {
 | `lock:{jobName}` | String | 30s | Distributed lock cho cron (SET NX PX) |
 | `rl:{scope}:{id}` | String | tuỳ | Rate limit counter |
 | `socket.io#*` | (adapter tự quản) | — | Pub/Sub broadcast giữa instance |
-
-**Quy tắc luồng dữ liệu:**
-```
-Realtime  → Redis (nguồn đọc cho snapshot khi join)
-Debounce  → Mongo (15s / 60s / lúc end / lúc graceful shutdown)
-Thống kê  → Redis trong lúc chạy → Mongo một lần khi meeting ENDED
-```
-
----
-
-# PHẦN F — SEED & KIỂM TRA
-
-**Seed tối thiểu để dev:** 3 user, 1 room (user1 là HOST, user2 MEMBER, user3 VIEWER), 1 meeting ACTIVE, 5 message, 1 whiteboard rỗng.
-
-**Bốn phép thử xác nhận schema đúng:**
-
-1. Tạo 2 meeting ACTIVE cùng room → **phải lỗi duplicate key**. Nếu không lỗi, partial index sai.
-2. Insert 2 message cùng `clientMsgId` trong cùng meeting → **phải lỗi duplicate key**.
-3. Import cùng một email 2 lần vào room → lần 2 phải báo "đã tồn tại", **không tạo bản ghi thứ hai**.
-4. Ghi whiteboard với `lastSeq` nhỏ hơn giá trị đang có → **`matchedCount` phải bằng 0** (không ghi đè).
-
-Bốn phép thử này chạy được ngay sau khi dựng schema, trước khi có API. Làm luôn — chúng bắt được lỗi thiết kế rẻ hơn nhiều so với phát hiện lúc tích hợp.

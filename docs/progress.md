@@ -42,3 +42,8 @@ Frontend	Mới có các trang login, register, dashboard và Google callback. Ch
   Cả 5 vấn đề đều **có sẵn từ trước**, không phải do setup gây ra.
 
 - **Còn dở:** chưa commit; 3 bước `/check` đang fail (xem bảng trên) — cần sửa trước khi làm tính năng mới; skill riêng cho "thêm socket event mới" đã bàn nhưng hoãn lại.
+
+## 24-9-2026
+chỉnh sửa phần meeting.mode ( Bỏ ra khỏi scope) chỉ còn meeting đơn thuần.
+Cập nhật lại các role * đọc file rule/role.md
+{ Đây là chỉnh tay từ tôi chưa qua rà soát của claude}

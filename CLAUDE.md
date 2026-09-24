@@ -3,6 +3,12 @@
 Khóa luận tốt nghiệp · nhóm 2 người · 2 tháng code.
 Trọng tâm chấm điểm là **WebRTC scalability + realtime collaboration + AI whiteboard**, không phải số lượng feature.
 
+Giữ mọi thứ ở mức sinh viên làm đồ án chứ không phải là 1 production chuyên nghiệp có quá nhiều tính năng
+Chỉ làm đúng việc tôi yêu cầu. Không tự mở rộng tính năng, không thêm "tiện thể" những thứ tôi không hỏi.
+Giải pháp tốt nhất là giải pháp nhỏ nhất giải quyết được vấn đề. Ưu tiên sửa vài dòng hơn là viết lại cả file.
+Không thêm abstraction, class, helper, config, hay lớp trung gian mới nếu vấn đề không thật sự cần.
+Không thêm dependency mới trừ khi tôi đồng ý.
+Trong code nhớ ghi chú cơ bản dễ nhìn vào dễ hiểu
 ## Nguồn sự thật — theo thứ tự ưu tiên
 
 | # | Tài liệu | Vai trò |
