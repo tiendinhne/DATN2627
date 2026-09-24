@@ -339,7 +339,7 @@ Frontend hiển thị lỗi **ngay tại field**, không chỉ toast chung.
 ## 15. Permission
 Enforce ở **backend**, cả REST guard lẫn Socket.IO handler. Frontend chỉ ẩn/hiện UI.
 Permission được biểu diễn dưới dạng **dữ liệu** (bảng tra) trong `shared/`, không phải chuỗi if-else, dùng chung cho backend và frontend.
-**Role map thẳng sang LiveKit token grant** (`canPublish: false` cho VIEWER) → quyền media enforce ngay ở SFU, không chỉ ẩn nút ở UI. Token TTL 6 giờ, cấp lại mỗi lần join meeting.
+**Role map thẳng sang LiveKit token grant** (hiện HOST và MEMBER đều `canPublish: true`, xem `docs/rule/role.md`) → quyền media enforce ngay ở SFU, không chỉ ẩn nút ở UI. Token TTL 6 giờ, cấp lại mỗi lần join meeting.
 Lưu ý nhỏ: token đã cấp thì không tự cập nhật. Nếu cần đổi quyền ngay giữa buổi họp (ví dụ host tắt quyền nói của ai đó), bạn phải gọi API updateParticipant của LiveKit từ backend để đổi permission trực tiếp, chứ chờ họ join lại thì quá chậm.
 ---
 

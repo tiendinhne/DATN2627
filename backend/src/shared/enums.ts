@@ -5,19 +5,12 @@ export enum RoomStatus {
 
 export enum RoomRole {
   HOST = 'HOST',
-  CO_HOST = 'CO_HOST',
   MEMBER = 'MEMBER',
-  VIEWER = 'VIEWER',
 }
 
 export enum MeetingStatus {
   ACTIVE = 'ACTIVE',
   ENDED = 'ENDED',
-}
-
-export enum MeetingMode {
-  DISCUSSION = 'DISCUSSION',
-  LECTURE = 'LECTURE',
 }
 
 export enum EndReason {

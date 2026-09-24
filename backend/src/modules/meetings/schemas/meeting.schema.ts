@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { MeetingStatus, MeetingMode, EndReason } from '../../../shared/enums.js';
+import { MeetingStatus, EndReason } from '../../../shared/enums.js';
 
 export type MeetingDocument = Meeting & Document;
 
@@ -14,9 +14,6 @@ export class Meeting {
 
   @Prop({ type: String, enum: MeetingStatus, default: MeetingStatus.ACTIVE })
   status!: MeetingStatus;
-
-  @Prop({ type: String, enum: MeetingMode, default: MeetingMode.DISCUSSION })
-  mode!: MeetingMode;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   createdBy!: Types.ObjectId;

@@ -67,4 +67,4 @@ Xem `realtime.md` §5. Client gửi `lastSeq`: chênh ≤ 500 → replay diff t�
 
 ## 6. Permission
 
-`DRAW_WHITEBOARD`, `DELETE_OTHERS_ELEMENT`, `CLEAR_BOARD` — xem `security.md`. Ở `LECTURE` mode, MEMBER bị hạ xuống VIEWER cho quyền vẽ.
+`DRAW_WHITEBOARD`, `DELETE_OTHERS_ELEMENT`, `CLEAR_BOARD` — xem `security.md`.

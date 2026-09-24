@@ -55,9 +55,8 @@ rooms ──1:N──► meetings
 ```ts
 // shared/src/enums.ts
 export enum RoomStatus    { ACTIVE = 'ACTIVE', DISSOLVED = 'DISSOLVED' }
-export enum RoomRole      { HOST = 'HOST', CO_HOST = 'CO_HOST', MEMBER = 'MEMBER', VIEWER = 'VIEWER' }
+export enum RoomRole      { HOST = 'HOST', MEMBER = 'MEMBER' }   // chỉ 2 role, xem docs/rule/role.md
 export enum MeetingStatus { ACTIVE = 'ACTIVE', ENDED = 'ENDED' }
-export enum MeetingMode   { DISCUSSION = 'DISCUSSION', LECTURE = 'LECTURE' }
 export enum EndReason     { HOST_ENDED = 'HOST_ENDED', AUTO_EMPTY = 'AUTO_EMPTY', ROOM_DISSOLVED = 'ROOM_DISSOLVED' }
 export enum MessageType   { TEXT = 'TEXT', FILE = 'FILE', SYSTEM = 'SYSTEM' }
 export enum FilePurpose   { CHAT_ATTACHMENT = 'CHAT_ATTACHMENT', AVATAR = 'AVATAR', WHITEBOARD_IMAGE = 'WHITEBOARD_IMAGE' }
@@ -192,7 +191,7 @@ export class RoomMember {
 **Index:**
 - `{ roomId: 1, userId: 1 }` **unique** ← chặn trùng, và là nền tảng cho import idempotent
 - `{ userId: 1, joinedAt: -1 }` ← query "các room của tôi"
-- `{ roomId: 1, role: 1 }` ← đếm host/co-host
+- `{ roomId: 1, role: 1 }` ← tìm host của room
 
 **Vì sao là collection riêng chứ không embed vào `rooms`:** query "danh sách room của user X" là query chạy nhiều nhất trên trang chủ. Nếu embed `members[]` vào `rooms` thì phải scan toàn bộ rooms. Tách ra + index `userId` → query trực tiếp.
 
@@ -211,9 +210,6 @@ export class Meeting {
 
   @Prop({ type: String, enum: MeetingStatus, default: MeetingStatus.ACTIVE })
   status: MeetingStatus;
-
-  @Prop({ type: String, enum: MeetingMode, default: MeetingMode.DISCUSSION })
-  mode: MeetingMode;          // LECTURE: chỉ HOST/CO_HOST được publish media + vẽ
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   createdBy: Types.ObjectId;

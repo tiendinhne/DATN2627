@@ -11,11 +11,10 @@ LiveKit: media transport, SFU forwarding, simulcast/dynacast, congestion control
 ```
 Client → POST /meetings/:id/join  (JWT)
        → Backend: check membership + meeting ACTIVE + resolve role
-       → resolve effective role theo Meeting.mode (DISCUSSION | LECTURE)
        → sinh LiveKit AccessToken:
             identity   = userId
             room       = meeting._id.toString()
-            grant      = toLiveKitGrant(role, mode)   // canPublish: false cho VIEWER
+            grant      = toLiveKitGrant(role)   // HOST và MEMBER đều được publish
             TTL        = 6 giờ
        → trả { token, livekitUrl }
 Client → connect LiveKit bằng token
