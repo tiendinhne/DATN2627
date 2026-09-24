@@ -6,11 +6,13 @@ export type MessageDocument = Message & Document;
 
 @Schema({ timestamps: true, collection: 'messages' })
 export class Message {
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true, index: true })
-  meetingId!: Types.ObjectId;
-
+  // Chat thuộc về room — đây là khoá sở hữu chính
   @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
   roomId!: Types.ObjectId;
+
+  // Tag meeting: chỉ server gắn khi tin được gửi từ khung chat trong họp, còn lại null
+  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null })
+  meetingId?: Types.ObjectId | null;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   senderId!: Types.ObjectId;
@@ -36,6 +38,12 @@ export class Message {
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
 
-MessageSchema.index({ meetingId: 1, createdAt: -1 });
-MessageSchema.index({ meetingId: 1, clientMsgId: 1 }, { unique: true });
+// Luồng chat của room — query dùng nhiều nhất
 MessageSchema.index({ roomId: 1, createdAt: -1 });
+// Chống gửi trùng khi client reconnect gửi lại
+MessageSchema.index({ roomId: 1, clientMsgId: 1 }, { unique: true });
+// Khung chat trong meeting — chỉ index tin có tag meeting
+MessageSchema.index(
+  { meetingId: 1, createdAt: -1 },
+  { partialFilterExpression: { meetingId: { $type: 'objectId' } } },
+);
