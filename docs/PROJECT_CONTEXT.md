@@ -144,7 +144,7 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 
 **Namespace** `/meeting` · **Room** `user:${userId}` · `room:${roomId}` · `meeting:${meetingId}` · **Transport** `['websocket']` only
 
-**Auth:** JWT qua `socket.handshake.auth.token`, **không qua query string** (query bị log ở proxy). Verify trong guard → resolve `userId` → check membership + meeting ACTIVE → mới cho join room.
+**Auth:** JWT qua `socket.handshake.auth.token`, **không qua query string** (query bị log ở proxy). Verify trong guard → resolve `userId` → `room:subscribe` gọi `assertRoomAccess` (thành viên, không bị ban, room ACTIVE) → mới cho vào kênh `room:{roomId}`; `meeting:join` kiểm thêm meeting ACTIVE.
 
 **Envelope chuẩn cho mọi event server → client:**
 

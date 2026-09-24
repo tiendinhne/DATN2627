@@ -515,7 +515,7 @@ export class AiRequest {
 | ai_requests | `{ status: 1, createdAt: -1 }` | — | phân bố lỗi |
 | ai_requests | `{ userId: 1, requestId: 1 }` | **unique** | chống ghi trùng |
 
-> 4 unique index in đậm là **ràng buộc nghiệp vụ ở tầng DB**, không chỉ để tăng tốc. Chúng thay thế hàng chục dòng application logic và vẫn đúng khi chạy nhiều instance.
+> 5 unique index in đậm là **ràng buộc nghiệp vụ ở tầng DB**, không chỉ để tăng tốc. Chúng thay thế hàng chục dòng application logic và vẫn đúng khi chạy nhiều instance.
 
 ---
 
