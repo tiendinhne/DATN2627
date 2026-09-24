@@ -13,7 +13,7 @@ Trong code nhớ ghi chú cơ bản dễ nhìn vào dễ hiểu
 
 | # | Tài liệu | Vai trò |
 |---|---|---|
-| 1 | `docs/DE_CUONG.md` | Văn bản GVHD đã duyệt. **Không gì được mâu thuẫn với file này.** |
+| 1 | `docs/DATN_decuong.md` | Văn bản GVHD đã duyệt. **Không gì được mâu thuẫn với file này.** |
 | 2 | `docs/PROJECT_CONTEXT.md` | Đặc tả kỹ thuật. `§n` trỏ section n của nó |
 | 3 | `docs/adr/*.md` | Quyết định kỹ thuật đã chốt — một file một quyết định, xem `docs/adr/README.md` |
 | 4 | `docs/progress.md` | Đang làm tới đâu. Cập nhật sau **mỗi** task |

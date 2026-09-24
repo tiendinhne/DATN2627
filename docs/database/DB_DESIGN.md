@@ -17,6 +17,7 @@
 | 7 | `messages` | Chat | lớn nhất |
 | 8 | `whiteboards` | Snapshot bảng vẽ (1–1 meeting) | trung bình, doc lớn |
 | 9 | `files` | Metadata file trên object storage | nhỏ |
+| 10 | `ai_requests` | Log gọi AI để đo (đề cương §5.9) | nhỏ–trung bình |
 
 ## B.2 Quan hệ
 
@@ -26,11 +27,13 @@ users ──1:N──► rooms (ownerId)
   └──N:M──► rooms  qua  room_members  (role, joinedAt)
 
 rooms ──1:N──► meetings
-                 │
-                 ├──1:N──► meeting_participants ──N:1──► users
-                 ├──1:N──► messages             ──N:1──► users
-                 ├──1:1──► whiteboards
-                 └──1:N──► files
+  │              │
+  │              ├──1:N──► meeting_participants ──N:1──► users
+  │              ├──1:1──► whiteboards
+  │              ├──1:N──► files
+  │              └──1:N──► ai_requests
+  │
+  └──1:N──► messages (meetingId = tag tuỳ chọn) ──N:1──► users
 ```
 
 ## B.3 Nguyên tắc thiết kế đã áp dụng
@@ -60,6 +63,8 @@ export enum MeetingStatus { ACTIVE = 'ACTIVE', ENDED = 'ENDED' }
 export enum EndReason     { HOST_ENDED = 'HOST_ENDED', AUTO_EMPTY = 'AUTO_EMPTY', ROOM_DISSOLVED = 'ROOM_DISSOLVED' }
 export enum MessageType   { TEXT = 'TEXT', FILE = 'FILE', SYSTEM = 'SYSTEM' }
 export enum FilePurpose   { CHAT_ATTACHMENT = 'CHAT_ATTACHMENT', AVATAR = 'AVATAR', WHITEBOARD_IMAGE = 'WHITEBOARD_IMAGE' }
+export enum AiRequestKind   { DIAGRAM = 'DIAGRAM', MINDMAP = 'MINDMAP', FLOWCHART = 'FLOWCHART' }   // đề cương §4.2
+export enum AiRequestStatus { SUCCESS = 'SUCCESS', PROVIDER_ERROR = 'PROVIDER_ERROR', INVALID_OUTPUT = 'INVALID_OUTPUT', TIMEOUT = 'TIMEOUT', RATE_LIMITED = 'RATE_LIMITED' }
 ```
 hiện tại enums.ts đang ở backend, chưa di chuyển sang thư mục dùng chung
 ---
@@ -295,41 +300,43 @@ export class MeetingParticipant {
 ```ts
 @Schema({ timestamps: true, collection: 'messages' })
 export class Message {
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true, index: true })
-  meetingId: Types.ObjectId;
-
+  // Chat thuộc về room — đây là khoá sở hữu chính
   @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
-  roomId: Types.ObjectId;           // denormalize để export theo room không cần join
+  roomId!: Types.ObjectId;
+
+  // Tag meeting: chỉ server gắn khi tin được gửi từ khung chat trong họp, còn lại null
+  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null })
+  meetingId?: Types.ObjectId | null;
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  senderId: Types.ObjectId;
+  senderId!: Types.ObjectId;
 
   @Prop({ required: true, maxlength: 60 })
-  senderName: string;               // SNAPSHOT — tên lúc gửi, không đổi khi user đổi tên
+  senderName!: string;              // SNAPSHOT — tên lúc gửi, không đổi khi user đổi tên
 
   @Prop({ type: String, enum: MessageType, default: MessageType.TEXT })
-  type: MessageType;
+  type!: MessageType;
 
   @Prop({ default: '', maxlength: 2000 })
-  content: string;
+  content?: string;
 
   @Prop({ type: Types.ObjectId, ref: 'File', default: null })
-  fileId: Types.ObjectId | null;    // khi type = FILE
+  fileId?: Types.ObjectId | null;   // khi type = FILE
 
   @Prop({ required: true })
-  clientMsgId: string;              // do client sinh → chống gửi trùng khi reconnect
+  clientMsgId!: string;             // do client sinh → chống gửi trùng khi reconnect
 
-  @Prop({ default: null })
-  deletedAt: Date | null;
+  @Prop({ type: Date, required: false, default: null })
+  deletedAt?: Date | null;
 }
 ```
 
 **Index:**
-- `{ meetingId: 1, createdAt: -1 }` ← load lịch sử chat (query nóng nhất)
-- `{ meetingId: 1, clientMsgId: 1 }` **unique** ← **idempotent**: client gửi lại sau reconnect sẽ bị chặn ở tầng DB, không cần logic phức tạp
-- `{ roomId: 1, createdAt: -1 }` ← export chat theo room
+- `{ roomId: 1, createdAt: -1 }` ← luồng chat của room, query nóng nhất
+- `{ roomId: 1, clientMsgId: 1 }` **unique** ← **idempotent** khi client reconnect gửi lại (thay `{meetingId, clientMsgId}` cũ — không còn đúng khi `meetingId` null)
+- `{ meetingId: 1, createdAt: -1 }` partial `{ meetingId: { $type: 'objectId' } }` ← khung chat trong meeting + `meeting:snapshot.recentMessages`; chỉ index tin có tag
 
-**Ghi chú:** `senderName` là snapshot có chủ đích — giống Slack/Discord, tin nhắn cũ giữ tên cũ. Tránh populate N+1 khi load 50 tin.
+**Ghi chú:** Chat thuộc room (đề cương §6.3). `meetingId` chỉ server gắn sau khi `assertMeetingTag` pass. `senderName` là snapshot có chủ đích — giống Slack/Discord, tin nhắn cũ giữ tên cũ. Tránh populate N+1 khi load 50 tin.
 
 ---
 
@@ -423,6 +430,64 @@ export class File {
 
 ---
 
+## C.10 `ai_requests`
+
+```ts
+// Log mỗi lần gọi AI. Chỉ insert một lần khi request kết thúc, không update.
+@Schema({ timestamps: { createdAt: true, updatedAt: false }, collection: 'ai_requests' })
+export class AiRequest {
+  // Do client sinh trong ai:generate — chống ghi trùng khi gửi lại
+  @Prop({ required: true, maxlength: 64 })
+  requestId!: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  userId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
+  roomId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true })
+  meetingId!: Types.ObjectId;
+
+  @Prop({ type: String, enum: AiRequestKind, required: true })
+  kind!: AiRequestKind;
+
+  // Service cắt còn 1000 ký tự trước khi lưu
+  @Prop({ required: true, maxlength: 1000 })
+  prompt!: string;
+
+  @Prop({ type: String, enum: AiRequestStatus, required: true })
+  status!: AiRequestStatus;
+
+  // Mã lỗi ngắn, không lưu stack trace
+  @Prop({ type: String, default: null, maxlength: 64 })
+  errorCode?: string | null;
+
+  @Prop({ required: true, min: 0 })
+  latencyMs!: number;
+
+  @Prop({ required: true })
+  model!: string;
+
+  // null nếu provider không trả số token
+  @Prop({ type: Number, default: null })
+  inputTokens?: number | null;
+
+  @Prop({ type: Number, default: null })
+  outputTokens?: number | null;
+
+  // Số element sinh ra; 0 nếu thất bại
+  @Prop({ default: 0, min: 0 })
+  elementCount?: number;
+}
+```
+
+**Index:** `{ createdAt: -1 }` · `{ meetingId: 1, createdAt: -1 }` · `{ status: 1, createdAt: -1 }` · `{ userId: 1, requestId: 1 }` **unique**.
+
+**Ghi chú:** Insert-only một lần khi request kết thúc; không TTL — giữ dữ liệu cho benchmark/báo cáo (đề cương §5.9).
+
+---
+
 # PHẦN D — BẢNG INDEX TỔNG HỢP
 
 | Collection | Index | Loại | Mục đích |
@@ -439,12 +504,16 @@ export class File {
 | meetings | `{ roomId: 1 }` + partial ACTIVE | **unique partial** | 1 meeting ACTIVE / room |
 | meetings | `{ status: 1, startedAt: 1 }` | — | job auto-end |
 | meeting_participants | `{ meetingId: 1, userId: 1 }` | **unique** | 1 doc / user / meeting |
-| messages | `{ meetingId: 1, createdAt: -1 }` | — | load chat |
-| messages | `{ meetingId: 1, clientMsgId: 1 }` | **unique** | chống gửi trùng |
-| messages | `{ roomId: 1, createdAt: -1 }` | — | export |
+| messages | `{ roomId: 1, createdAt: -1 }` | — | luồng chat room |
+| messages | `{ roomId: 1, clientMsgId: 1 }` | **unique** | chống gửi trùng |
+| messages | `{ meetingId: 1, createdAt: -1 }` | partial (có tag) | khung chat meeting |
 | whiteboards | `{ meetingId: 1 }` | unique | 1–1 |
 | files | `{ storageKey: 1 }` | unique | |
 | files | `{ meetingId: 1, createdAt: -1 }` | — | file trong meeting |
+| ai_requests | `{ createdAt: -1 }` | — | báo cáo theo thời gian |
+| ai_requests | `{ meetingId: 1, createdAt: -1 }` | — | AI request theo meeting |
+| ai_requests | `{ status: 1, createdAt: -1 }` | — | phân bố lỗi |
+| ai_requests | `{ userId: 1, requestId: 1 }` | **unique** | chống ghi trùng |
 
 > 4 unique index in đậm là **ràng buộc nghiệp vụ ở tầng DB**, không chỉ để tăng tốc. Chúng thay thế hàng chục dòng application logic và vẫn đúng khi chạy nhiều instance.
 

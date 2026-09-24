@@ -94,3 +94,15 @@ Phần này không nằm trong scope hiện tại
 ## ADR-016 — Backend dev chỉ chạy qua Docker Compose, không chạy song song native
 
 ## ADR-017 — Ràng buộc dự án được ép bằng hook, không chỉ nằm trong tài liệu
+
+## ADR-018 — Room lâu dài, kết thúc phiên chỉ kết thúc meeting
+**Decision:** Kết thúc phiên học chỉ đặt `meeting.status = ENDED`; room vẫn `ACTIVE` tới khi host giải tán.
+**Reason:** Đề cương §6.1 (một phòng mở nhiều meeting, lưu lịch sử). Câu "phòng chuyển sang trạng thái kết thúc" ở §6.6 được hiểu là meeting kết thúc — user chốt 2026-09-23.
+**Status:** CONFIRMED.
+
+## ADR-019 — Chat thuộc room, meeting chỉ là tag
+**Decision:** `messages.roomId` là khoá sở hữu; `meetingId` tuỳ chọn, chỉ server gắn sau khi xác minh. Realtime phát một lần tới `room:{roomId}`, khung chat meeting lọc theo `meetingId`.
+**Reason:** Đề cương §6.3 — tin trong họp vẫn nằm trong luồng chat chung của room, người ngoài họp đọc được.
+**Alternatives:** chat chỉ trong meeting; phát riêng hai kênh room/meeting.
+**Rejected because:** trái §6.3; phát hai kênh phải khử trùng cho người ở cả hai nơi.
+**Status:** CONFIRMED.

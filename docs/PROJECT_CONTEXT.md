@@ -142,7 +142,7 @@ Socket.IO Redis adapter đã lo toàn bộ fan-out giữa các instance, và bac
 
 Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 
-**Namespace** `/meeting` · **Room** `meeting:${meetingId}` · **Transport** `['websocket']` only
+**Namespace** `/meeting` · **Room** `user:${userId}` · `room:${roomId}` · `meeting:${meetingId}` · **Transport** `['websocket']` only
 
 **Auth:** JWT qua `socket.handshake.auth.token`, **không qua query string** (query bị log ở proxy). Verify trong guard → resolve `userId` → check membership + meeting ACTIVE → mới cho join room.
 
@@ -154,17 +154,22 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
   "seq": 1234,             // null với event ephemeral (cursor, typing)
   "ts": "2026-09-13T10:00:00.000Z",
   "actorId": "665f...",
+  "roomId": "665d...",
   "meetingId": "665e...",
   "data": { }
 }
 ```
 
+`meetingId` có thể `null` (event thuộc room, không gắn meeting nào).
+
 **Event catalog:**
 
 | Client → Server | Payload |
 |---|---|
+| `room:subscribe` | `{ roomId }` |
+| `room:unsubscribe` | `{ roomId }` |
 | `meeting:join` | `{ meetingId, lastSeq? }` |
-| `chat:send` | `{ clientMsgId, content, fileId? }` |
+| `chat:send` | `{ roomId, clientMsgId, content, fileId?, meetingId? }` |
 | `wb:ops` | `{ elements[] }` |
 | `wb:pointer` | `{ x, y }` |
 | `wb:resync` | `{ lastSeq }` |
@@ -175,12 +180,14 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `meeting:snapshot` | `{ elements[], seq, members[], recentMessages[] }` |
 | `meeting:member_changed` | `{ userId, action, role }` |
 | `meeting:ended` | `{ reason }` |
-| `chat:new` | `{ message }` |
+| `chat:new` | `{ message }` — emit tới `room:{roomId}`; client lọc theo `meetingId` cho khung chat meeting |
 | `wb:ops` | `{ elements[], byUserId }` |
 | `wb:pointer` | `{ userId, x, y }` |
 | `ai:status` / `ai:result` | `{ requestId, ... }` |
 | `server:draining` | `{}` |
 | `error` | `{ statusCode, error, message, details? }` |
+
+Quyền: `room:subscribe`, `chat:send` luôn gọi `RoomAccessService.assertRoomAccess`; có `meetingId` thì thêm `assertMeetingTag`. Chi tiết: spec chat-room-scope.
 
 **Ordering, duplicate, reconnection:**
 - `seq` đơn điệu tăng, cấp bằng **Redis `INCR`** → atomic across instances, tự nhiên có total order
