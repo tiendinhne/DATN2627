@@ -64,6 +64,12 @@ describe('assertRoomAccess', () => {
 });
 
 describe('assertMeetingTag', () => {
+  it('roomId sai định dạng → 400', async () => {
+    const { service, meetingModel } = build({});
+    await expect(service.assertMeetingTag(userId, 'abc', meetingId)).rejects.toBeInstanceOf(BadRequestException);
+    expect(meetingModel.findOne).not.toHaveBeenCalled();
+  });
+
   it('meetingId sai định dạng → 400', async () => {
     const { service, meetingModel } = build({});
     await expect(service.assertMeetingTag(userId, roomId, 'xyz')).rejects.toBeInstanceOf(BadRequestException);

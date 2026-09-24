@@ -49,6 +49,10 @@ export class RoomAccessService {
 
   // Chỉ cho gắn tag meeting khi meeting đang diễn ra, thuộc đúng room, và user đang ở trong meeting
   async assertMeetingTag(userId: string, roomId: string, meetingId: string) {
+    if (!Types.ObjectId.isValid(roomId)) {
+      throw new BadRequestException('roomId không hợp lệ');
+    }
+
     if (!Types.ObjectId.isValid(meetingId)) {
       throw new BadRequestException('meetingId không hợp lệ');
     }
