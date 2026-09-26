@@ -72,6 +72,13 @@ Kick thành viên (xoá khỏi phòng, người đó nhập lại mã vẫn vào
 - `400`: `userId` sai định dạng, hoặc tự kick chính mình.
 - `403`: không phải HOST. `404`: người đó không có trong phòng.
 
+### POST /rooms/:roomId/dissolve
+Giải tán phòng: `status = DISSOLVED`, `dissolvedAt = now`. Quyền: HOST.
+- Response `204`.
+- `403`: không phải HOST.
+- Sau khi giải tán: mọi endpoint theo `roomId` trả `404`, join bằng mã trả `404`. `room_members` được giữ làm lịch sử.
+- Chưa làm: kết thúc meeting đang diễn ra (chờ module meeting).
+
 ## Chat (thiết kế — chưa code)
 
 ### GET /rooms/:roomId/messages

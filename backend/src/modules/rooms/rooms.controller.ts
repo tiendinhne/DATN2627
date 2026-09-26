@@ -63,4 +63,11 @@ export class RoomsController {
   kick(@Req() req: any, @Param('roomId') roomId: string, @Param('userId') userId: string) {
     return this.roomsService.kickMember(req.user.id, roomId, userId);
   }
+
+  // POST /rooms/:roomId/dissolve — HOST giải tán phòng
+  @Post(':roomId/dissolve')
+  @HttpCode(204)
+  dissolve(@Req() req: any, @Param('roomId') roomId: string) {
+    return this.roomsService.dissolveRoom(req.user.id, roomId);
+  }
 }

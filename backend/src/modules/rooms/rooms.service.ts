@@ -239,6 +239,20 @@ export class RoomsService {
     // TODO(chat gateway): thu hồi socket của người vừa rời khỏi kênh room:{roomId}
   }
 
+  // POST /rooms/:roomId/dissolve — chỉ HOST. Giữ room_members làm lịch sử.
+  // Sau đó assertRoomAccess trả 404 cho mọi truy cập, join bằng mã cũng 404.
+  async dissolveRoom(hostId: string, roomId: string) {
+    await this.access.assertRoomPermission(hostId, roomId, RoomAction.DISSOLVE_ROOM);
+    // Lọc status ACTIVE: 2 request giải tán cùng lúc thì request sau không ghi đè dissolvedAt
+    await this.roomModel
+      .updateOne(
+        { _id: roomId, status: RoomStatus.ACTIVE },
+        { $set: { status: RoomStatus.DISSOLVED, dissolvedAt: new Date() } },
+      )
+      .exec();
+    // TODO(module meeting): kết thúc meeting ACTIVE của room với EndReason.ROOM_DISSOLVED
+  }
+
   // Xoá thành viên; chỉ giảm memberCount khi thật sự xoá được → 2 request cùng lúc không trừ 2 lần
   private async removeMember(roomId: string, userId: string) {
     const result = await this.memberModel.deleteOne({ roomId, userId }).exec();

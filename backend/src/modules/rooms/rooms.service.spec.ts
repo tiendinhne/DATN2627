@@ -451,3 +451,26 @@ describe('leaveRoom', () => {
     expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: roomId }, { $inc: { memberCount: -1 } });
   });
 });
+
+describe('dissolveRoom', () => {
+  it('không phải HOST → 403, không ghi DB', async () => {
+    const { service, access, roomModel } = build();
+    access.assertRoomPermission.mockRejectedValue(new ForbiddenException());
+
+    await expect(service.dissolveRoom(userId, roomId)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(roomModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('HOST → status DISSOLVED + dissolvedAt, giữ nguyên room_members', async () => {
+    const { service, access, roomModel, memberModel } = build();
+
+    await service.dissolveRoom(userId, roomId);
+
+    expect(access.assertRoomPermission).toHaveBeenCalledWith(userId, roomId, 'DISSOLVE_ROOM');
+    expect(roomModel.updateOne).toHaveBeenCalledWith(
+      { _id: roomId, status: RoomStatus.ACTIVE },
+      { $set: { status: RoomStatus.DISSOLVED, dissolvedAt: expect.any(Date) } },
+    );
+    expect(memberModel.deleteOne).not.toHaveBeenCalled();
+  });
+});
