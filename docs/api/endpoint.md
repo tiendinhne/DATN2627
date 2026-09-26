@@ -5,6 +5,23 @@ Khi code xong module/api. phải thêm chi tiết api đó là gì, request/resp
 Phân chia thêm từng nhóm module riêng biệt
 Vd: Auth,...
 
+## Rooms
+
+Mọi endpoint cần header `Authorization: Bearer <accessToken>`. Lỗi validate → 400.
+
+**Room response** (dùng chung cho các endpoint trả về một phòng):
+`{ id, name, description, joinCode, ownerId, status, memberCount, createdAt, myRole }` — `myRole` là `HOST` hoặc `MEMBER` của người đang gọi.
+
+### POST /rooms
+Tạo phòng. Người tạo thành HOST.
+
+| Body | Kiểu | Ràng buộc |
+|---|---|---|
+| name | string | bắt buộc, 1–100 ký tự (đã trim) |
+| description | string | tuỳ chọn, ≤ 500 ký tự |
+
+Response `201`: room response, `myRole: "HOST"`, `memberCount: 1`.
+
 ## Chat (thiết kế — chưa code)
 
 ### GET /rooms/:roomId/messages

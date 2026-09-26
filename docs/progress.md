@@ -96,3 +96,16 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Test:** `permissions.spec.ts` 2/2 pass. `room-access.service.spec.ts` đã chạy ở bước "fail trước" (4 fail đúng dự kiến / 8 pass). `npm test` toàn bộ lúc làm Task 1 bị auto-mode classifier chặn; chạy lại đầu phiên Task 2: **14/14 pass** (permissions 2 + room-access 12). `npm run build` pass.
 - **Lệch khỏi plan:** sửa thêm `PROJECT_CONTEXT.md` §9 dòng Auth — bỏ "không bị ban" khỏi mô tả `assertRoomAccess` (plan không liệt kê, nhưng để lại thì mâu thuẫn với ADR-020).
 - **Task sau cần biết:** interface `assertRoomPermission` đúng như plan (trả về member lean) → Task 2–8 không cần sửa. Các document `room_members` cũ trong DB có thể còn field `isBanned` — `.lean()` vẫn trả field đó nhưng không code nào đọc, không cần migrate.
+
+## 2026-09-26 — Module room: Task 2 (tạo phòng `POST /rooms`)
+
+- **Xong:** `rooms/dto/create-room.dto.ts` (trim, name 1–100, description ≤500); `rooms.service.ts` (`generateJoinCode` 8 ký tự base32 bằng `crypto.randomInt`, `toRoomResponse` map `_id → id`, `RoomsService.createRoom` — trùng `joinCode` sinh lại tối đa 5 lần rồi 500, tạo member HOST lỗi thì xoá room vừa tạo); `rooms.controller.ts` (`POST /rooms`, `JwtAuthGuard`); `rooms.module.ts` đăng ký controller/service, model `RoomMember`, import `RoomMembersModule`. Docs: `endpoint.md` thêm mục `## Rooms` + `POST /rooms`.
+- **Commit:** chưa commit (chờ user duyệt).
+- **Test:** `rooms.service.spec.ts` fail trước (không tìm thấy module) → 5/5 pass. Sau đó user yêu cầu thêm test case lạ tìm lỗ hổng: +9 test service (crypto thay `Math.random`, đủ 32 ký tự, mass assignment, response không lộ field, lỗi khác duplicate không retry, …) + `dto/create-room.dto.spec.ts` 6 test qua `ValidationPipe` cùng cấu hình `main.ts` (field lạ, NoSQL injection `{$ne}`, mảng, khoảng trắng Unicode, biên 100/101, `__proto__`). `npm test` toàn bộ **34/34 pass** (permissions 2 + room-access 12 + rooms.service 14 + create-room.dto 6). `npm run build` pass.
+- **Lỗ hổng tìm được (user chốt 2026-09-26):**
+  - Rollback xoá room cũng lỗi → lỗi gốc bị lỗi xoá đè, room mồ côi không để lại dấu vết. **Đã sửa:** `deleteOne(...).catch()` ghi `Logger.error` kèm roomId, vẫn ném lỗi gốc.
+  - Emoji: class-validator `MaxLength` đếm 1 emoji = 1, Mongoose `maxlength` đếm `.length` (= 2, emoji có `️` = 3) → tên/mô tả nhiều emoji qua DTO nhưng Mongo từ chối → **500**. **Không sửa** (user: tên phòng không dùng emoji), đã bỏ test. `UpdateRoomDto` (Task 4) cũng dính lỗi này.
+  - Tên chỉ gồm ký tự vô hình (`​`) được nhận. **Không sửa** (chỉ là chuyện hiển thị), đã bỏ test.
+- **Lệch khỏi plan:** thêm `Logger` + `.catch()` ở rollback của `createRoom` (bản nháp plan gọi `deleteOne` trần). Thêm `dto/create-room.dto.spec.ts` dù Global Constraints ghi "không test DTO" — user yêu cầu.
+- **Chưa chạy được:** chưa gọi `POST /rooms` qua app thật (Docker) — để Task 10.
+- **Task sau cần biết:** interface đúng như plan (`RoomsService(roomModel, memberModel, access, redis)`, `toRoomResponse`, helper test `query/q/fakeRoom/build/duplicateKeyError`) → Task 3–8 không cần sửa. `redis` đã inject nhưng chưa dùng (Task 3 dùng cho rate limit). `isDuplicateKey` là hàm module-level không export — Task 3 gọi trực tiếp trong cùng file.
