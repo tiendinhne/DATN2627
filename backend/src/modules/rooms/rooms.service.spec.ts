@@ -381,3 +381,54 @@ describe('listMembers', () => {
     ]);
   });
 });
+
+describe('kickMember', () => {
+  const targetId = new Types.ObjectId().toString();
+
+  it('userId sai định dạng → 400, không kiểm quyền', async () => {
+    const { service, access } = build();
+    await expect(service.kickMember(userId, roomId, 'abc')).rejects.toBeInstanceOf(BadRequestException);
+    expect(access.assertRoomPermission).not.toHaveBeenCalled();
+  });
+
+  it('MEMBER gọi → 403, không xoá', async () => {
+    const { service, access, memberModel } = build();
+    access.assertRoomPermission.mockRejectedValue(new ForbiddenException());
+
+    await expect(service.kickMember(userId, roomId, targetId)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(memberModel.deleteOne).not.toHaveBeenCalled();
+  });
+
+  it('tự kick chính mình (HOST) → 400', async () => {
+    const { service, memberModel } = build();
+    await expect(service.kickMember(userId, roomId, userId)).rejects.toBeInstanceOf(BadRequestException);
+    expect(memberModel.deleteOne).not.toHaveBeenCalled();
+  });
+
+  // ObjectId.isValid nhận hex viết hoa, Mongoose ép về cùng ObjectId → phải chặn như tự kick
+  it('tự kick bằng id viết hoa → 400, không xoá', async () => {
+    const { service, memberModel } = build();
+    await expect(service.kickMember(userId, roomId, userId.toUpperCase())).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(memberModel.deleteOne).not.toHaveBeenCalled();
+  });
+
+  it('người không có trong phòng → 404, không giảm memberCount', async () => {
+    const { service, memberModel, roomModel } = build();
+    memberModel.deleteOne.mockReturnValue(query({ deletedCount: 0 }));
+
+    await expect(service.kickMember(userId, roomId, targetId)).rejects.toBeInstanceOf(NotFoundException);
+    expect(roomModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('kick thành công → xoá bản ghi, giảm memberCount 1', async () => {
+    const { service, memberModel, roomModel, access } = build();
+
+    await service.kickMember(userId, roomId, targetId);
+
+    expect(access.assertRoomPermission).toHaveBeenCalledWith(userId, roomId, 'KICK_MEMBER');
+    expect(memberModel.deleteOne).toHaveBeenCalledWith({ roomId, userId: targetId });
+    expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: roomId }, { $inc: { memberCount: -1 } });
+  });
+});

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RoomsService } from './rooms.service.js';
 import { CreateRoomDto } from './dto/create-room.dto.js';
@@ -48,5 +48,12 @@ export class RoomsController {
   @Get(':roomId/members')
   members(@Req() req: any, @Param('roomId') roomId: string) {
     return this.roomsService.listMembers(req.user.id, roomId);
+  }
+
+  // DELETE /rooms/:roomId/members/:userId — HOST kick thành viên
+  @Delete(':roomId/members/:userId')
+  @HttpCode(204)
+  kick(@Req() req: any, @Param('roomId') roomId: string, @Param('userId') userId: string) {
+    return this.roomsService.kickMember(req.user.id, roomId, userId);
   }
 }

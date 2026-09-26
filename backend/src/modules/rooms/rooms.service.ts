@@ -208,6 +208,36 @@ export class RoomsService {
       }));
   }
 
+  // DELETE /rooms/:roomId/members/:userId — chỉ HOST. Kick = xoá bản ghi, không ban (ADR-020)
+  async kickMember(hostId: string, roomId: string, targetUserId: string) {
+    if (!Types.ObjectId.isValid(targetUserId)) {
+      throw new BadRequestException('userId không hợp lệ');
+    }
+    await this.access.assertRoomPermission(hostId, roomId, RoomAction.KICK_MEMBER);
+
+    // Phòng chỉ có 1 HOST là chính mình → chặn tự kick cũng là chặn kick HOST.
+    // So sánh ObjectId, không so chuỗi: id viết hoa vẫn là cùng một user khi Mongoose query
+    if (new Types.ObjectId(targetUserId).equals(hostId)) {
+      throw new BadRequestException('Không thể tự mời mình ra khỏi phòng');
+    }
+
+    const removed = await this.removeMember(roomId, targetUserId);
+    if (!removed) {
+      throw new NotFoundException('Người này không có trong phòng');
+    }
+    // TODO(chat gateway): thu hồi socket của người bị kick khỏi kênh room:{roomId}
+  }
+
+  // Xoá thành viên; chỉ giảm memberCount khi thật sự xoá được → 2 request cùng lúc không trừ 2 lần
+  private async removeMember(roomId: string, userId: string) {
+    const result = await this.memberModel.deleteOne({ roomId, userId }).exec();
+    if (result.deletedCount !== 1) {
+      return false;
+    }
+    await this.roomModel.updateOne({ _id: roomId }, { $inc: { memberCount: -1 } }).exec();
+    return true;
+  }
+
   // Thành viên kèm thông tin user. Sort role tăng dần → 'HOST' < 'MEMBER' nên HOST đứng đầu
   private async findMembersWithUser(roomId: string, userFields: string) {
     const members = await this.memberModel
