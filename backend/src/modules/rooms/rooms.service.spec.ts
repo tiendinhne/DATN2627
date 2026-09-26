@@ -432,3 +432,22 @@ describe('kickMember', () => {
     expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: roomId }, { $inc: { memberCount: -1 } });
   });
 });
+
+describe('leaveRoom', () => {
+  it('HOST → 400, không xoá', async () => {
+    const { service, access, memberModel } = build();
+    access.assertRoomAccess.mockResolvedValue({ role: RoomRole.HOST });
+
+    await expect(service.leaveRoom(userId, roomId)).rejects.toBeInstanceOf(BadRequestException);
+    expect(memberModel.deleteOne).not.toHaveBeenCalled();
+  });
+
+  it('MEMBER → xoá bản ghi của mình, giảm memberCount 1', async () => {
+    const { service, memberModel, roomModel } = build();
+
+    await service.leaveRoom(userId, roomId);
+
+    expect(memberModel.deleteOne).toHaveBeenCalledWith({ roomId, userId });
+    expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: roomId }, { $inc: { memberCount: -1 } });
+  });
+});

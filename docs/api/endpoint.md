@@ -61,6 +61,11 @@ Phải có ít nhất 1 field (không thì `400`). `403` nếu không phải HOS
 Danh sách thành viên, HOST đứng đầu rồi theo thời gian vào phòng. Quyền: thành viên.
 Response `200`: `[{ userId, displayName, avatarUrl, role, joinedAt }]`.
 
+### DELETE /rooms/:roomId/members/me
+Tự rời phòng. Quyền: thành viên không phải HOST.
+- Response `204`.
+- `400`: HOST gọi — HOST không rời được, chỉ giải tán (ADR-020).
+
 ### DELETE /rooms/:roomId/members/:userId
 Kick thành viên (xoá khỏi phòng, người đó nhập lại mã vẫn vào được — ADR-020). Quyền: HOST.
 - Response `204`.

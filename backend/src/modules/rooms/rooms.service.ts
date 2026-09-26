@@ -228,6 +228,17 @@ export class RoomsService {
     // TODO(chat gateway): thu hồi socket của người bị kick khỏi kênh room:{roomId}
   }
 
+  // DELETE /rooms/:roomId/members/me — MEMBER tự rời. HOST không rời được, chỉ giải tán (ADR-020)
+  async leaveRoom(userId: string, roomId: string) {
+    const member = await this.access.assertRoomAccess(userId, roomId);
+    if (member.role === RoomRole.HOST) {
+      throw new BadRequestException('Host không thể rời phòng, hãy giải tán phòng');
+    }
+    // Không xoá được (vừa rời/bị kick ở request khác) vẫn coi là đã rời → 204
+    await this.removeMember(roomId, userId);
+    // TODO(chat gateway): thu hồi socket của người vừa rời khỏi kênh room:{roomId}
+  }
+
   // Xoá thành viên; chỉ giảm memberCount khi thật sự xoá được → 2 request cùng lúc không trừ 2 lần
   private async removeMember(roomId: string, userId: string) {
     const result = await this.memberModel.deleteOne({ roomId, userId }).exec();

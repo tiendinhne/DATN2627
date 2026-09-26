@@ -50,6 +50,13 @@ export class RoomsController {
     return this.roomsService.listMembers(req.user.id, roomId);
   }
 
+  // DELETE /rooms/:roomId/members/me — tự rời phòng. Phải khai báo trước members/:userId
+  @Delete(':roomId/members/me')
+  @HttpCode(204)
+  leave(@Req() req: any, @Param('roomId') roomId: string) {
+    return this.roomsService.leaveRoom(req.user.id, roomId);
+  }
+
   // DELETE /rooms/:roomId/members/:userId — HOST kick thành viên
   @Delete(':roomId/members/:userId')
   @HttpCode(204)
