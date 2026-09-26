@@ -22,6 +22,17 @@ Tạo phòng. Người tạo thành HOST.
 
 Response `201`: room response, `myRole: "HOST"`, `memberCount: 1`.
 
+### POST /rooms/join
+Tham gia phòng bằng mã (link `/join/:code` ở frontend gọi cùng API).
+
+| Body | Kiểu | Ràng buộc |
+|---|---|---|
+| code | string | 8 ký tự A–Z, 2–7 (không phân biệt hoa thường) |
+
+- Response `200`: room response. Đã là thành viên thì trả luôn, không tính thêm.
+- `404`: sai mã **hoặc** phòng đã giải tán (cùng thông báo).
+- `429`: quá 10 lần/phút mỗi user (Redis `ratelimit:join:{userId}`).
+
 ## Chat (thiết kế — chưa code)
 
 ### GET /rooms/:roomId/messages

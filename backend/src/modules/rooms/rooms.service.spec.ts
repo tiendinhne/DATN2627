@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { InternalServerErrorException, Logger } from '@nestjs/common';
+import { HttpException, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { RoomsService, generateJoinCode } from './rooms.service.js';
 import { RoomRole, RoomStatus } from '../../shared/enums.js';
@@ -219,5 +219,63 @@ describe('createRoom — case lạ', () => {
     await expect(service.createRoom(userId, { name: 'X' })).rejects.toThrow('mongo down');
     expect(log).toHaveBeenCalledWith(expect.stringContaining(roomId));
     log.mockRestore();
+  });
+});
+
+describe('joinRoom', () => {
+  it('mã sai hoặc phòng đã giải tán → 404 (query chỉ tìm room ACTIVE)', async () => {
+    const { service, roomModel } = build();
+
+    await expect(service.joinRoom(userId, 'ABCDEFGH')).rejects.toBeInstanceOf(NotFoundException);
+    expect(roomModel.findOne).toHaveBeenCalledWith({
+      joinCode: 'ABCDEFGH',
+      status: RoomStatus.ACTIVE,
+      deletedAt: null,
+    });
+  });
+
+  it('thành viên mới → thêm MEMBER, tăng memberCount', async () => {
+    const { service, roomModel, memberModel } = build();
+    const room = fakeRoom();
+    roomModel.findOne.mockReturnValue(query(room));
+
+    const res = await service.joinRoom(userId, 'ABCDEFGH');
+
+    expect(memberModel.create).toHaveBeenCalledWith({ roomId: room._id, userId, role: RoomRole.MEMBER });
+    expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: room._id }, { $inc: { memberCount: 1 } });
+    expect(res).toMatchObject({ id: roomId, myRole: RoomRole.MEMBER, memberCount: 2 });
+  });
+
+  it('đã là thành viên → trả room với role hiện có, không tăng memberCount', async () => {
+    const { service, roomModel, memberModel } = build();
+    roomModel.findOne.mockReturnValue(query(fakeRoom()));
+    memberModel.create.mockRejectedValue(duplicateKeyError());
+    memberModel.findOne.mockReturnValue(query({ role: RoomRole.HOST }));
+
+    const res = await service.joinRoom(userId, 'ABCDEFGH');
+
+    expect(res.myRole).toBe(RoomRole.HOST);
+    expect(roomModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('lần thử đầu trong cửa sổ → đặt hạn 60s cho key rate limit', async () => {
+    const { service, roomModel, redis } = build();
+    roomModel.findOne.mockReturnValue(query(fakeRoom()));
+
+    await service.joinRoom(userId, 'ABCDEFGH');
+
+    expect(redis.incr).toHaveBeenCalledWith(`ratelimit:join:${userId}`);
+    expect(redis.expire).toHaveBeenCalledWith(`ratelimit:join:${userId}`, 60);
+  });
+
+  it('quá 10 lần/phút → 429, không query room', async () => {
+    const { service, roomModel, redis } = build();
+    redis.incr.mockResolvedValue(11);
+
+    const err = await service.joinRoom(userId, 'ABCDEFGH').catch((e) => e);
+
+    expect(err).toBeInstanceOf(HttpException);
+    expect(err.getStatus()).toBe(429);
+    expect(roomModel.findOne).not.toHaveBeenCalled();
   });
 });

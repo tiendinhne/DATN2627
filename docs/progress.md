@@ -109,3 +109,13 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Lệch khỏi plan:** thêm `Logger` + `.catch()` ở rollback của `createRoom` (bản nháp plan gọi `deleteOne` trần). Thêm `dto/create-room.dto.spec.ts` dù Global Constraints ghi "không test DTO" — user yêu cầu.
 - **Chưa chạy được:** chưa gọi `POST /rooms` qua app thật (Docker) — để Task 10.
 - **Task sau cần biết:** interface đúng như plan (`RoomsService(roomModel, memberModel, access, redis)`, `toRoomResponse`, helper test `query/q/fakeRoom/build/duplicateKeyError`) → Task 3–8 không cần sửa. `redis` đã inject nhưng chưa dùng (Task 3 dùng cho rate limit). `isDuplicateKey` là hàm module-level không export — Task 3 gọi trực tiếp trong cùng file.
+
+## 2026-09-26 — Module room: Task 3 (tham gia phòng `POST /rooms/join`)
+
+- **Xong:** `rooms/dto/join-room.dto.ts` (trim + uppercase, `/^[A-Z2-7]{8}$/`); `RoomsService.joinRoom` (rate limit → tìm room `{ joinCode, status: ACTIVE, deletedAt: null }` → sai mã/đã giải tán cùng 404 → insert MEMBER, trùng unique `{roomId, userId}` thì trả role hiện có, không tăng count → thành công `$inc memberCount: 1`); `private checkRateLimit(key, limit, message)` (Redis `INCR`, lần đầu `EXPIRE 60`, > limit → 429); route `POST /rooms/join` (`@HttpCode(200)`). Docs: `endpoint.md` thêm `POST /rooms/join`.
+- **Commit:** chưa commit (chờ user duyệt).
+- **Test:** 5 test `joinRoom` fail trước (`service.joinRoom is not a function`) → pass. `rooms.service.spec.ts` 19/19 (plan ghi 10/10 vì chưa tính 9 test "case lạ" Task 2 thêm). `npm test` toàn bộ **39/39 pass** (permissions 2 + room-access 12 + rooms.service 19 + create-room.dto 6). `npm run build` pass.
+- **Lệch khỏi plan:** import `@nestjs/common` ở service/spec giữ thêm `Logger` (plan viết trước khi Task 2 dùng `Logger`). `checkRateLimit` đặt cuối class (sau `insertRoomWithUniqueCode`, gom các hàm private) thay vì ngay sau `joinRoom` — chữ ký không đổi.
+- **Giới hạn biết trước (chưa sửa, không đổi hành vi):** `INCR` và `EXPIRE` là 2 lệnh riêng — nếu `EXPIRE` lỗi/instance chết đúng giữa 2 lệnh thì key không có hạn, user bị 429 mãi sau 10 lần. Xác suất rất thấp; sửa được bằng `MULTI` hoặc kiểm `TTL` nếu cần.
+- **Chưa chạy được:** chưa gọi `POST /rooms/join` qua app thật (Docker) — để Task 10.
+- **Task sau cần biết:** interface đúng như plan (`joinRoom(userId, code)`, `checkRateLimit(key, limit, message)`, hằng `RATE_WINDOW_SECONDS` để Task 8 thêm hằng số bên dưới) → Task 4–8 không cần sửa. Task 4 "thêm method sau `joinRoom`, trước `checkRateLimit`" → đặt giữa `joinRoom` và `insertRoomWithUniqueCode`.
