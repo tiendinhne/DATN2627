@@ -106,3 +106,10 @@ Phần này không nằm trong scope hiện tại
 **Alternatives:** chat chỉ trong meeting; phát riêng hai kênh room/meeting.
 **Rejected because:** trái §6.3; phát hai kênh phải khử trùng cho người ở cả hai nơi.
 **Status:** CONFIRMED.
+
+## ADR-020 — Mỗi room một HOST cố định, kick = xoá thành viên
+**Decision:** Người tạo là HOST duy nhất, không chuyển host. Kick = xoá bản ghi `room_members` (vào lại được bằng mã), bỏ `isBanned`. HOST không rời phòng, chỉ giải tán. Quyền HOST tra bảng `shared/permissions.ts`.
+**Reason:** Đề cương §5.4 (chủ phòng quản lý thành viên, kết thúc phòng); `docs/rule/role.md` ("Call API delete member"). Chỉ có 2 role → "đổi role" không có ý nghĩa. Chuyển host phải ghi 3 document mà Mongo standalone không có transaction.
+**Alternatives:** kick = ban (`isBanned`); có chuyển host.
+**Rejected because:** không có UI gỡ ban → trạng thái chết; chuyển host lỗi giữa chừng có thể để lại 2 HOST.
+**Status:** CONFIRMED — user chốt 2026-09-26.

@@ -74,3 +74,25 @@ Cập nhật lại các role * đọc file rule/role.md
   - `assertMeetingTag` dựa vào Redis `presence:{meetingId}` — hiện chưa có code ghi set này (chờ webhook LiveKit). Task chat gateway phải quyết định khi tag bị từ chối: từ chối tin hay lưu tin không tag; và webhook LiveKit phải làm trước khi demo chat trong meeting.
   - Lần boot đầu bằng Docker: kiểm `REDIS_URL` có trong `backend/.env` (default của `redis.service.ts` là `localhost`, của `main.ts` là `redis`) và log có `Redis connected` + `Nest application successfully started`.
   - Khi viết query lịch sử chat theo `meetingId`: kiểm `.explain()` xem partial index `{meetingId, createdAt}` có được dùng; nếu không, thêm `meetingId: { $type: 'objectId' }` vào query.
+
+## 2026-09-26 — Module room: Task 0 (thiết kế + spec)
+
+- **Xong:** spec `docs/task/room/room_module_spec.md` — chốt 7 câu hỏi mở của `room_module_tasks.md`, 9 endpoint, bảng quyền, danh sách test.
+- **Commit:** chưa commit (user yêu cầu không commit).
+- **Quyết định (user chốt 2026-09-26):**
+  - Không làm "đổi role"/chuyển host; HOST không được rời phòng, chỉ giải tán.
+  - Kick = xoá bản ghi `room_members`, được vào lại bằng mã; bỏ field `isBanned` (sửa schema, `RoomAccessService`, test, DB_DESIGN khi làm Task 1/5).
+  - Có `PATCH /rooms/:roomId` sửa tên/mô tả (chỉ HOST) — thêm so với task list, gộp vào Task 4.
+  - Giữ `rooms.deletedAt`, không dùng.
+  - Bảng quyền ở `backend/src/shared/permissions.ts`; cách frontend import chốt ở Task 9.
+- **Để lại task sau:** thu hồi socket khi kick/rời (chat gateway); kết thúc meeting ACTIVE khi giải tán (module meeting); chi tiết import/export (Task 8).
+- **Chưa cập nhật:** `docs/decisions.md`, `docs/api/endpoint.md`, `DB_DESIGN.md` — cập nhật khi code từng task (Task 10).
+- **Plan:** `docs/task/room/room_module_plan.md` — Task 1–10, thứ tự 1→7, 9, 8, 10. Chi tiết import/export (Task 8) chốt trong plan. Chưa bắt đầu code.
+
+## 2026-09-26 — Module room: Task 1 (bảng quyền + `assertRoomPermission` + bỏ `isBanned`)
+
+- **Xong:** `backend/src/shared/permissions.ts` (`RoomAction` 6 hành động chỉ HOST, `ROOM_PERMISSIONS`, `can()`); `RoomAccessService.assertRoomPermission(userId, roomId, action)` = `assertRoomAccess` → `can()` → 403; bỏ `isBanned` khỏi schema `room_members`, query `assertRoomAccess`, test. Docs: `DB_DESIGN.md` §C.4, `endpoint.md` (GET messages), `decisions.md` ADR-020.
+- **Commit:** `feat: bảng quyền room và assertRoomPermission, bỏ isBanned` (user duyệt đầu phiên Task 2).
+- **Test:** `permissions.spec.ts` 2/2 pass. `room-access.service.spec.ts` đã chạy ở bước "fail trước" (4 fail đúng dự kiến / 8 pass). `npm test` toàn bộ lúc làm Task 1 bị auto-mode classifier chặn; chạy lại đầu phiên Task 2: **14/14 pass** (permissions 2 + room-access 12). `npm run build` pass.
+- **Lệch khỏi plan:** sửa thêm `PROJECT_CONTEXT.md` §9 dòng Auth — bỏ "không bị ban" khỏi mô tả `assertRoomAccess` (plan không liệt kê, nhưng để lại thì mâu thuẫn với ADR-020).
+- **Task sau cần biết:** interface `assertRoomPermission` đúng như plan (trả về member lean) → Task 2–8 không cần sửa. Các document `room_members` cũ trong DB có thể còn field `isBanned` — `.lean()` vẫn trả field đó nhưng không code nào đọc, không cần migrate.

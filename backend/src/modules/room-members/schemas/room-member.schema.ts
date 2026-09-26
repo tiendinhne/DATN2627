@@ -18,9 +18,6 @@ export class RoomMember {
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   invitedBy?: Types.ObjectId | null;
 
-  @Prop({ default: false })
-  isBanned?: boolean;
-
   @Prop({ default: () => new Date() })
   joinedAt?: Date;
 }

@@ -185,13 +185,12 @@ export class RoomMember {
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   invitedBy: Types.ObjectId | null;   // dùng cho import hàng loạt
 
-  @Prop({ default: false })
-  isBanned: boolean;
-
   @Prop({ default: Date.now })
   joinedAt: Date;
 }
 ```
+
+Kick = xoá bản ghi (không có ban) — ADR-020.
 
 **Index:**
 - `{ roomId: 1, userId: 1 }` **unique** ← chặn trùng, và là nền tảng cho import idempotent

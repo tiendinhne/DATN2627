@@ -9,6 +9,7 @@ import { Meeting } from '../meetings/schemas/meeting.schema.js';
 import type { MeetingDocument } from '../meetings/schemas/meeting.schema.js';
 import { RedisService } from '../../common/services/redis.service.js';
 import { MeetingStatus, RoomStatus } from '../../shared/enums.js';
+import { RoomAction, can } from '../../shared/permissions.js';
 
 // Kiểm tra quyền dùng chung cho room:subscribe, chat:send, REST lịch sử chat.
 // Luôn đọc Mongo/Redis, không cache — để user vừa bị kick ở instance khác cũng bị chặn ngay.
@@ -21,7 +22,7 @@ export class RoomAccessService {
     private redis: RedisService,
   ) {}
 
-  // User phải là thành viên (không bị ban) của một room còn hoạt động
+  // User phải là thành viên của một room còn hoạt động
   async assertRoomAccess(userId: string, roomId: string) {
     if (!Types.ObjectId.isValid(roomId)) {
       throw new BadRequestException('roomId không hợp lệ');
@@ -37,13 +38,22 @@ export class RoomAccessService {
     }
 
     const member = await this.memberModel
-      .findOne({ roomId, userId, isBanned: false })
+      .findOne({ roomId, userId })
       .lean()
       .exec();
     if (!member) {
       throw new ForbiddenException('Bạn không phải thành viên room này');
     }
 
+    return member;
+  }
+
+  // Thành viên + role được phép làm hành động này (tra bảng shared/permissions.ts)
+  async assertRoomPermission(userId: string, roomId: string, action: RoomAction) {
+    const member = await this.assertRoomAccess(userId, roomId);
+    if (!can(member.role, action)) {
+      throw new ForbiddenException('Bạn không có quyền thực hiện thao tác này');
+    }
     return member;
   }
 

@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { RoomAccessService } from './room-access.service.js';
-import { MeetingStatus, RoomStatus } from '../../shared/enums.js';
+import { MeetingStatus, RoomRole, RoomStatus } from '../../shared/enums.js';
+import { RoomAction } from '../../shared/permissions.js';
 
 // Giả lập chuỗi Mongoose: model.findOne(filter).lean().exec() → result
 function mockModel(result: unknown) {
@@ -50,10 +51,10 @@ describe('assertRoomAccess', () => {
     });
   });
 
-  it('không phải thành viên hoặc bị ban → 403 (lọc ngay trong query)', async () => {
+  it('không phải thành viên → 403 (lọc ngay trong query)', async () => {
     const { service, memberModel } = build({ room: { _id: roomId }, member: null });
     await expect(service.assertRoomAccess(userId, roomId)).rejects.toBeInstanceOf(ForbiddenException);
-    expect(memberModel.findOne).toHaveBeenCalledWith({ roomId, userId, isBanned: false });
+    expect(memberModel.findOne).toHaveBeenCalledWith({ roomId, userId });
   });
 
   it('hợp lệ → trả về membership', async () => {
@@ -96,5 +97,30 @@ describe('assertMeetingTag', () => {
   it('hợp lệ → không ném lỗi', async () => {
     const { service } = build({ meeting: { _id: meetingId }, online: true });
     await expect(service.assertMeetingTag(userId, roomId, meetingId)).resolves.toBeUndefined();
+  });
+});
+
+describe('assertRoomPermission', () => {
+  it('MEMBER làm hành động dành cho HOST → 403', async () => {
+    const member = { roomId, userId, role: RoomRole.MEMBER };
+    const { service } = build({ room: { _id: roomId }, member });
+    await expect(
+      service.assertRoomPermission(userId, roomId, RoomAction.KICK_MEMBER),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('HOST → trả về membership', async () => {
+    const member = { roomId, userId, role: RoomRole.HOST };
+    const { service } = build({ room: { _id: roomId }, member });
+    await expect(
+      service.assertRoomPermission(userId, roomId, RoomAction.KICK_MEMBER),
+    ).resolves.toEqual(member);
+  });
+
+  it('không phải thành viên → 403 từ assertRoomAccess', async () => {
+    const { service } = build({ room: { _id: roomId }, member: null });
+    await expect(
+      service.assertRoomPermission(userId, roomId, RoomAction.KICK_MEMBER),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

@@ -16,5 +16,5 @@ Lấy lịch sử chat của room, mới nhất trước.
 | limit | number | 50 | tối đa 100 |
 | meetingId | ObjectId | — | có thì chỉ lấy tin của meeting đó |
 
-Quyền: thành viên room, không bị ban.
+Quyền: thành viên room.
 Response: `{ items: [{ id, roomId, meetingId, meetingTitle?, senderId, senderName, type, content, fileId, createdAt }], nextCursor }`
