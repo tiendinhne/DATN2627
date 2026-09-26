@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { HttpException, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Types } from 'mongoose';
 import { RoomsService, generateJoinCode } from './rooms.service.js';
 import { RoomRole, RoomStatus } from '../../shared/enums.js';
@@ -277,5 +284,100 @@ describe('joinRoom', () => {
     expect(err).toBeInstanceOf(HttpException);
     expect(err.getStatus()).toBe(429);
     expect(roomModel.findOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('listMyRooms', () => {
+  it('lọc theo userId dạng ObjectId, lấy dư 1 bản ghi để biết còn trang sau', async () => {
+    const { service, memberModel } = build();
+    const rows = [1, 2, 3].map(() => ({
+      role: RoomRole.MEMBER,
+      room: fakeRoom({ _id: new Types.ObjectId() }),
+    }));
+    memberModel.aggregate.mockReturnValue(query(rows));
+
+    const res = await service.listMyRooms(userId, 2, 2);
+
+    const pipeline = memberModel.aggregate.mock.calls[0][0];
+    expect(pipeline[0]).toEqual({ $match: { userId: new Types.ObjectId(userId) } });
+    expect(pipeline).toContainEqual({ $match: { 'room.status': RoomStatus.ACTIVE, 'room.deletedAt': null } });
+    expect(pipeline).toContainEqual({ $skip: 2 });
+    expect(pipeline).toContainEqual({ $limit: 3 });
+    expect(res).toMatchObject({ page: 2, limit: 2, hasMore: true });
+    expect(res.items).toHaveLength(2);
+    expect(res.items[0].myRole).toBe(RoomRole.MEMBER);
+  });
+
+  it('trang cuối → hasMore false', async () => {
+    const { service, memberModel } = build();
+    memberModel.aggregate.mockReturnValue(query([{ role: RoomRole.HOST, room: fakeRoom() }]));
+
+    const res = await service.listMyRooms(userId, 1, 20);
+
+    expect(res.hasMore).toBe(false);
+    expect(res.items[0]).toMatchObject({ id: roomId, myRole: RoomRole.HOST });
+  });
+});
+
+describe('getRoom', () => {
+  it('trả room kèm role của người gọi', async () => {
+    const { service, roomModel, access } = build();
+    roomModel.findById.mockReturnValue(query(fakeRoom()));
+
+    const res = await service.getRoom(userId, roomId);
+
+    expect(access.assertRoomAccess).toHaveBeenCalledWith(userId, roomId);
+    expect(res).toMatchObject({ id: roomId, myRole: RoomRole.MEMBER, joinCode: 'ABCDEFGH' });
+  });
+});
+
+describe('updateRoom', () => {
+  it('không có quyền → 403, không ghi DB', async () => {
+    const { service, roomModel, access } = build();
+    access.assertRoomPermission.mockRejectedValue(new ForbiddenException());
+
+    await expect(service.updateRoom(userId, roomId, { name: 'Mới' })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(roomModel.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('body không có field nào → 400', async () => {
+    const { service } = build();
+    await expect(service.updateRoom(userId, roomId, {})).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('chỉ $set field được gửi, trả room đã sửa', async () => {
+    const { service, roomModel } = build();
+    roomModel.findOneAndUpdate.mockReturnValue(query(fakeRoom({ name: 'Mới' })));
+
+    const res = await service.updateRoom(userId, roomId, { name: 'Mới', description: undefined });
+
+    expect(roomModel.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: roomId, status: RoomStatus.ACTIVE },
+      { $set: { name: 'Mới' } },
+      { returnDocument: 'after' },
+    );
+    expect(res).toMatchObject({ name: 'Mới', myRole: RoomRole.HOST });
+  });
+});
+
+describe('listMembers', () => {
+  it('HOST đứng đầu, map userId/displayName, bỏ bản ghi có user đã bị xoá', async () => {
+    const { service, memberModel } = build();
+    const joinedAt = new Date('2026-09-26T00:00:00Z');
+    const hostUser = { _id: new Types.ObjectId(userId), displayName: 'Chủ phòng', avatarUrl: null };
+    const find = query([
+      { userId: hostUser, role: RoomRole.HOST, joinedAt },
+      { userId: null, role: RoomRole.MEMBER, joinedAt },
+    ]);
+    memberModel.find.mockReturnValue(find);
+
+    const res = await service.listMembers(userId, roomId);
+
+    expect(memberModel.find).toHaveBeenCalledWith({ roomId });
+    expect(find.sort).toHaveBeenCalledWith({ role: 1, joinedAt: 1 });
+    expect(find.populate).toHaveBeenCalledWith('userId', 'displayName avatarUrl');
+    expect(res).toEqual([
+      { userId, displayName: 'Chủ phòng', avatarUrl: null, role: RoomRole.HOST, joinedAt },
+    ]);
   });
 });

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -7,7 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { randomInt } from 'node:crypto';
 import { Room } from './schemas/room.schema.js';
 import type { RoomDocument } from './schemas/room.schema.js';
@@ -16,7 +17,9 @@ import type { RoomMemberDocument } from '../room-members/schemas/room-member.sch
 import { RoomAccessService } from '../room-members/room-access.service.js';
 import { RedisService } from '../../common/services/redis.service.js';
 import { RoomRole, RoomStatus } from '../../shared/enums.js';
+import { RoomAction } from '../../shared/permissions.js';
 import { CreateRoomDto } from './dto/create-room.dto.js';
+import { UpdateRoomDto } from './dto/update-room.dto.js';
 
 // Mã tham gia: 8 ký tự base32, ngẫu nhiên, không tuần tự (§16)
 const JOIN_CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -53,6 +56,13 @@ type RoomLike = {
 };
 
 export type RoomResponse = ReturnType<typeof toRoomResponse>;
+
+// room_members sau khi populate('userId', ...) — userId = null nếu user đã bị xoá
+type PopulatedMember = {
+  userId: { _id: unknown; email?: string; displayName?: string; avatarUrl?: string | null } | null;
+  role: RoomRole;
+  joinedAt: Date;
+};
 
 // Map document → response trả cho client: id thay cho _id (ràng buộc 2)
 export function toRoomResponse(room: RoomLike, myRole: RoomRole) {
@@ -125,6 +135,88 @@ export class RoomsService {
 
     await this.roomModel.updateOne({ _id: room._id }, { $inc: { memberCount: 1 } }).exec();
     return toRoomResponse({ ...room, memberCount: (room.memberCount ?? 0) + 1 }, RoomRole.MEMBER);
+  }
+
+  // GET /rooms — phòng của tôi (chỉ phòng ACTIVE), mới tham gia trước
+  async listMyRooms(userId: string, page: number, limit: number) {
+    const rows = await this.memberModel
+      .aggregate([
+        // aggregate không tự ép kiểu như find → phải đổi sang ObjectId
+        { $match: { userId: new Types.ObjectId(userId) } },
+        { $sort: { joinedAt: -1 } },
+        { $lookup: { from: 'rooms', localField: 'roomId', foreignField: '_id', as: 'room' } },
+        { $unwind: '$room' },
+        { $match: { 'room.status': RoomStatus.ACTIVE, 'room.deletedAt': null } },
+        { $skip: (page - 1) * limit },
+        // Lấy dư 1 bản ghi để biết còn trang sau, khỏi phải đếm tổng
+        { $limit: limit + 1 },
+      ])
+      .exec();
+
+    return {
+      items: rows.slice(0, limit).map((row) => toRoomResponse(row.room, row.role)),
+      page,
+      limit,
+      hasMore: rows.length > limit,
+    };
+  }
+
+  // GET /rooms/:roomId — chỉ thành viên
+  async getRoom(userId: string, roomId: string) {
+    const member = await this.access.assertRoomAccess(userId, roomId);
+    const room = await this.roomModel.findById(roomId).lean().exec();
+    if (!room) {
+      throw new NotFoundException('Room không tồn tại');
+    }
+    return toRoomResponse(room, member.role);
+  }
+
+  // PATCH /rooms/:roomId — chỉ HOST
+  async updateRoom(userId: string, roomId: string, dto: UpdateRoomDto) {
+    const member = await this.access.assertRoomPermission(userId, roomId, RoomAction.UPDATE_ROOM);
+
+    // Chỉ $set field thật sự được gửi (tránh ghi đè bằng undefined)
+    const update: { name?: string; description?: string } = {};
+    if (dto.name !== undefined) update.name = dto.name;
+    if (dto.description !== undefined) update.description = dto.description;
+    if (Object.keys(update).length === 0) {
+      throw new BadRequestException('Cần gửi ít nhất một trường để sửa');
+    }
+
+    const room = await this.roomModel
+      .findOneAndUpdate({ _id: roomId, status: RoomStatus.ACTIVE }, { $set: update }, { returnDocument: 'after' })
+      .lean()
+      .exec();
+    if (!room) {
+      throw new NotFoundException('Room không tồn tại');
+    }
+    return toRoomResponse(room, member.role);
+  }
+
+  // GET /rooms/:roomId/members — chỉ thành viên, không phân trang (phòng học nhóm nhỏ)
+  async listMembers(userId: string, roomId: string) {
+    await this.access.assertRoomAccess(userId, roomId);
+    const members = await this.findMembersWithUser(roomId, 'displayName avatarUrl');
+    return members
+      .filter((m) => m.userId !== null)
+      .map((m) => ({
+        userId: String(m.userId!._id),
+        displayName: m.userId!.displayName ?? '',
+        avatarUrl: m.userId!.avatarUrl ?? null,
+        role: m.role,
+        joinedAt: m.joinedAt,
+      }));
+  }
+
+  // Thành viên kèm thông tin user. Sort role tăng dần → 'HOST' < 'MEMBER' nên HOST đứng đầu
+  private async findMembersWithUser(roomId: string, userFields: string) {
+    const members = await this.memberModel
+      .find({ roomId })
+      .sort({ role: 1, joinedAt: 1 })
+      .populate('userId', userFields)
+      .lean()
+      .exec();
+    return members as unknown as PopulatedMember[];
   }
 
   // Sinh mã và insert; trùng mã (unique index) thì sinh lại, tối đa JOIN_CODE_MAX_TRIES lần

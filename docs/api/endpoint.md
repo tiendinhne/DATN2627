@@ -33,6 +33,34 @@ Tham gia phòng bằng mã (link `/join/:code` ở frontend gọi cùng API).
 - `404`: sai mã **hoặc** phòng đã giải tán (cùng thông báo).
 - `429`: quá 10 lần/phút mỗi user (Redis `ratelimit:join:{userId}`).
 
+### GET /rooms
+Phòng của tôi (chỉ phòng đang hoạt động), mới tham gia trước.
+
+| Query | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| page | number | 1 | 1–1000 |
+| limit | number | 20 | 1–50 |
+
+Response `200`: `{ items: RoomResponse[], page, limit, hasMore }`.
+
+### GET /rooms/:roomId
+Chi tiết phòng. Quyền: thành viên. Mọi thành viên đều thấy `joinCode` để chia sẻ.
+Response `200`: room response. `404` phòng không tồn tại / đã giải tán; `403` không phải thành viên.
+
+### PATCH /rooms/:roomId
+Sửa phòng. Quyền: HOST.
+
+| Body | Kiểu | Ràng buộc |
+|---|---|---|
+| name | string | tuỳ chọn, 1–100 ký tự (đã trim), không nhận `null` |
+| description | string | tuỳ chọn, ≤ 500 ký tự, không nhận `null` (gửi `""` để xoá mô tả) |
+
+Phải có ít nhất 1 field (không thì `400`). `403` nếu không phải HOST. Response `200`: room response.
+
+### GET /rooms/:roomId/members
+Danh sách thành viên, HOST đứng đầu rồi theo thời gian vào phòng. Quyền: thành viên.
+Response `200`: `[{ userId, displayName, avatarUrl, role, joinedAt }]`.
+
 ## Chat (thiết kế — chưa code)
 
 ### GET /rooms/:roomId/messages
