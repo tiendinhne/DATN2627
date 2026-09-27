@@ -4,6 +4,7 @@
   "description": "",
   "author": "",
   "private": true,
+  "packageManager": "npm@10.9.2",
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {

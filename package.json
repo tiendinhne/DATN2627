@@ -3,14 +3,5 @@
   "version": "1.0.0",
   "description": "",
   "private": true,
-  "workspaces": [
-    "backend"
-  ],
-  "scripts": {
-    "install:all": "npm install",
-    "build": "npm run build -w backend",
-    "start": "npm start -w backend",
-    "start:dev": "npm run start:dev -w backend",
-    "test": "npm test -w backend"
-  }
+  "packageManager": "npm@10.9.2"
 }
