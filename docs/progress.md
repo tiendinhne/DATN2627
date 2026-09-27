@@ -161,3 +161,32 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Giới hạn biết trước (không đổi hành vi):** user đang ở giữa `joinRoom` (đã tìm thấy room ACTIVE) đúng lúc HOST giải tán thì vẫn tạo được bản ghi `room_members` + `$inc memberCount` trên phòng đã giải tán. Vô hại: `assertRoomAccess` và `listMyRooms` đều lọc ACTIVE nên phòng không hiện ra, không truy cập được.
 - **Chưa chạy được:** chưa gọi endpoint qua app thật (Docker) — để Task 10.
 - **Task sau cần biết:** interface đúng như plan (`dissolveRoom(hostId, roomId): Promise<void>`) → Task 8–10 không cần sửa. `dissolveRoom` nằm giữa `leaveRoom` và `removeMember` → Task 8 "thêm vào class (sau `dissolveRoom`)" = trước `removeMember`. Route `dissolve` là method cuối controller. Thứ tự tiếp theo là **Task 9** (frontend) rồi mới Task 8. Task 8 plan ghi "PASS 34/34" → thực tế sẽ là 44/44.
+
+## 2026-09-27 — Module room: Task 9 (review plan — chưa code, dừng theo yêu cầu user)
+
+- **Trạng thái:** chưa viết code. Review plan Task 9 → user chốt 5 quyết định, sinh thêm **Task 9a** (thống nhất npm) và **Task 9b** (cài shadcn), mỗi task một phiên riêng, làm trước Task 9. User chọn dừng phiên này sau khi cập nhật tài liệu.
+- **Kiểm đầu phiên:** git status sạch; `npm test` backend **58/58 pass** (5 file).
+- **Quyết định (user chốt 2026-09-27):**
+  1. **Dùng shadcn/ui** — task `chore` riêng (9b), commit riêng. Chỉ add `button input textarea card badge alert`; Task 8 tự add `dialog`. Vẫn dùng `confirm()` của trình duyệt.
+  2. **Nút HOST ẩn/hiện theo `myRole`**, chưa import `shared/permissions.ts` — lệch §15 tạm thời. User dự định đưa frontend vào Docker để cả project chạy bằng `docker compose` → lúc đó build context gốc repo, chuyển sang bảng quyền dùng chung.
+  3. **`safeReturnUrl` dùng `new URL(value, window.location.origin)` + so origin** thay cho kiểm chuỗi `startsWith` của bản nháp.
+  4. **Test `safeReturnUrl` bằng script Node tạm, dùng xong xoá** (frontend chưa có công cụ test; không thêm vitest). Skill TDD và ràng buộc "không test UI, không thêm dependency" mâu thuẫn → user chọn cách này.
+  5. **Chỉ dùng npm, bỏ npm workspace ở gốc — ADR-021** (`docs/decisions.md`). Backend thành dự án npm độc lập, một lockfile `backend/package-lock.json` cho cả máy dev lẫn Docker; 3 `package.json` khai báo `packageManager: npm@10.9.2`. File pnpm giữ nguyên, không dùng. `.npmrc` để nguyên. Làm ở Task 9a.
+- **Rà soát package manager + chạy thử (2026-09-27, bản sao trong scratchpad, đồ bỏ — đã xoá):**
+  - Hiện trạng: gốc repo là npm workspace chứa `backend`; `backend/node_modules` do **pnpm** tạo (symlink) → `npm test` 58/58 đầu phiên thực ra chạy trên package pnpm cài; gốc có `node_modules` npm; `frontend/node_modules` npm, còn sót `.pnpm/`. File pnpm (`backend/pnpm-lock.yaml`, `frontend/pnpm-lock.yaml`, `frontend/pnpm-workspace.yaml`) và `.npmrc` vào repo ở commit `a0ce5e8`. `.npmrc` viết `"legacy-peer-deps=true"` có ngoặc kép → `npm config get legacy-peer-deps` = `false`.
+  - Frontend: `npm ci` lạnh 121,1 s ✅ / cài lại 87,5 s ✅; `pnpm install --frozen-lockfile` lạnh 132,4 s ❌ `ERR_PNPM_IGNORED_BUILDS` (`pnpm-workspace.yaml` còn giá trị mẫu `unrs-resolver: set this to true or false`) / cài lại 30,8 s ✅ sau khi đặt `true`. Lint + build ra **giống hệt** ở hai công cụ.
+  - Backend: `npm ci` ❌ — `backend/package-lock.json` thiếu 6 package (`@nestjs/platform-socket.io`, `class-transformer`, `class-validator`, `@types/validator`, `libphonenumber-js`, `validator`); `npm ci --dry-run` ở gốc ❌ thiếu `class-transformer` (thêm bằng pnpm ở `a0ce5e8` nên chỉ `pnpm-lock.yaml` có). `npm install --legacy-peer-deps` (y Dockerfile) 52,8 s ✅ nhưng ra `@nestjs/platform-socket.io` **12.1.0** (máy dev 12.0.3). `pnpm install --frozen-lockfile` 90,9 s ✅. Test **58/58** cả hai (64,8 s / 64,2 s), build pass cả hai.
+- **Lỗi có sẵn phát hiện khi chạy thử (không liên quan package manager, chưa sửa):**
+  - **Frontend `npm run build` đang fail**: `useSearchParams() should be wrapped in a suspense boundary at page "/auth/callback"`. Task 9 Step 5 sửa đúng chỗ này — trước đó (Task 9a, 9b) build frontend sẽ fail lỗi này.
+  - `npm run lint` frontend: 2 lỗi ở `src/context/auth.context.tsx` (setState đồng bộ trong effect; dùng biến trước khi khai báo) + 3 cảnh báo.
+  - `@nestjs/cli` kéo `@angular-devkit/*` 22.x yêu cầu Node `^22.22.3 || ^24.15.0 || >=26`; máy đang Node 22.16.0, `backend/Dockerfile` dùng `node:20-alpine` → hiện chỉ là cảnh báo `EBADENGINE`, cài/test/build vẫn qua.
+- **Lỗ hổng tìm được lúc review plan:** `safeReturnUrl` bản nháp bị vượt qua bằng `/login?returnUrl=/%09/evil.com` — trình duyệt tự bỏ tab/xuống dòng trong URL. Script tạm (chạy với `node --experimental-strip-types`) cho bản nháp: `FAIL "/\t/evil.com" -> /	/evil.com`, `FAIL "/\n/evil.com"` → `2 FAIL`; bản `new URL`: 9/9 `ALL PASS` (null, đường dẫn hợp lệ, `?query#hash`, `//`, `/\`, tab, xuống dòng, `https://evil.com`, `javascript:`). Mới thử trên file ở scratchpad, chưa tạo file trong repo.
+- **Sửa plan (`docs/task/room/room_module_plan.md`, bị gitignore):** thêm Task 9a (thống nhất npm) + Task 9b (cài shadcn); thay khối "cần user duyệt" của Task 9 bằng 4 quyết định đã chốt; Step 3 Task 9 thành script kiểm → thấy fail với bản nháp → bản `new URL`; Task 8 thêm ghi chú dùng `Dialog` shadcn + file `dialog.tsx`; Task 10 Step 4 bỏ dòng "không dùng shadcn"; Global Constraints (dependency, npm), thứ tự làm (`7 → 9a → 9b → 9 → 8 → 10`), File map cập nhật theo.
+- **Docs khác:** `docs/decisions.md` thêm ADR-021.
+- **Commit:** không có code. Đổi `docs/progress.md`, `docs/decisions.md` (chờ user).
+- **Task sau cần biết:**
+  - **Task 9a trước.** Bỏ workspace, sinh lại `backend/package-lock.json`, thêm `packageManager`, xoá `node_modules` cũ (có bản pnpm) rồi cài lại bằng npm. Nhắn bạn cùng nhóm (workspace do Hiếu An tạo) cách cài lại sau khi pull.
+  - **Task 9b:** CLI shadcn chọn npm nhờ field `packageManager` (đã đọc mã nguồn shadcn 4.21.0: có field thì ưu tiên hơn lockfile). Kiểm sau khi chạy: `package-lock.json` đổi, `pnpm-lock.yaml` không đổi.
+  - `shadcn init` viết lại `app/globals.css`; kiểm `components.json` trỏ `app/globals.css` (không phải `src/app/`, có thư mục rỗng `src/app/.gitkeep`).
+  - Task 9: bản nháp trang ở plan là Tailwind thuần → đổi sang component shadcn, giữ nguyên logic.
+  - Next 16 trong `frontend/node_modules/next/dist/docs/`: `useParams` chỉ cần Suspense khi bật `cacheComponents` (hiện `next.config.ts` không bật); `useSearchParams` ở trang prerender nên bọc Suspense → plan đọc `window.location.search` thay thế là hợp lý.
