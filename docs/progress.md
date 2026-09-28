@@ -250,3 +250,21 @@ Cập nhật lại các role * đọc file rule/role.md
   - Task 8: `run(action, after)`, `reload()`, `notice`/`setNotice` (hiện chưa có chỗ nào đặt giá trị khác rỗng — dành cho kết quả import) nằm trong `app/rooms/[roomId]/page.tsx`. Chưa có `dialog` — Task 8 tự `add`.
   - Task 10 chạy tay cần thử: `/join/:code` khi chưa đăng nhập → login mật khẩu và Google đều quay lại đúng phòng; `/login?returnUrl=/.//evil.com` → về `/dashboard`.
   - `useProtectedRoute` vẫn đẩy sang `/login` không kèm `returnUrl` → mở link `/rooms/<id>` khi chưa đăng nhập thì đăng nhập xong về `/dashboard` (plan chỉ yêu cầu `returnUrl` cho `/join`).
+
+## 2026-09-28 — Module room: Task 8a (HOST thêm 1 thành viên bằng email `POST /rooms/:roomId/members`)
+
+- **Vì sao có task này:** user chốt 2026-09-28 — plan Task 8 nhảy thẳng vào import hàng loạt (dryRun, review, CSV) trong khi chưa có API thêm 1 thành viên; import là bản hàng loạt của thao tác này. Trace: đề cương §5.4 "Chủ phòng có quyền quản lý thành viên", `role.md` "Quản lý / kick member". Không cần spec/plan riêng (thêm endpoint vào module có sẵn — CLAUDE.md), thiết kế user duyệt trong chat.
+- **Xong:**
+  - Backend: `RoomAction.ADD_MEMBER` trong `shared/permissions.ts`; `rooms/dto/add-member.dto.ts` (trim + chữ thường, `@IsEmail`); `RoomsService.addMember(hostId, roomId, email)` — `assertRoomPermission(ADD_MEMBER)` → tìm user theo email, không có → 404 "Email này chưa đăng ký tài khoản" → tạo `room_members` MEMBER với `invitedBy = hostId` → trùng unique `{roomId, userId}` → 409 "Người này đã ở trong phòng" (2 request thêm cùng lúc cũng chỉ 1 cái qua) → `$inc memberCount: 1` → 201 `{ userId, displayName, avatarUrl, role, joinedAt }`. Constructor `RoomsService` thêm `userModel` ở cuối; `rooms.module.ts` đăng ký model `User`. Route `POST :roomId/members`.
+  - Frontend: `addMember()` trong `room.service.ts`; trang chi tiết phòng — HOST thấy ô email + nút "Thêm" trong khung "Thành viên", thêm xong xoá ô nhập và `reload()`.
+  - Docs: `endpoint.md` thêm mục `POST /rooms/:roomId/members`. Plan: thêm mục Task 8a, thứ tự `… → 9 → 8a → 8 → 10`, ghi chú đầu Task 8.
+- **Commit:** `feat: HOST thêm thành viên vào phòng bằng email` (user duyệt 2026-09-28).
+- **Test (TDD):** 4 test `addMember` viết trước → fail đúng (`service.addMember is not a function`, 36 test cũ vẫn pass) → viết code → pass. `npm test` toàn bộ **62/62 pass** (permissions 2 + room-access 12 + rooms.service 40 + create-room.dto 6 + update-room.dto 2). `npm run build` backend exit 0. Frontend: `npm run lint` chỉ còn 5 lỗi có sẵn (không có ở file sửa); `npm run build` exit 0.
+- **Quyết định nảy sinh lúc code:**
+  - Tìm user bằng `userModel` inject thẳng, không dùng `UsersService.findByEmail` vì hàm đó `select('+password')`.
+  - Ghi `invitedBy = hostId` — field có sẵn trong schema, DB_DESIGN ghi "dùng cho import hàng loạt"; thêm đơn lẻ cũng là "ai thêm người này", bỏ trống thì mất thông tin.
+  - Không thêm rate limit và thông báo "đã thêm" (không nằm trong thiết kế đã duyệt). Biết trước: HOST có thể dùng API này để dò email nào đã có tài khoản (404 vs 409/201) — giống bước review của import sẽ có; nếu cần chặn thì thêm `checkRateLimit` như join.
+- **Chưa chạy được:** chưa gọi endpoint qua app thật / chưa bấm thử trên trình duyệt — để Task 10.
+- **Task sau cần biết:**
+  - **Task 8 phải chốt lại thiết kế với user trước khi làm:** user muốn import gọn, dùng lại logic `addMember`. Thiết kế cũ trong plan (dryRun + `bulkWrite` upsert + rate limit) viết trước Task 8a. Phần constructor/`User` model/helper `userModel` của Task 8 đã làm ở 8a (ghi ở đầu Task 8 trong plan).
+  - `addMember` nằm giữa `listMembers` và `kickMember` trong service; route `addMember` ngay sau `GET :roomId/members` trong controller.

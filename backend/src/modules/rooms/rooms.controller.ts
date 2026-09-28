@@ -5,6 +5,7 @@ import { CreateRoomDto } from './dto/create-room.dto.js';
 import { JoinRoomDto } from './dto/join-room.dto.js';
 import { ListRoomsQueryDto } from './dto/list-rooms-query.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
+import { AddMemberDto } from './dto/add-member.dto.js';
 
 // Mọi route room đều cần đăng nhập (ADR-008).
 // req.user là user đã xác thực (JwtStrategy.validate trả về document User → dùng req.user.id).
@@ -48,6 +49,12 @@ export class RoomsController {
   @Get(':roomId/members')
   members(@Req() req: any, @Param('roomId') roomId: string) {
     return this.roomsService.listMembers(req.user.id, roomId);
+  }
+
+  // POST /rooms/:roomId/members  { email } — HOST thêm người đã có tài khoản
+  @Post(':roomId/members')
+  addMember(@Req() req: any, @Param('roomId') roomId: string, @Body() dto: AddMemberDto) {
+    return this.roomsService.addMember(req.user.id, roomId, dto.email);
   }
 
   // DELETE /rooms/:roomId/members/me — tự rời phòng. Phải khai báo trước members/:userId

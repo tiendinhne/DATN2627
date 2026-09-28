@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -14,6 +15,8 @@ import { Room } from './schemas/room.schema.js';
 import type { RoomDocument } from './schemas/room.schema.js';
 import { RoomMember } from '../room-members/schemas/room-member.schema.js';
 import type { RoomMemberDocument } from '../room-members/schemas/room-member.schema.js';
+import { User } from '../users/schemas/user.schema.js';
+import type { UserDocument } from '../users/schemas/user.schema.js';
 import { RoomAccessService } from '../room-members/room-access.service.js';
 import { RedisService } from '../../common/services/redis.service.js';
 import { RoomRole, RoomStatus } from '../../shared/enums.js';
@@ -88,6 +91,7 @@ export class RoomsService {
     @InjectModel(RoomMember.name) private memberModel: Model<RoomMemberDocument>,
     private access: RoomAccessService,
     private redis: RedisService,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
   ) {}
 
   // POST /rooms — người tạo thành HOST
@@ -206,6 +210,34 @@ export class RoomsService {
         role: m.role,
         joinedAt: m.joinedAt,
       }));
+  }
+
+  // POST /rooms/:roomId/members — chỉ HOST. Thêm 1 người đã có tài khoản vào phòng bằng email
+  async addMember(hostId: string, roomId: string, email: string) {
+    await this.access.assertRoomPermission(hostId, roomId, RoomAction.ADD_MEMBER);
+
+    const user = await this.userModel.findOne({ email }).lean().exec();
+    if (!user) {
+      throw new NotFoundException('Email này chưa đăng ký tài khoản');
+    }
+
+    let member;
+    try {
+      member = await this.memberModel.create({ roomId, userId: user._id, role: RoomRole.MEMBER, invitedBy: hostId });
+    } catch (err) {
+      if (!isDuplicateKey(err)) throw err;
+      // Unique {roomId, userId} báo trùng → đã là thành viên (kể cả khi 2 request thêm cùng lúc)
+      throw new ConflictException('Người này đã ở trong phòng');
+    }
+
+    await this.roomModel.updateOne({ _id: roomId }, { $inc: { memberCount: 1 } }).exec();
+    return {
+      userId: String(user._id),
+      displayName: user.displayName ?? '',
+      avatarUrl: user.avatarUrl ?? null,
+      role: member.role,
+      joinedAt: member.joinedAt,
+    };
   }
 
   // DELETE /rooms/:roomId/members/:userId — chỉ HOST. Kick = xoá bản ghi, không ban (ADR-020)

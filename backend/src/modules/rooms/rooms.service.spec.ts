@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   InternalServerErrorException,
@@ -68,8 +69,17 @@ function build() {
     incr: vi.fn().mockResolvedValue(1),
     expire: vi.fn().mockResolvedValue(true),
   };
-  const service = new RoomsService(roomModel as any, memberModel as any, access as any, redis as any);
-  return { service, roomModel, memberModel, access, redis };
+  const userModel = {
+    findOne: q(null),
+  };
+  const service = new RoomsService(
+    roomModel as any,
+    memberModel as any,
+    access as any,
+    redis as any,
+    userModel as any,
+  );
+  return { service, roomModel, memberModel, access, redis, userModel };
 }
 
 // Lỗi trùng unique index của Mongo
@@ -379,6 +389,62 @@ describe('listMembers', () => {
     expect(res).toEqual([
       { userId, displayName: 'Chủ phòng', avatarUrl: null, role: RoomRole.HOST, joinedAt },
     ]);
+  });
+});
+
+describe('addMember', () => {
+  const email = 'ban@example.com';
+  const newUser = { _id: new Types.ObjectId(), displayName: 'Bạn mới', avatarUrl: null };
+
+  it('MEMBER gọi → 403, không tìm user, không thêm', async () => {
+    const { service, access, userModel, memberModel } = build();
+    access.assertRoomPermission.mockRejectedValue(new ForbiddenException());
+
+    await expect(service.addMember(userId, roomId, email)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(userModel.findOne).not.toHaveBeenCalled();
+    expect(memberModel.create).not.toHaveBeenCalled();
+  });
+
+  it('email chưa đăng ký tài khoản → 404, không thêm', async () => {
+    const { service, memberModel } = build();
+
+    await expect(service.addMember(userId, roomId, email)).rejects.toBeInstanceOf(NotFoundException);
+    expect(memberModel.create).not.toHaveBeenCalled();
+  });
+
+  it('người đó đã ở trong phòng → 409, không tăng memberCount', async () => {
+    const { service, userModel, memberModel, roomModel } = build();
+    userModel.findOne.mockReturnValue(query(newUser));
+    memberModel.create.mockRejectedValue(duplicateKeyError());
+
+    await expect(service.addMember(userId, roomId, email)).rejects.toBeInstanceOf(ConflictException);
+    expect(roomModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('thêm thành công → tạo MEMBER, tăng memberCount 1, trả thông tin thành viên', async () => {
+    const { service, access, userModel, memberModel, roomModel } = build();
+    const joinedAt = new Date('2026-09-28T00:00:00Z');
+    userModel.findOne.mockReturnValue(query(newUser));
+    memberModel.create.mockResolvedValue({ role: RoomRole.MEMBER, joinedAt });
+
+    const res = await service.addMember(userId, roomId, email);
+
+    expect(access.assertRoomPermission).toHaveBeenCalledWith(userId, roomId, 'ADD_MEMBER');
+    expect(userModel.findOne).toHaveBeenCalledWith({ email });
+    expect(memberModel.create).toHaveBeenCalledWith({
+      roomId,
+      userId: newUser._id,
+      role: RoomRole.MEMBER,
+      invitedBy: userId,
+    });
+    expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: roomId }, { $inc: { memberCount: 1 } });
+    expect(res).toEqual({
+      userId: String(newUser._id),
+      displayName: 'Bạn mới',
+      avatarUrl: null,
+      role: RoomRole.MEMBER,
+      joinedAt,
+    });
   });
 });
 

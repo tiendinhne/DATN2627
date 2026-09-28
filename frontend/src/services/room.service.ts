@@ -40,6 +40,9 @@ export const updateRoom = (token: string, roomId: string, data: { name?: string;
 export const listMembers = (token: string, roomId: string) =>
   request<RoomMember[]>(token, `/rooms/${roomId}/members`);
 
+export const addMember = (token: string, roomId: string, email: string) =>
+  request<RoomMember>(token, `/rooms/${roomId}/members`, { method: 'POST', body: JSON.stringify({ email }) });
+
 export const kickMember = (token: string, roomId: string, userId: string) =>
   request<void>(token, `/rooms/${roomId}/members/${userId}`, { method: 'DELETE' });
 

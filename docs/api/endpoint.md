@@ -61,6 +61,17 @@ Phải có ít nhất 1 field (không thì `400`). `403` nếu không phải HOS
 Danh sách thành viên, HOST đứng đầu rồi theo thời gian vào phòng. Quyền: thành viên.
 Response `200`: `[{ userId, displayName, avatarUrl, role, joinedAt }]`.
 
+### POST /rooms/:roomId/members
+Thêm một người **đã có tài khoản** vào phòng bằng email, với role MEMBER (`invitedBy` = HOST). Quyền: HOST.
+
+| Body | Kiểu | Ràng buộc |
+|---|---|---|
+| email | string | email hợp lệ; tự trim + chữ thường |
+
+- Response `201`: `{ userId, displayName, avatarUrl, role, joinedAt }` (cùng dạng một phần tử của `GET /members`).
+- `400`: email sai định dạng. `403`: không phải HOST.
+- `404`: email chưa đăng ký tài khoản (không gửi mail mời). `409`: người đó đã ở trong phòng.
+
 ### DELETE /rooms/:roomId/members/me
 Tự rời phòng. Quyền: thành viên không phải HOST.
 - Response `204`.

@@ -6,6 +6,7 @@ import { RoomRole } from './enums.js';
 export enum RoomAction {
   UPDATE_ROOM = 'UPDATE_ROOM',
   DISSOLVE_ROOM = 'DISSOLVE_ROOM',
+  ADD_MEMBER = 'ADD_MEMBER',
   KICK_MEMBER = 'KICK_MEMBER',
   IMPORT_MEMBERS = 'IMPORT_MEMBERS',
   EXPORT_MEMBERS = 'EXPORT_MEMBERS',
@@ -16,6 +17,7 @@ export enum RoomAction {
 export const ROOM_PERMISSIONS: Record<RoomAction, readonly RoomRole[]> = {
   [RoomAction.UPDATE_ROOM]: [RoomRole.HOST],
   [RoomAction.DISSOLVE_ROOM]: [RoomRole.HOST],
+  [RoomAction.ADD_MEMBER]: [RoomRole.HOST],
   [RoomAction.KICK_MEMBER]: [RoomRole.HOST],
   [RoomAction.IMPORT_MEMBERS]: [RoomRole.HOST],
   [RoomAction.EXPORT_MEMBERS]: [RoomRole.HOST],

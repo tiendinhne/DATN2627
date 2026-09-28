@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth.context';
 import { useProtectedRoute } from '@/hooks/useProtectedRoute';
 import {
+  addMember,
   dissolveRoom,
   getRoom,
   kickMember,
@@ -37,6 +38,7 @@ export default function RoomDetailPage() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [newEmail, setNewEmail] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -189,7 +191,29 @@ export default function RoomDetailPage() {
           <CardHeader>
             <CardTitle>Thành viên ({members.length})</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {/* HOST thêm người đã có tài khoản bằng email */}
+            {isHost && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  run(() => addMember(token, roomId, newEmail), () => {
+                    setNewEmail('');
+                    reload();
+                  });
+                }}
+                className="flex gap-3"
+              >
+                <Input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="Email người muốn thêm"
+                  required
+                />
+                <Button type="submit">Thêm</Button>
+              </form>
+            )}
             <ul className="divide-y">
               {members.map((m) => (
                 <li key={m.userId} className="flex justify-between items-center py-3">
