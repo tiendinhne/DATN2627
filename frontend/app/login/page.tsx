@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/auth.context';
+import { safeReturnUrl } from '@/lib/return-url';
 
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -13,6 +14,9 @@ export default function LoginPage() {
   const { login, loginWithGoogle } = useAuth();
   const router = useRouter();
 
+  // Trang cần quay lại sau khi đăng nhập (vd /join/:code), mặc định /dashboard
+  const getReturnUrl = () => safeReturnUrl(new URLSearchParams(window.location.search).get('returnUrl'));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -20,7 +24,7 @@ export default function LoginPage() {
 
     try {
       await login(identifier, password);
-      router.push('/dashboard');
+      router.push(getReturnUrl());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại');
     } finally {
@@ -30,6 +34,8 @@ export default function LoginPage() {
 
   const handleGoogleLogin = () => {
     setIsLoading(true);
+    // Google redirect đi rồi quay về /auth/callback → cất returnUrl lại để callback đọc
+    sessionStorage.setItem('returnUrl', getReturnUrl());
     loginWithGoogle();
   };
 
