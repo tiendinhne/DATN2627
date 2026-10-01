@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { PassportModule } from '@nestjs/passport';
 import { Room, RoomSchema } from './schemas/room.schema.js';
 import { File, FileSchema } from './schemas/file.schema.js';
 import { RoomMember, RoomMemberSchema } from '../room-members/schemas/room-member.schema.js';
@@ -19,6 +20,9 @@ import { RoomsService } from './rooms.service.js';
     ]),
     // Lấy RoomAccessService để kiểm quyền
     RoomMembersModule,
+    // JwtAuthGuard cần AuthModuleOptions trong module dùng nó: Nest 12 không kế thừa @Optional()
+    // của AuthGuard('jwt') sang lớp con → thiếu dòng này app không khởi động được
+    PassportModule.register({ session: false }),
   ],
   controllers: [RoomsController],
   providers: [RoomsService],
