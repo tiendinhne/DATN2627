@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+// Field tham chiếu dùng SchemaTypes.ObjectId: Types.ObjectId bị @nestjs/mongoose biến thành Mixed (không ép kiểu)
+import { Document, SchemaTypes, Types } from 'mongoose';
 import { MessageType } from '../../../shared/enums.js';
 
 export type MessageDocument = Message & Document;
@@ -7,14 +8,14 @@ export type MessageDocument = Message & Document;
 @Schema({ timestamps: true, collection: 'messages' })
 export class Message {
   // Chat thuộc về room — đây là khoá sở hữu chính
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true })
   roomId!: Types.ObjectId;
 
   // Tag meeting: chỉ server gắn khi tin được gửi từ khung chat trong họp, còn lại null
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', default: null })
   meetingId?: Types.ObjectId | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true })
   senderId!: Types.ObjectId;
 
   @Prop({ required: true, maxlength: 60 })
@@ -26,7 +27,7 @@ export class Message {
   @Prop({ default: '', maxlength: 2000 })
   content?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'File', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'File', default: null })
   fileId?: Types.ObjectId | null;
 
   @Prop({ required: true })

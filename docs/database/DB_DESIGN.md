@@ -52,6 +52,8 @@ rooms ──1:N──► meetings
 # PHẦN C — SCHEMA CHI TIẾT
 
 > Dùng `@nestjs/mongoose`. Enum đặt ở `shared/src/enums.ts` để frontend dùng chung.
+>
+> **Field tham chiếu** `[phát sinh kỹ thuật]` (2026-10-01, Task 10a module room): `@Prop({ type: SchemaTypes.ObjectId, ... })` với `import { SchemaTypes, Types } from 'mongoose'`; kiểu TS của field vẫn là `Types.ObjectId`. **Không** viết `type: Types.ObjectId` — `@nestjs/mongoose` 12 coi class BSON `ObjectId` là schema lồng nhau → path thành `Mixed`, không ép kiểu (id string bị lưu string, query không khớp).
 
 ## C.0 Enum dùng chung
 
@@ -102,7 +104,7 @@ export class User {
 ```ts
 @Schema({ timestamps: true, collection: 'refresh_tokens' })
 export class RefreshToken {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   userId: Types.ObjectId;
 
   @Prop({ required: true, unique: true })
@@ -139,7 +141,7 @@ export class Room {
   @Prop({ default: '', maxlength: 500 })
   description: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   ownerId: Types.ObjectId;
 
   @Prop({ required: true, unique: true, uppercase: true })
@@ -173,16 +175,16 @@ export class Room {
 ```ts
 @Schema({ timestamps: true, collection: 'room_members' })
 export class RoomMember {
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true, index: true })
   roomId: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   userId: Types.ObjectId;
 
   @Prop({ type: String, enum: RoomRole, default: RoomRole.MEMBER })
   role: RoomRole;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', default: null })
   invitedBy: Types.ObjectId | null;   // dùng cho import hàng loạt
 
   @Prop({ default: Date.now })
@@ -206,7 +208,7 @@ Kick = xoá bản ghi (không có ban) — ADR-020.
 ```ts
 @Schema({ timestamps: true, collection: 'meetings' })
 export class Meeting {
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true, index: true })
   roomId: Types.ObjectId;
 
   @Prop({ required: true, trim: true, maxlength: 100 })
@@ -215,7 +217,7 @@ export class Meeting {
   @Prop({ type: String, enum: MeetingStatus, default: MeetingStatus.ACTIVE })
   status: MeetingStatus;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true })
   createdBy: Types.ObjectId;
 
   @Prop({ default: Date.now })
@@ -224,7 +226,7 @@ export class Meeting {
   @Prop({ default: null })
   endedAt: Date | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', default: null })
   endedBy: Types.ObjectId | null;
 
   @Prop({ type: String, enum: EndReason, default: null })
@@ -266,10 +268,10 @@ class ParticipantSession {
 
 @Schema({ timestamps: true, collection: 'meeting_participants' })
 export class MeetingParticipant {
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', required: true, index: true })
   meetingId: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   userId: Types.ObjectId;
 
   @Prop({ required: true, maxlength: 60 })
@@ -300,14 +302,14 @@ export class MeetingParticipant {
 @Schema({ timestamps: true, collection: 'messages' })
 export class Message {
   // Chat thuộc về room — đây là khoá sở hữu chính
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true })
   roomId!: Types.ObjectId;
 
   // Tag meeting: chỉ server gắn khi tin được gửi từ khung chat trong họp, còn lại null
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', default: null })
   meetingId?: Types.ObjectId | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true })
   senderId!: Types.ObjectId;
 
   @Prop({ required: true, maxlength: 60 })
@@ -319,7 +321,7 @@ export class Message {
   @Prop({ default: '', maxlength: 2000 })
   content?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'File', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'File', default: null })
   fileId?: Types.ObjectId | null;   // khi type = FILE
 
   @Prop({ required: true })
@@ -344,10 +346,10 @@ export class Message {
 ```ts
 @Schema({ timestamps: true, collection: 'whiteboards' })
 export class Whiteboard {
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true, unique: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', required: true, unique: true })
   meetingId: Types.ObjectId;        // 1–1 với meeting
 
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true, index: true })
   roomId: Types.ObjectId;
 
   @Prop({ type: Buffer, required: true })
@@ -365,7 +367,7 @@ export class Whiteboard {
   @Prop({ type: Object, default: {} })
   appState: Record<string, any>;    // viewBackgroundColor, gridSize... (nhỏ)
 
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', default: null })
   clonedFrom: Types.ObjectId | null;
 
   @Prop({ default: null })
@@ -409,13 +411,13 @@ export class File {
   @Prop({ type: String, enum: FilePurpose, required: true })
   purpose: FilePurpose;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   uploaderId: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', default: null, index: true })
   meetingId: Types.ObjectId | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'Room', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', default: null })
   roomId: Types.ObjectId | null;
 
   @Prop({ default: null })
@@ -439,13 +441,13 @@ export class AiRequest {
   @Prop({ required: true, maxlength: 64 })
   requestId!: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true })
   userId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true })
   roomId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', required: true })
   meetingId!: Types.ObjectId;
 
   @Prop({ type: String, enum: AiRequestKind, required: true })

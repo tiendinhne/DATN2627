@@ -1,14 +1,15 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+// Field tham chiếu dùng SchemaTypes.ObjectId: Types.ObjectId bị @nestjs/mongoose biến thành Mixed (không ép kiểu)
+import { Document, SchemaTypes, Types } from 'mongoose';
 
 export type WhiteboardDocument = Whiteboard & Document;
 
 @Schema({ timestamps: true, collection: 'whiteboards' })
 export class Whiteboard {
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true, unique: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', required: true, unique: true })
   meetingId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true, index: true })
   roomId!: Types.ObjectId;
 
   @Prop({ type: Buffer, required: true })
@@ -26,7 +27,7 @@ export class Whiteboard {
   @Prop({ type: Object, default: {} })
   appState?: Record<string, any>;
 
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', default: null })
   clonedFrom?: Types.ObjectId | null;
 
   @Prop({ type: Date, required: false, default: null })

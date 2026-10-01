@@ -1,21 +1,22 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+// Field tham chiếu dùng SchemaTypes.ObjectId: Types.ObjectId bị @nestjs/mongoose biến thành Mixed (không ép kiểu)
+import { Document, SchemaTypes, Types } from 'mongoose';
 import { RoomRole } from '../../../shared/enums.js';
 
 export type RoomMemberDocument = RoomMember & Document;
 
 @Schema({ timestamps: true, collection: 'room_members' })
 export class RoomMember {
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true, index: true })
   roomId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   userId!: Types.ObjectId;
 
   @Prop({ type: String, enum: RoomRole, default: RoomRole.MEMBER })
   role!: RoomRole;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', default: null })
   invitedBy?: Types.ObjectId | null;
 
   @Prop({ default: () => new Date() })

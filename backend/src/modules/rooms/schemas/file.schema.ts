@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+// Field tham chiếu dùng SchemaTypes.ObjectId: Types.ObjectId bị @nestjs/mongoose biến thành Mixed (không ép kiểu)
+import { Document, SchemaTypes, Types } from 'mongoose';
 import { FilePurpose } from '../../../shared/enums.js';
 
 export type FileDocument = File & Document;
@@ -21,13 +22,13 @@ export class File {
   @Prop({ type: String, enum: FilePurpose, required: true })
   purpose!: FilePurpose;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   uploaderId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', default: null, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', default: null, index: true })
   meetingId?: Types.ObjectId | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'Room', default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', default: null })
   roomId?: Types.ObjectId | null;
 
   @Prop({ type: Date, required: false, default: null })

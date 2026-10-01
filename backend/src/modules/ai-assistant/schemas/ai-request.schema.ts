@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+// Field tham chiếu dùng SchemaTypes.ObjectId: Types.ObjectId bị @nestjs/mongoose biến thành Mixed (không ép kiểu)
+import { Document, SchemaTypes, Types } from 'mongoose';
 import { AiRequestKind, AiRequestStatus } from '../../../shared/enums.js';
 
 export type AiRequestDocument = AiRequest & Document;
@@ -11,13 +12,13 @@ export class AiRequest {
   @Prop({ required: true, maxlength: 64 })
   requestId!: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true })
   userId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true })
   roomId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Meeting', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Meeting', required: true })
   meetingId!: Types.ObjectId;
 
   @Prop({ type: String, enum: AiRequestKind, required: true })

@@ -1,12 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+// Field tham chiếu dùng SchemaTypes.ObjectId: Types.ObjectId bị @nestjs/mongoose biến thành Mixed (không ép kiểu)
+import { Document, SchemaTypes, Types } from 'mongoose';
 import { MeetingStatus, EndReason } from '../../../shared/enums.js';
 
 export type MeetingDocument = Meeting & Document;
 
 @Schema({ timestamps: true, collection: 'meetings' })
 export class Meeting {
-  @Prop({ type: Types.ObjectId, ref: 'Room', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'Room', required: true })
   roomId!: Types.ObjectId;
 
   @Prop({ required: true, trim: true, maxlength: 100 })
@@ -15,7 +16,7 @@ export class Meeting {
   @Prop({ type: String, enum: MeetingStatus, default: MeetingStatus.ACTIVE })
   status!: MeetingStatus;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true })
   createdBy!: Types.ObjectId;
 
   @Prop({ default: () => new Date() })
@@ -24,7 +25,7 @@ export class Meeting {
   @Prop({ type: Date, required: false, default: null })
   endedAt?: Date | null;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: false, default: null })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: false, default: null })
   endedBy?: Types.ObjectId | null;
 
   @Prop({ type: String, enum: EndReason, required: false, default: null })

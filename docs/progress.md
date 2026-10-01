@@ -268,3 +268,77 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Task sau cần biết:**
   - **Task 8 phải chốt lại thiết kế với user trước khi làm:** user muốn import gọn, dùng lại logic `addMember`. Thiết kế cũ trong plan (dryRun + `bulkWrite` upsert + rate limit) viết trước Task 8a. Phần constructor/`User` model/helper `userModel` của Task 8 đã làm ở 8a (ghi ở đầu Task 8 trong plan).
   - `addMember` nằm giữa `listMembers` và `kickMember` trong service; route `addMember` ngay sau `GET :roomId/members` trong controller.
+
+## 2026-09-28 — Module room: hoãn Task 8 (import / export thành viên)
+
+- **Quyết định (user chốt 2026-09-28):** import/export thành viên bằng file **để làm sau**, trước mắt dùng "thêm thành viên bằng email" (Task 8a). **Chỉ hoãn, không bỏ** — là yêu cầu `[GVHD-verbal]` (PROJECT_CONTEXT §13), §3 để trong phạm vi, `role.md` có dòng "Import members / Export" → phải làm trước khi bảo vệ.
+- **Rà ảnh hưởng khi hoãn:** không ảnh hưởng DB hay code khác.
+  - DB: không cần collection/field mới; import sau này dùng lại unique `{roomId, userId}`, `invitedBy` (8a đã ghi), `memberCount`; export chỉ đọc `users` + `room_members` → dữ liệu tạo ra từ giờ không phải migrate.
+  - Backend: route dự kiến `POST :roomId/members/import`, `GET :roomId/members/export` không đè route hiện có; `userModel` + model `User` có sẵn từ 8a; `IMPORT_MEMBERS`/`EXPORT_MEMBERS` giữ trong bảng quyền (chưa dùng, vô hại).
+  - Không module nào phụ thuộc (đã grep `docs/task`, code chat/meeting/whiteboard/AI).
+- **Đã làm theo quyết định:**
+  - Xoá state `notice` ở `app/rooms/[roomId]/page.tsx` (chỉ để hiện kết quả import, luôn rỗng khi chưa có import) — ghi chú "Task 8 dùng `notice`/`setNotice`" ở mục Task 9 phía trên không còn đúng; làm import thì thêm lại.
+  - Plan: thứ tự thành `… → 9 → 8a → 10`, Task 8 đánh dấu **HOÃN** kèm kết quả rà ảnh hưởng; Task 10 Step 3 mục 3–4 đổi từ kiểm Import/Export sang kiểm ô "Thêm" thành viên.
+- **Commit:** không commit (user chọn 2026-09-28) — `docs/progress.md` + `frontend/app/rooms/[roomId]/page.tsx` cố ý để lại trong working tree, phiên Task 10 thấy git status không sạch là do 2 file này.
+- **Task sau cần biết:** task tiếp theo của module room là **Task 10** (chạy thật qua Docker + chốt tài liệu). Khi quay lại import/export: dùng lại logic `addMember`; cân nhắc làm CSV export chung với export chat/meeting/whiteboard (ADR-010).
+
+## 2026-10-01 — Module room: Task 10 (chạy thật qua Docker) — **dừng giữa chừng ở Step 2**
+
+- **Kiểm đầu phiên:** git status chỉ có 2 file cố ý để lại từ phiên hoãn Task 8 (`docs/progress.md`, `frontend/app/rooms/[roomId]/page.tsx`) — không đụng tới. `npm test` backend **62/62 pass** (5 file).
+- **Step 1 — lần đầu boot: app KHÔNG khởi động.** `docker compose up -d --build` → `UnknownDependenciesException: Nest can't resolve dependencies of the JwtAuthGuard (?). Please make sure that the argument AuthModuleOptions at index [0] is available in the RoomsModule module.`
+  - **Nguyên nhân gốc:** `@nestjs/core` 12.0.3 `injector.js` — `reflectConstructorParams` dùng `Reflect.getMetadata` (kế thừa → `JwtAuthGuard` nhận `[AuthModuleOptions]` từ `MixinAuthGuard`), còn `reflectOptionalParams` dùng `Reflect.getOwnMetadata` (không kế thừa → mất `@Optional()` của lớp cha). Đã kiểm trên `dist/`: paramtypes = `['AuthModuleOptions']`, optional của `JwtAuthGuard` = `undefined`, của lớp cha = `[0]`. `AuthController` chạy được vì `AuthModule` có `PassportModule.register(...)`; `RoomsModule` thì không.
+  - **Đã sửa:** `rooms.module.ts` import `PassportModule.register({ session: false })` (cùng option với `AuthModule`; đúng thông báo của thư viện "import PassportModule in each place where AuthGuard() is being used"). Module sau dùng `JwtAuthGuard` (chat REST, meeting) cũng phải thêm dòng này.
+  - Sau khi sửa, log: `Mapped {/rooms, POST}` … `Mapped {/rooms/:roomId/dissolve, POST}` (10 route), `[RedisService] Redis connected`, `Nest application successfully started`, `Backend is running on: http://127.0.0.1:3001` → **Step 1 đạt**.
+- **Step 2 — smoke test API: FAIL.** Output (nguyên văn, rút gọn phần lặp):
+  ```
+  --- register: h.user.id= m.user.id= tokenH=False tokenM=False
+  --- 1. POST /rooms (HOST)        → id 6abe6c21c2611e8f97b71ada, joinCode 6M2O6RDY, memberCount 1, myRole HOST   ✅
+  --- 2. POST /rooms/join (6m2o6rdy) → memberCount 2, myRole MEMBER   ✅
+  --- 3. GET /rooms (MEMBER)       → page=1 limit=20 hasMore=False items=0   ❌ (phải có phòng vừa vào)
+  --- 4. GET /rooms/:id/members (HOST) → 403 {"message":"Bạn không phải thành viên room này"}   ❌
+  --- 5. POST dissolve (MEMBER)    → Forbidden   (đúng mã nhưng sai lý do — xem dưới)
+  --- 6. DELETE members/:userId    → 404 "Cannot DELETE /rooms/6abe…ada/members/"   ❌ (userId rỗng)
+  --- 7. GET /rooms/:id (MEMBER)   → Forbidden
+  --- 8. POST dissolve (HOST)      → 403 "Bạn không phải thành viên room này"   ❌
+  --- 9. GET /rooms/:id (HOST)     → Forbidden   ❌ (phải NotFound)
+  ```
+  - **Lỗi 1 — script trong plan:** biến PowerShell **không phân biệt hoa thường** → `$H = @{…}` ghi đè `$h`, `$M` ghi đè `$m` → `$h.user.id` rỗng (dòng 6). Token vẫn đúng vì lấy trước khi bị ghi đè. **Đã sửa plan:** header đổi tên `$hAuth`/`$mAuth`.
+  - **Lỗi 2 — schema (nguyên nhân dòng 3, 4, 8, 9):** mongosh cho thấy `rooms.ownerId` và `room_members.userId` lưu dạng **string** (`'6abe6c21c2611e8f97b71ad6'`), `roomId` lưu ObjectId (vì code truyền sẵn `room._id`). `RoomMemberSchema.path('userId').instance` = **`Mixed`** (cả `roomId`, `invitedBy`, `rooms.ownerId`). Nguyên nhân: `@nestjs/mongoose` 12 `DefinitionsFactory.inspectTypeDefinition` coi `Types.ObjectId` (class BSON) là class schema lồng nhau → `{}` → Mixed → không ép kiểu. `assertRoomAccess` query `roomId` string ≠ ObjectId đã lưu → 403; `listMyRooms` `$match { userId: ObjectId }` ≠ string đã lưu → 0 item. Thử `@Prop({ type: Schema.Types.ObjectId })` → `ObjectId`, lưu đúng kiểu. Chỉ có 1 bản mongoose (9.10.1) — không phải trùng package. Unit test không bắt được vì model bị mock.
+  - **Phạm vi lỗi 2:** 23 field / 9 file schema (ai-request 3, refresh-token 1, message 4, meeting-participant 2, meeting 3, room-member 3, file 3, room 1, whiteboard 3). Dữ liệu dev lưu sai kiểu: `rooms` 1, `room_members` 2 (`userId`), `refresh_tokens` 3; collection khác rỗng; `users` 7.
+- **Quyết định (user chốt 2026-10-01):**
+  1. **Dừng Task 10.** Sửa schema tách thành **Task 10a** (`fix:`) ở phiên riêng, xong làm lại Task 10 từ Step 1. Phạm vi (cả 9 file hay chỉ module room) chốt đầu phiên 10a.
+  2. Dữ liệu dev: **xoá** `rooms`, `room_members`, `refresh_tokens` — làm trong Task 10a **sau khi** sửa schema (xoá trước thì thao tác trong lúc chờ vẫn ghi sai kiểu). Chưa xoá ở phiên này.
+  3. Test: **không** thêm spec schema (CLAUDE.md); smoke test Step 2 là bước tái hiện.
+- **Step 3–5:** chưa làm (frontend chạy tay, chốt tài liệu, commit).
+- **Kiểm cuối phiên (sau khi sửa `rooms.module.ts`):** `npm test` → `Test Files 5 passed (5)`, `Tests 62 passed (62)`; `npm run build` → exit 0.
+- **Lệch khỏi plan:** sửa code backend trong Task 10 (plan chỉ ghi sửa docs) — `rooms.module.ts` thêm `PassportModule`; sửa script Step 2. Plan: thêm Task 10a, thứ tự `… → 8a → 10 (dừng) → 10a → 10`, ghi chú đầu Task 10.
+- **Commit:** chưa commit (chờ user).
+- **Task sau cần biết:**
+  - Task 10a: danh sách field + cách sửa + bước kiểm ghi ở plan. Import `Schema` của mongoose trùng tên decorator `Schema` của `@nestjs/mongoose` → đặt alias.
+  - Ghi chú Task 5 ở trên ("Mongoose ép về cùng ObjectId … `q.cast()`") đúng với schema ObjectId thật, **không đúng** với code lúc đó (path là Mixed). Code chặn tự kick dùng `new Types.ObjectId(targetUserId).equals(hostId)` nên vẫn đúng; sau 10a nên chạy lại case id viết hoa trong smoke test tay.
+  - Container `backend-dev` đang chạy bản đã sửa `rooms.module.ts`.
+
+## 2026-10-01 — Module room: Task 10a (`fix` — field tham chiếu Mixed → ObjectId)
+
+- **Kiểm đầu phiên:** git status chỉ có 3 file cố ý để lại từ phiên hoãn Task 8 + phiên Task 10 (`rooms.module.ts`, `docs/progress.md`, `app/rooms/[roomId]/page.tsx`) — không đụng tới. `npm test` **62/62 pass**.
+- **Tìm cách sửa gọn (user yêu cầu nghĩ đơn giản trước):** không có cách sửa một chỗ — `@nestjs/mongoose` 12.0.0 là bản mới nhất (`npm view`), `DefinitionsFactory` không có tuỳ chọn nào; mongoose tự hiểu `Types.ObjectId` nhưng `@nestjs/mongoose` đổi nó thành `{}` trước khi tới mongoose. Cách chuẩn (docs NestJS, StackOverflow/blog): `type: mongoose.Schema.Types.ObjectId`. Chọn dạng gọn nhất: `SchemaTypes.ObjectId` — named export của mongoose (`SchemaTypes === Schema.Types`, có khai báo TS) → không cần alias.
+- **Phạm vi (user chốt 2026-10-01):** cả 9 file, 23 field.
+- **Đã làm:**
+  - 9 file schema: import `{ Document, SchemaTypes, Types }` + 1 dòng ghi chú lý do; `type: Types.ObjectId` → `type: SchemaTypes.ObjectId`. Kiểu TS field giữ `Types.ObjectId`. Không đổi service/test/DTO (mọi chỗ so sánh field tham chiếu đã bọc `String(...)`; auth chỉ ghi `refresh_tokens`, không đọc theo `userId`).
+  - `docs/database/DB_DESIGN.md`: 23 mẫu code đổi tương tự + 1 ghi chú đầu Phần C `[phát sinh kỹ thuật]` để module sau không chép lại lỗi.
+- **Kiểm (output thật):**
+  - Script đồ bỏ đọc `schema.paths` từ `dist/`: **trước** 23/23 field `Mixed`; **sau** 23/23 `ObjectId` (AiRequest 3, RefreshToken 1, Message 4, MeetingParticipant 2, Meeting 3, RoomMember 3, File 3, Room 1, Whiteboard 3).
+  - `npm test` → `Test Files 5 passed (5)`, `Tests 62 passed (62)`; `npm run build` → exit 0.
+  - `docker compose up -d --build` → 10 route `/rooms` mapped, `Redis connected`, `Nest application successfully started`.
+  - Smoke test Task 10 Step 2 — **9/9 đúng**: 1. tạo phòng `myRole HOST` · 2. join mã viết thường → `memberCount 2`, `MEMBER` · 3. `GET /rooms` (MEMBER) `items=1` (trước: 0) · 4. members: HOST đứng đầu (trước: 403) · 5. MEMBER giải tán → 403 "Bạn không có quyền thực hiện thao tác này" (trước: 403 sai lý do "không phải thành viên") · 6. kick → 204 · 7. MEMBER bị kick xem phòng → 403 · 8. HOST giải tán → OK (trước: 403) · 9. xem phòng đã giải tán → 404 (trước: 403).
+  - mongosh (chỉ đọc) trên phòng vừa tạo: `ownerId`, `room_members.roomId`, `room_members.userId` đều `ObjectId`.
+  - Case id viết hoa (ghi chú Task 5): HOST tự kick bằng id viết hoa → 400 "Không thể tự mời mình ra khỏi phòng", HOST còn nguyên; HOST kick MEMBER bằng id viết hoa → 204, MEMBER bị xoá (Mongoose giờ ép kiểu đúng) → ghi chú Task 5 nay đúng với code.
+- **Lệch khỏi plan:**
+  - `SchemaTypes.ObjectId` thay cho alias `Schema as MongooseSchema` (cùng hành vi).
+  - Thêm sửa `DB_DESIGN.md` (plan không ghi).
+  - **Chưa xoá dữ liệu dev** `rooms`/`room_members`/`refresh_tokens`: auto-mode chặn lệnh `deleteMany` → để user tự chạy. Còn 1 room, 2 room_members, 3 refresh_tokens kiểu string (cũ) + dữ liệu smoke test mới (đúng kiểu, phòng đã giải tán). Vì vậy kiểm mongosh làm trên bản ghi phòng mới, không đếm cả collection.
+- **Commit:** chưa commit (chờ user).
+- **Task sau cần biết:**
+  - Làm lại **Task 10 từ Step 1**. Đầu phiên kiểm dữ liệu cũ đã xoá chưa (lệnh ở dưới).
+  - Schema mới (chat, meeting, whiteboard, AI đã có sẵn schema đã sửa) — field tham chiếu viết `type: SchemaTypes.ObjectId`, không `Types.ObjectId`. Unit test mock model không bắt được lỗi này; chỉ app thật / đọc `schema.path(x).instance` mới thấy.
+  - Lệnh xoá dữ liệu dev cho user (PowerShell, gốc repo): `docker exec mongo-dev mongosh online-group-learning --quiet --eval "printjson({ rooms: db.rooms.deleteMany({}).deletedCount, room_members: db.room_members.deleteMany({}).deletedCount, refresh_tokens: db.refresh_tokens.deleteMany({}).deletedCount })"`

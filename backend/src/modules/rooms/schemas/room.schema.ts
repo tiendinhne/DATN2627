@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+// Field tham chiếu dùng SchemaTypes.ObjectId: Types.ObjectId bị @nestjs/mongoose biến thành Mixed (không ép kiểu)
+import { Document, SchemaTypes, Types } from 'mongoose';
 import { RoomStatus } from '../../../shared/enums.js';
 
 export type RoomDocument = Room & Document;
@@ -12,7 +13,7 @@ export class Room {
   @Prop({ default: '', maxlength: 500 })
   description?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true, index: true })
   ownerId!: Types.ObjectId;
 
   @Prop({ required: true, unique: true, uppercase: true })
