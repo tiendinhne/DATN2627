@@ -15,7 +15,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (identifier: string, password: string) => Promise<void>;
-  register: (email: string, username: string, password: string) => Promise<void>;
+  register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
   logout: () => void;
   loginWithGoogle: () => void;
 }
@@ -76,11 +76,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(user);
   };
 
-  const register = async (email: string, username: string, password: string) => {
+  // displayName bắt buộc ở RegisterDto backend (1–20 ký tự)
+  const register = async (email: string, username: string, displayName: string, password: string) => {
     const res = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, username, password }),
+      body: JSON.stringify({ email, username, displayName, password }),
     });
     if (!res.ok) {
       const error = await res.json();

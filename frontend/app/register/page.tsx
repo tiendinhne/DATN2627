@@ -8,6 +8,7 @@ import { useAuth } from '@/context/auth.context';
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -32,7 +33,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      await register(email, username, password);
+      await register(email, username, displayName, password);
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng ký thất bại');
@@ -84,6 +85,24 @@ export default function RegisterPage() {
               disabled={isLoading}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="username"
+              required
+            />
+          </div>
+
+          {/* Tên hiển thị: backend bắt buộc, tối đa 20 ký tự (RegisterDto) */}
+          <div>
+            <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-2">
+              Tên hiển thị
+            </label>
+            <input
+              id="displayName"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={isLoading}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+              placeholder="Nguyễn Văn A"
+              maxLength={20}
               required
             />
           </div>

@@ -32,7 +32,6 @@ export default function RoomDetailPage() {
   const [room, setRoom] = useState<Room | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   // Tăng lên để tải lại phòng + thành viên sau mỗi thao tác
   const [reloadKey, setReloadKey] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -53,7 +52,6 @@ export default function RoomDetailPage() {
   // Chạy một thao tác; lỗi thì hiện thông báo, thành công thì gọi after()
   const run = async (action: () => Promise<unknown>, after: () => void) => {
     setError('');
-    setNotice('');
     try {
       await action();
       after();
@@ -101,11 +99,6 @@ export default function RoomDetailPage() {
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        {notice && (
-          <Alert>
-            <AlertDescription>{notice}</AlertDescription>
           </Alert>
         )}
 

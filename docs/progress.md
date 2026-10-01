@@ -5,7 +5,8 @@ Code hiện có
 Phần	Trạng thái
 Auth (đăng ký, đăng nhập local, Google OAuth, /auth/me)	Chạy được
 9 schema Mongoose + index	Đã có, đúng theo DB_DESIGN.md
-Rooms, room-members, meetings, chat, whiteboard	Mới có schema, chưa có service hay controller
+Rooms, room-members	REST đầy đủ + frontend (chạy thật qua Docker 2026-10-01); chưa có realtime
+Meetings, chat, whiteboard	Mới có schema, chưa có service hay controller
 Socket gateway /meeting	Mới là khung, chỉ ghi log, chưa có auth hay validate
 AI, files, health, LiveKit	Chưa có
 Frontend	Mới có các trang login, register, dashboard và Google callback. Chưa cài socket.io-client, LiveKit hay Excalidraw
@@ -312,7 +313,7 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Step 3–5:** chưa làm (frontend chạy tay, chốt tài liệu, commit).
 - **Kiểm cuối phiên (sau khi sửa `rooms.module.ts`):** `npm test` → `Test Files 5 passed (5)`, `Tests 62 passed (62)`; `npm run build` → exit 0.
 - **Lệch khỏi plan:** sửa code backend trong Task 10 (plan chỉ ghi sửa docs) — `rooms.module.ts` thêm `PassportModule`; sửa script Step 2. Plan: thêm Task 10a, thứ tự `… → 8a → 10 (dừng) → 10a → 10`, ghi chú đầu Task 10.
-- **Commit:** chưa commit (chờ user).
+- **Commit:** `bbff68b fix: RoomsModule import PassportModule để JwtAuthGuard khởi động được`.
 - **Task sau cần biết:**
   - Task 10a: danh sách field + cách sửa + bước kiểm ghi ở plan. Import `Schema` của mongoose trùng tên decorator `Schema` của `@nestjs/mongoose` → đặt alias.
   - Ghi chú Task 5 ở trên ("Mongoose ép về cùng ObjectId … `q.cast()`") đúng với schema ObjectId thật, **không đúng** với code lúc đó (path là Mixed). Code chặn tự kick dùng `new Types.ObjectId(targetUserId).equals(hostId)` nên vẫn đúng; sau 10a nên chạy lại case id viết hoa trong smoke test tay.
@@ -337,8 +338,66 @@ Cập nhật lại các role * đọc file rule/role.md
   - `SchemaTypes.ObjectId` thay cho alias `Schema as MongooseSchema` (cùng hành vi).
   - Thêm sửa `DB_DESIGN.md` (plan không ghi).
   - **Chưa xoá dữ liệu dev** `rooms`/`room_members`/`refresh_tokens`: auto-mode chặn lệnh `deleteMany` → để user tự chạy. Còn 1 room, 2 room_members, 3 refresh_tokens kiểu string (cũ) + dữ liệu smoke test mới (đúng kiểu, phòng đã giải tán). Vì vậy kiểm mongosh làm trên bản ghi phòng mới, không đếm cả collection.
-- **Commit:** chưa commit (chờ user).
+- **Commit:** `ff59027 fix: field tham chiếu trong schema lưu đúng ObjectId`.
 - **Task sau cần biết:**
   - Làm lại **Task 10 từ Step 1**. Đầu phiên kiểm dữ liệu cũ đã xoá chưa (lệnh ở dưới).
   - Schema mới (chat, meeting, whiteboard, AI đã có sẵn schema đã sửa) — field tham chiếu viết `type: SchemaTypes.ObjectId`, không `Types.ObjectId`. Unit test mock model không bắt được lỗi này; chỉ app thật / đọc `schema.path(x).instance` mới thấy.
   - Lệnh xoá dữ liệu dev cho user (PowerShell, gốc repo): `docker exec mongo-dev mongosh online-group-learning --quiet --eval "printjson({ rooms: db.rooms.deleteMany({}).deletedCount, room_members: db.room_members.deleteMany({}).deletedCount, refresh_tokens: db.refresh_tokens.deleteMany({}).deletedCount })"`
+
+
+## 2026-10-01 — Module room: Task 10 (làm lại sau Task 10a) — xong
+
+- **Kiểm Task 10a đầu phiên:** không còn `type: Types.ObjectId` trong `backend/src`; script đồ bỏ đọc `schema.paths` trên `dist/` vừa build → field có `ref`: `{ ObjectId: 23 }`. `npm test` **62/62**, `npm run build` exit 0. Dữ liệu dev cũ **chưa xoá** (còn `rooms.ownerId` string 1, `room_members.userId` string 2, `refresh_tokens.userId` string 3) → xoá theo quyết định user 2026-10-01: `{ rooms: 3, room_members: 4, refresh_tokens: 7 }`; `users` giữ nguyên.
+- **Step 1:** `docker compose up -d --build` → 10 route `/rooms` mapped, `[RedisService] Redis connected`, `Nest application successfully started`, `Backend is running on: http://127.0.0.1:3001`.
+- **Step 2 — smoke test: 9/9 đúng** (script plan đã sửa `$hAuth`/`$mAuth`). Output:
+  ```
+  --- 0. register: h.user.id=6abe7cfeb3c55a2bb208d34a m.user.id=6abe7cfeb3c55a2bb208d34c
+  --- 1. POST /rooms (HOST)          → id 6abe7cfeb3c55a2bb208d34e, joinCode CUMRVWNG, ownerId …d34a, status ACTIVE, memberCount 1, myRole HOST
+  --- 2. POST /rooms/join (cumrvwng)  → memberCount 2, myRole MEMBER
+  --- 3. GET /rooms (MEMBER)          → page=1 limit=20 hasMore=False items=1 (Nhom test, MEMBER, 2)
+  --- 4. GET /rooms/:id/members (HOST) → …d34a Host HOST 15:32:14.716Z / …d34c Member MEMBER 15:32:14.802Z
+  --- 5. POST dissolve (MEMBER)      → 403 {"message":"Bạn không có quyền thực hiện thao tác này"}
+  --- 6. DELETE members/…d34c (HOST) → ok (204)
+  --- 7. GET /rooms/:id (MEMBER)      → 403 {"message":"Bạn không phải thành viên room này"}
+  --- 8. POST dissolve (HOST)        → ok (204)
+  --- 9. GET /rooms/:id (HOST)        → 404 {"message":"Room không tồn tại"}
+  ```
+  mongosh (chỉ đọc) phòng vừa tạo: `ownerId`, `room_members.roomId/userId` đều `ObjectId`; `status DISSOLVED`, có `dissolvedAt`. Cả DB: 0 bản ghi string ở `room_members.userId`, `rooms.ownerId`, `refresh_tokens.userId`.
+- **Kiểm thêm API của Step 3 mục 4 (thêm thành viên):** thêm `"  M…@TEST.com "` → MEMBER; thêm lại → `409 "Người này đã ở trong phòng"`; email chưa đăng ký → `404 "Email này chưa đăng ký tài khoản"`; MEMBER thêm người → `403`; `memberCount` 2.
+- **Dev server frontend cũ hỏng (không phải lỗi code):** tiến trình `next dev` user mở lúc 21:02 (pid 9420) trả **404 cho mọi route lồng 2 cấp** — `/auth/callback`, `/join/[code]`, `/rooms/[roomId]`; manifest dev chỉ có `/dashboard`, `/login`, `/rooms`. File type nó sinh (`.next/dev/types/routes.d.ts`, `validator.ts`) thiếu route + có rác ở cuối (ghi nội dung ngắn hơn đè lên mà không cắt file) → `npm run build` frontend fail TS1109/TS1128 trong `.next/dev/types` (vì `tsconfig` include thư mục này). Không có symlink, ổ J: NTFS. **Tắt + chạy lại `npm run dev` (không xoá cache, user cho phép) → cả 5 route 200**, file type sinh lại đủ 8 route, build frontend exit 0. Chưa rõ vì sao tiến trình cũ bỏ sót route — gặp lại thì tắt `next dev` chạy lại.
+- **Sửa lỗi đăng ký thiếu `displayName` (user báo khi test tay; ngoài phạm vi room, cần để test Step 3):** `RegisterDto` bắt buộc `displayName` 1–20 ký tự từ `a2e5cd4` (2026-09-16), form `/register` (`a0ce5e8`, 2026-09-19) chưa từng có ô này, chỉ gửi `{ email, username, password }` → mọi lần đăng ký qua UI bị 400 `["Display name tối đa 20 ký tự","Display name không được để trống","displayName must be a string"]`. Smoke test không bắt được vì gửi thẳng `displayName`.
+  - **User duyệt hướng sửa frontend** (giữ nguyên API): `app/register/page.tsx` thêm ô "Tên hiển thị" (`required`, `maxLength={20}`); `src/context/auth.context.tsx` `register(email, username, displayName, password)` gửi thêm `displayName`. `register()` trong `src/services/auth.service.ts` không ai import → để nguyên.
+  - Kiểm: đăng ký qua API với body UTF-8 `"Nguyễn Văn Ánh"` → có `accessToken`, Mongo lưu đúng tên có dấu (lần thử đầu ra `Nguy?n Van A` là do Git Bash đổi mã tham số curl, không phải backend). `npm run lint` frontend: đúng 5 lỗi có sẵn (`auth.context.tsx` 35:7, 36:7; 3 warning), không lỗi mới. `npm run build` frontend exit 0.
+  - **User chốt giữ cả `username` và `displayName`** (không gộp): `username` để đăng nhập (`identifier`), unique, chỉ `a-zA-Z0-9_`; `displayName` để hiển thị, có dấu, được trùng.
+- **Step 3 — chạy tay trên trình duyệt:** user test, báo **"các api ok"** (2026-10-01). Không kiểm được **đăng nhập Google** (và `returnUrl` qua Google): `backend/.env` không có `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` → `GoogleStrategy` không đăng ký.
+- **Kiểm cuối:** backend `npm test` → `Test Files 5 passed (5)`, `Tests 62 passed (62)`; backend `npm run build` exit 0; frontend `npm run build` exit 0 (9 route: `○ /`, `/_not-found`, `/auth/callback`, `/dashboard`, `/login`, `/register`, `/rooms`; `ƒ /join/[code]`, `/rooms/[roomId]`).
+- **`docs/api/endpoint.md`:** không đổi — mã trả về chạy thật khớp tài liệu.
+
+### Tổng kết module room (Task 1–10)
+
+| Task | Commit |
+|---|---|
+| 1 bảng quyền + `assertRoomPermission`, bỏ `isBanned` | `60b6944` |
+| 2 tạo phòng | `e633438` |
+| 3 tham gia bằng mã + rate limit Redis | `803fe2f` |
+| 4 xem / sửa phòng, danh sách thành viên | `08bd764` |
+| 5 kick | `6bfbdf9` |
+| 6 rời phòng | `b711a89` |
+| 7 giải tán | `e65d9bc` |
+| 9a thống nhất npm (ADR-021) | `8c1db97` (docs), `c25581a` |
+| 9b + 9 shadcn + frontend room | `774291a` |
+| 8a HOST thêm thành viên bằng email | `316c249` |
+| 10 sửa boot (`PassportModule`) | `bbff68b` |
+| 10a field tham chiếu Mixed → ObjectId | `ff59027` |
+| 10 sửa form đăng ký + progress | chưa commit (chờ user) |
+| 8 import / export thành viên | **HOÃN** — phải làm trước bảo vệ (`[GVHD-verbal]` §13) |
+
+- **Lệch khỏi tài liệu:** frontend ẩn/hiện nút HOST theo `myRole`, không import bảng quyền `shared/` → **lệch §15 tạm thời**; chuyển sang bảng dùng chung khi đưa frontend vào Docker (build context gốc repo).
+- **Sửa ngoài phạm vi room nhưng cần cho luồng join / test:** callback Google đổi sang `window.location.replace` (trước đó AuthProvider không đọc được token sau khi chuyển trang); login đọc `returnUrl`; form đăng ký gửi `displayName` (ở trên).
+- **Để lại task sau:**
+  - Thu hồi socket khi kick / rời phòng — chat gateway (`TODO(chat gateway)` trong `rooms.service.ts`).
+  - Kết thúc meeting ACTIVE khi giải tán — module meeting (`TODO(module meeting)`).
+  - Import / export thành viên (Task 8, hoãn); mời qua email (spec §6).
+  - Kiểm đăng nhập Google + `returnUrl` khi có credentials.
+  - Module nào dùng `JwtAuthGuard` phải import `PassportModule.register({ session: false })`; schema mới viết `type: SchemaTypes.ObjectId`.
+  - `/auth/register` chưa có trong `docs/api/endpoint.md`; `register()` trong `frontend/src/services/auth.service.ts` là code chết (thiếu `displayName`).
