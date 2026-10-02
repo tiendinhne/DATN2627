@@ -96,4 +96,38 @@ export class UsersService {
     }
     return candidate;
   }
+
+  async updateProfile(
+  userId: string,
+  data: { displayName: string },
+): Promise<UserDocument> {
+  const displayName = data.displayName.trim();
+
+  if (!displayName) {
+    throw new InternalServerErrorException(
+      'Tên hiển thị không được để trống',
+    );
+  }
+
+  const updated = await this.userModel
+    .findByIdAndUpdate(
+      userId,
+      {
+        displayName,
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    )
+    .exec();
+
+  if (!updated) {
+    throw new InternalServerErrorException(
+      'Không tìm thấy người dùng',
+    );
+  }
+
+  return updated;
+}
 }
