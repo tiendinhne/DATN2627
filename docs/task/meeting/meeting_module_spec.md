@@ -60,7 +60,7 @@ Ngày chốt: 2026-10-05. Plan: `meeting_module_plan.md` (cùng thư mục, vi�
 | `rtc.node_ip` | `127.0.0.1` | dev trên Docker Desktop Windows — **không** dùng được `network_mode: host` như lúc deploy Linux |
 | `room.auto_create` | `false` | chỉ backend tạo được room — token còn hạn (6h) kết nối lại sau khi meeting kết thúc không sinh room "ma" |
 | `webhook.api_key` | = `LIVEKIT_API_KEY` | khoá dùng để ký webhook |
-| `webhook.urls` | `[http://backend:3001/webhooks/livekit]` | mạng nội bộ compose |
+| `webhook.urls` | `[http://host.docker.internal:3001/webhooks/livekit]` | **một URL cho cả hai chế độ chạy backend** (§3.4) — không dùng `backend:3001` |
 | keys | `LIVEKIT_API_KEY: LIVEKIT_API_SECRET` | cách khai báo một chỗ — chốt ở Task 1 (§3.3) |
 
 - Map port: `7880:7880`, `7881:7881`, `7882:7882/udp`.
@@ -82,17 +82,25 @@ Ngày chốt: 2026-10-05. Plan: `meeting_module_plan.md` (cùng thư mục, vi�
 
 Thiếu / sai → app không khởi động. (Schema env toàn app `config/env.schema.ts` trong `architecture.md` §4 chưa làm — ngoài phạm vi.)
 
+**Kiểm lúc nào:** trong **constructor của adapter** — lúc Nest tạo provider khi app khởi động, **không** ở top-level của file (không chạy lúc import).
+- Adapter export `livekitEnvSchema` và `computeEndedAt` như giá trị thuần → import file không đọc `process.env`, không kiểm gì.
+- Test Zod gọi `livekitEnvSchema.safeParse({...})` với object tự dựng; test service dùng MediaPort giả, không bao giờ tạo adapter.
+- ⇒ `npm test` trên máy không có biến LiveKit vẫn pass. Chỉ `npm run start:dev` / container fail khi thiếu biến — đúng fail-fast mong muốn.
+
 ### 3.3 Task 1 — chạy LiveKit thật trước khi viết code nghiệp vụ
 Task đầu tiên của plan, để lỗi ICE / port lộ ra ngay:
 1. Chọn + ghim phiên bản LiveKit; chốt cách khai báo key/secret **một chỗ** (`backend/.env`) cho cả backend và LiveKit.
 2. Vào thử bằng token tạo tay (2 trình duyệt cùng máy) — thấy / nghe nhau.
-3. Webhook tới backend, verify chữ ký được (raw body — §4.4).
-4. Kiểm webhook `room_finished` có `roomEndReason` và `livekit-server-sdk` đọc ra được (§7.2).
-5. **Đo khoảng thời gian LiveKit gửi lại webhook**: dừng backend, gây 1 event, đọc log LiveKit (thời điểm từng lần thử, thời điểm bỏ). Ghi số vào `progress.md`. Ước tính từ mã nguồn `livekit/protocol/webhook`: `retryablehttp` mặc định (4 lần thử lại, chờ 1→2→4→8 s ≈ 15 s) và `ResourceURLNotifier` bỏ event xếp hàng quá `MaxAge` 30 s — **chưa xác nhận** bản ghim dùng notifier nào, có ghi đè không.
+3. Webhook tới backend, verify chữ ký được (raw body — §4.4) — **cả hai chế độ**: backend container và backend native (`npm run start:dev`), cùng URL `host.docker.internal:3001` (§3.4).
+4. Lỗi của `livekit-server-sdk` khi `listRooms` / `deleteRoom` / `removeParticipant` gặp room / người không tồn tại là gì (mã Twirp / HTTP) → adapter phân biệt "không tìm thấy" với lỗi khác (§4.2). Có tuỳ chọn timeout request không → đặt ngắn (~5 s) nếu có.
+5. Kiểm webhook `room_finished` có `roomEndReason` và `livekit-server-sdk` đọc ra được (§7.2).
+6. **Đo khoảng thời gian LiveKit gửi lại webhook**: dừng backend, gây 1 event, đọc log LiveKit (thời điểm từng lần thử, thời điểm bỏ). Ghi số vào `progress.md`. Ước tính từ mã nguồn `livekit/protocol/webhook`: `retryablehttp` mặc định (4 lần thử lại, chờ 1→2→4→8 s ≈ 15 s) và `ResourceURLNotifier` bỏ event xếp hàng quá `MaxAge` 30 s — **chưa xác nhận** bản ghim dùng notifier nào, có ghi đè không.
 
 ### 3.4 Giới hạn lúc dev
 - `node_ip: 127.0.0.1` → chỉ thử được bằng trình duyệt **trên cùng máy**. Máy khác / điện thoại cần HTTPS (`getUserMedia` chỉ chạy trên secure context) → bước deploy.
 - **Khởi động lại container LiveKit kết thúc mọi meeting đang chạy**: LiveKit 1 node giữ room trong RAM; `auto_create: false` nên client không tự kết nối lại được → HOST bắt đầu meeting mới. `docker compose up -d --build` chỉ tạo lại service có thay đổi → sửa code backend không làm LiveKit khởi động lại.
+- **URL webhook `http://host.docker.internal:3001/webhooks/livekit`:** container backend publish cổng `3001:3001` → URL tới được backend container qua cổng đã publish, **và** tới được backend native (`npm run start:dev` để đặt breakpoint — ADR-016) đang giữ cổng 3001 trên máy. ADR-016 cấm chạy cả hai cùng lúc → cổng 3001 lúc nào cũng chỉ một bên giữ → không phải sửa yaml / khởi động lại LiveKit khi đổi chế độ. Docker Desktop (Windows) cấp sẵn `host.docker.internal` cho container — kiểm ở Task 1.
+- **Khi lên ≥ 2 backend instance (bước gateway / deploy):** `webhook.urls` trỏ vào **NGINX** (load balancer) — LiveKit gửi tới một chỗ, NGINX chuyển cho một instance; mọi side effect nằm trong Mongo / Redis nên instance nào nhận cũng đúng (PROJECT_CONTEXT §7.4). **Không liệt kê URL từng instance**: LiveKit gửi mỗi event tới *mọi* URL trong danh sách → mỗi event bị xử lý N lần chạy đua nhau (vẫn đúng nhờ idempotent nhưng lãng phí và khó đọc log). NGINX phải chuyển nguyên body và header `Authorization` (không nén / biến đổi body) → nếu không, verify chữ ký fail `401`. `host.docker.internal` không có sẵn trên Linux → config deploy là file riêng, chốt ở bước deploy.
 
 ---
 
@@ -129,10 +137,11 @@ export const MEDIA_PORT = Symbol('MEDIA_PORT');
 export interface MediaPort {
   // emptyTimeout = departureTimeout = MEETING_AUTO_END_AFTER_MIN × 60 (adapter tự đọc env)
   createRoom(roomName: string): Promise<void>;
+  // true / false CHỈ khi hỏi được LiveKit. Không hỏi được (timeout, lỗi mạng, 5xx, 401) → NÉM LỖI, không bao giờ trả false
   roomExists(roomName: string): Promise<boolean>;
-  // Không báo lỗi nếu room đã đóng / không tồn tại
+  // Không báo lỗi nếu room đã đóng / không tồn tại; lỗi khác → ném
   closeRoom(roomName: string): Promise<void>;
-  // Không báo lỗi nếu người đó không còn trong room
+  // Không báo lỗi nếu người đó không còn trong room; lỗi khác → ném
   removeParticipant(roomName: string, userId: string): Promise<void>;
   // url = LIVEKIT_PUBLIC_URL — service không bao giờ đọc env LIVEKIT_*
   createJoinToken(input: { roomName: string; userId: string; displayName: string }): Promise<{ token: string; url: string }>;
@@ -151,6 +160,7 @@ export type MediaEvent =
 ```
 
 - `at` lấy từ `event.createdAt` (giờ LiveKit tạo event), **không** lấy giờ xử lý → event gửi lại muộn vẫn ghi đúng giờ.
+- **Phân biệt "không tồn tại" với "không hỏi được LiveKit":** adapter chỉ nuốt đúng lỗi "không tìm thấy" của LiveKit (mã cụ thể kiểm ở Task 1 — §3.3 bước 4); mọi lỗi khác (timeout, lỗi mạng, 5xx, 401) ném nguyên ra ngoài. `roomExists` đọc `listRooms([name])`: rỗng → `false`, có phần tử → `true`, lỗi → ném. Lý do: `roomExists` = false kích hoạt tự hồi phục (§9.1) — nếu một lỗi tạm thời bị đổi thành `false`, meeting **đang chạy thật** sẽ bị chốt ENDED, HOST tạo thêm meeting mới trong khi cuộc gọi cũ còn người, và ai vào thêm cuộc gọi cũ bị webhook đá ra (meeting không còn ACTIVE).
 - Unit test service dùng một `MediaPort` giả — không cần LiveKit thật.
 
 ### 4.3 Grant (câu 7)
@@ -194,6 +204,7 @@ Mọi route REST cần JWT (ADR-008). Response trả `id`, không `_id`. `roomId
 2. Tìm meeting ACTIVE của room. Có →
    - `roomExists(id)` = true → `409` "Phòng đang có buổi học diễn ra".
    - = false → **tự hồi phục** (§9.1): `endMeeting(id, lý do hệ thống, endedAt = now)` rồi làm tiếp.
+   - `roomExists` **ném lỗi** (không hỏi được LiveKit) → `502` "Không kết nối được máy chủ media", **không đổi gì**: không chốt meeting cũ, không tạo meeting mới.
 3. Sinh `id = new Types.ObjectId()` → `createRoom(id)`. Lỗi → `502`, Mongo chưa ghi gì.
 4. `Meeting.create({ _id: id, roomId, title, createdBy })`.
    - Trùng unique partial index (vd bấm 2 lần) → `closeRoom(id)` best-effort → `409`. `closeRoom` cũng lỗi thì room LiveKit trống tự đóng sau `emptyTimeout` — không cần bù thêm.
@@ -210,7 +221,7 @@ Mọi route REST cần JWT (ADR-008). Response trả `id`, không `_id`. `roomId
 1. Không có meeting → `404`.
 2. `assertRoomAccess(userId, meeting.roomId)` → `403` / `404` (phòng đã giải tán).
 3. Meeting ENDED → `409` "Buổi học đã kết thúc".
-4. `roomExists(id)` = false → **tự hồi phục**: `endMeeting(id, lý do hệ thống, endedAt = now)` → `409`.
+4. `roomExists(id)` = false → **tự hồi phục**: `endMeeting(id, lý do hệ thống, endedAt = now)` → `409`. `roomExists` ném lỗi → `502`, không chốt gì (LiveKit không trả lời thì đằng nào cũng không vào được call).
 5. `createJoinToken({ roomName: id, userId, displayName })` — `displayName` lấy từ `req.user` (JwtStrategy trả document User). Lỗi → `502`.
 6. `200` → `{ token, livekitUrl, myRole, meeting }`. Tải lại trang thì gọi lại, nhận token mới (`webrtc.md` §2: cấp lại mỗi lần join).
 
@@ -319,7 +330,7 @@ Dùng chung cho 4 đường: HOST kết thúc, giải tán phòng, `room_finishe
 
 ## 9. Các đường tự hồi phục
 
-1. **Mất `room_finished` (meeting kẹt ACTIVE):** khi bắt đầu meeting mới hoặc vào meeting, nếu Mongo còn meeting ACTIVE mà `roomExists` = false → chốt ENDED (lý do hệ thống) rồi làm tiếp (§5.2). Không có đường này thì unique partial index "1 meeting ACTIVE / room" khiến HOST **không bắt đầu được meeting mới** — dễ gặp khi dev vì watch mode khởi động lại backend liên tục.
+1. **Mất `room_finished` (meeting kẹt ACTIVE):** khi bắt đầu meeting mới hoặc vào meeting, nếu Mongo còn meeting ACTIVE mà `roomExists` = false → chốt ENDED (lý do hệ thống) rồi làm tiếp (§5.2). Chỉ chạy khi **hỏi được** LiveKit và LiveKit trả lời "không có room"; không hỏi được → `502`, không chốt gì (§4.2). Không có đường này thì unique partial index "1 meeting ACTIVE / room" khiến HOST **không bắt đầu được meeting mới** — dễ gặp khi dev vì watch mode khởi động lại backend liên tục.
 2. **`finalize` dở (Mongo lỗi giữa chừng):** `endMeeting` gọi lại (HOST bấm lại `/end`, hoặc `room_finished` tới) → update có điều kiện không khớp nhưng `finalize` vẫn chạy lại, tính lại từ dữ liệu.
 3. **`participant_joined` chạy song song với HOST kết thúc:** joined đọc meeting thấy ACTIVE → HOST đặt ENDED + `finalize` → joined ghi session mới + `SADD` + `$max` → HOST `closeRoom` → LiveKit ngắt **mọi người kể cả người vừa vào**, gửi `room_finished` (`API_DELETE`) → `endMeeting` không ghi đè `endedAt` nhưng `finalize` chạy lại: đóng session vừa mở (`leftAt = endedAt`, thời lượng chặn ≥ 0), đếm lại `totalParticipants` (người này có kết nối thật nên được tính), `DEL presence`. `participant_left` của người đó tới sau → session đã đóng → không làm gì. `closeRoom` lỗi và HOST không bấm lại → người đó tự thoát → room trống → `room_finished` (`IDLE_TIMEOUT`) → dọn y như trên. Lưới cuối: TTL 24h của `presence:{meetingId}`.
 4. **Giải tán khi Mongo / LiveKit lỗi:** hội tụ về `ROOM_DISSOLVED` qua `room_finished` (§8).
@@ -420,14 +431,15 @@ Mã nguồn `components-js` `useLiveKitRoom.ts`:
 - **`meetings.service.spec.ts`** (MediaPort giả):
   - start: không phải HOST → `403`; có meeting ACTIVE + `roomExists` true → `409`; ACTIVE + `roomExists` false → chốt meeting cũ rồi tạo mới; thứ tự `createRoom` trước `create`; `createRoom` lỗi → `502`, không gọi `create`; trùng khi `create` → `closeRoom` + `409`; `$inc meetingCount`; response có `id`, không `_id`.
   - list: thành viên; `hasMore`.
-  - join: meeting ENDED → `409`; `roomExists` false → chốt + `409`; thành công → `createJoinToken` đúng `roomName / userId / displayName`, trả `myRole`.
+  - start: `roomExists` **ném lỗi** → `502`, không gọi `endMeeting`, không gọi `createRoom` / `create`.
+  - join: meeting ENDED → `409`; `roomExists` false → chốt + `409`; `roomExists` **ném lỗi** → `502`, không gọi `endMeeting`; thành công → `createJoinToken` đúng `roomName / userId / displayName`, trả `myRole`.
   - end: không phải HOST → `403`; idempotent (đã ENDED vẫn `closeRoom`, không ghi đè `endedAt`); `closeRoom` lỗi → `502`.
   - `removeFromActiveMeeting` / `endActiveMeetingOfRoom`: chạy xong bình thường khi `removeParticipant` / `closeRoom` / Mongo ném lỗi; (a) lỗi vẫn chạy (b).
   - webhook joined: không còn thành viên → `removeParticipant`; meeting ENDED → `removeParticipant`; trùng `sid` → không `$push` lần 2; `$max peak`.
   - webhook left / aborted: đóng đúng session theo `sid`; còn session mở → không `SREM`.
   - webhook room_finished: phòng DISSOLVED → `ROOM_DISSOLVED`, còn lại `AUTO_EMPTY`; `finalize` chạy lại ra cùng kết quả; thời lượng chặn ≥ 0.
   - điều kiện biết trước (roomName / identity không phải ObjectId, không có meeting, event `ignored`) → không ném lỗi; Mongo ném lỗi → lỗi bay lên.
-- **Adapter:** `computeEndedAt` (IDLE_TIMEOUT trừ timeout; lý do khác giữ nguyên); schema Zod báo lỗi khi thiếu / sai biến.
+- **Adapter:** `computeEndedAt` (IDLE_TIMEOUT trừ timeout; lý do khác giữ nguyên); `livekitEnvSchema.safeParse(...)` báo lỗi khi thiếu / sai biến (object tự dựng, không đọc `process.env` — §3.2). Cả bộ test phải pass trên máy **không có** biến LiveKit.
 
 ### 12.2 Frontend
 `npm run build` + `npm run lint` — không phát sinh lỗi mới (lint đang có sẵn 2 lỗi ở `auth.context.tsx` 35:7, 36:7 + 3 warning — progress Task 10).
