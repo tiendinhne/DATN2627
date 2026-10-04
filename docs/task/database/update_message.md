@@ -1,0 +1,1 @@
+Schema hiện tại được thiết kế theo kiểu "chat thuộc về meeting". Rule của tôi là "chat thuộc về room, meeting chỉ là thẻ tag"

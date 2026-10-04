@@ -401,3 +401,20 @@ Cập nhật lại các role * đọc file rule/role.md
   - Kiểm đăng nhập Google + `returnUrl` khi có credentials.
   - Module nào dùng `JwtAuthGuard` phải import `PassportModule.register({ session: false })`; schema mới viết `type: SchemaTypes.ObjectId`.
   - `/auth/register` chưa có trong `docs/api/endpoint.md`; `register()` trong `frontend/src/services/auth.service.ts` là code chết (thiếu `displayName`).
+
+## 2026-10-05 — Module meeting: Task 0 (thiết kế + spec)
+
+- **Xong:** spec `docs/task/meeting/meeting_module_spec.md` — 10 câu hỏi đã chốt, hạ tầng LiveKit dev, cấu trúc port/adapter (`MediaPort`), 4 REST + webhook, xử lý webhook idempotent theo `sid`, `endMeeting`/`finalize`, 5 đường tự hồi phục, tích hợp kick/rời/giải tán, frontend (trang room + trang meeting), test, 11 kịch bản kiểm với LiveKit thật, giới hạn, danh sách tài liệu cần sửa.
+- **Commit:** `docs: spec module meeting + LiveKit, đưa docs/task vào git` (kèm bỏ dòng `docs/task` khỏi `.gitignore`, commit toàn bộ `docs/task/` — user chốt 2026-10-05).
+- **Quyết định (user chốt 2026-10-04 / 05):**
+  - Bỏ `ACTING_HOST` khỏi `architecture.md` (trái ADR-020).
+  - Kick / rời phòng → `removeParticipant` + webhook `participant_joined` kiểm membership (LiveKit tự host không thu hồi token).
+  - TURN để bước deploy; audio-only để bước benchmark.
+  - 4 dependency: `livekit-server-sdk`; `livekit-client`, `@livekit/components-react`, `@livekit/components-styles`.
+  - Tự kết thúc meeting bằng `emptyTimeout`/`departureTimeout` của LiveKit + `room_finished` (ADR-022 sẽ viết, `[phát sinh kỹ thuật]`, lệch PROJECT_CONTEXT §7.5).
+  - ADR ghi vào `docs/decisions.md`; sửa dòng 3 bảng nguồn trong `CLAUDE.md` (đang trỏ `docs/adr/` không tồn tại).
+  - Grant: một hằng số `MEMBER_GRANT` (không bảng theo role); peak ghi Mongo `$max`, bỏ key `presence:peak`.
+- **Đã đối chiếu mã nguồn LiveKit (không đoán):** `livekit/livekit` `pkg/telemetry/events.go` (joined gửi khi `ParticipantActive`; left **hoặc** connection_aborted theo `IsConnected()`); `livekit/protocol` (`RoomEndReason`, `room_end_reason` = 13; webhook xếp hàng theo resource, `MaxAge` 30 s); `components-js` `useLiveKitRoom.ts` (listener gỡ trước `disconnect` khi unmount; effect kết nối gọi lại `room.connect` mỗi khi deps đổi); `client-sdk-js` `Room.connect` (chỉ chặn `Connected` + `connectFuture`, không chặn `Reconnecting`), `defaults.ts` (camera mặc định h720, simulcast bật).
+- **Lệch khỏi tài liệu (sửa trong plan, spec §15):** PROJECT_CONTEXT §7.5, §15; `architecture.md` §4–§6; `webrtc.md` §2–§5; DB_DESIGN dòng 46, C.6, dòng 254/506, Phần E; `CLAUDE.md` dòng 3.
+- **Phát hiện phụ:** `CLAUDE.md` nhắc `/check` nhưng repo không có `.claude/commands/` → kiểm bằng `npm test` / `build` / `lint` như các task trước.
+- **Tiếp theo:** user duyệt spec → viết `docs/task/meeting/meeting_module_plan.md`. Task 1 của plan = chạy LiveKit thật (ghim version, key một chỗ, webhook + raw body, kiểm `roomEndReason`, đo khoảng gửi lại webhook). Chưa bắt đầu code.
