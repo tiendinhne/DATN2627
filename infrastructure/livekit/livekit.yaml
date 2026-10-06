@@ -1,0 +1,16 @@
+# LiveKit dev (Docker Compose) — spec meeting §3.1. Config lúc deploy là file riêng (bước deploy).
+port: 7880
+rtc:
+  tcp_port: 7881          # ICE/TCP fallback
+  udp_port: 7882          # single-port UDP mux (PROJECT_CONTEXT §5)
+  use_external_ip: false
+  node_ip: 127.0.0.1      # dev: trình duyệt cùng máy. Docker Desktop Windows không có network_mode: host
+room:
+  auto_create: false      # chỉ backend tạo room → token cũ (còn hạn 6h) không sinh room "ma"
+webhook:
+  api_key: devkey         # TÊN key dùng ký webhook (không bí mật) — phải trùng LIVEKIT_API_KEY trong backend/.env
+  urls:
+    # Một URL cho cả backend container (cổng 3001 đã publish) lẫn backend native (spec §3.4)
+    - http://host.docker.internal:3001/webhooks/livekit
+logging:
+  level: info

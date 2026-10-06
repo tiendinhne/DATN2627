@@ -417,4 +417,29 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Đã đối chiếu mã nguồn LiveKit (không đoán):** `livekit/livekit` `pkg/telemetry/events.go` (joined gửi khi `ParticipantActive`; left **hoặc** connection_aborted theo `IsConnected()`); `livekit/protocol` (`RoomEndReason`, `room_end_reason` = 13; webhook xếp hàng theo resource, `MaxAge` 30 s); `components-js` `useLiveKitRoom.ts` (listener gỡ trước `disconnect` khi unmount; effect kết nối gọi lại `room.connect` mỗi khi deps đổi); `client-sdk-js` `Room.connect` (chỉ chặn `Connected` + `connectFuture`, không chặn `Reconnecting`), `defaults.ts` (camera mặc định h720, simulcast bật).
 - **Lệch khỏi tài liệu (sửa trong plan, spec §15):** PROJECT_CONTEXT §7.5, §15; `architecture.md` §4–§6; `webrtc.md` §2–§5; DB_DESIGN dòng 46, C.6, dòng 254/506, Phần E; `CLAUDE.md` dòng 3.
 - **Phát hiện phụ:** `CLAUDE.md` nhắc `/check` nhưng repo không có `.claude/commands/` → kiểm bằng `npm test` / `build` / `lint` như các task trước.
-- **Tiếp theo:** user duyệt spec → viết `docs/task/meeting/meeting_module_plan.md`. Task 1 của plan = chạy LiveKit thật (ghim version, key một chỗ, webhook + raw body, kiểm `roomEndReason`, đo khoảng gửi lại webhook). Chưa bắt đầu code.
+- **Spec sửa theo review (commit `8ce2d14`, user duyệt):** `roomExists` lỗi → 502, không chốt meeting; Zod kiểm env trong constructor adapter (`npm test` không cần biến LiveKit); `webhook.urls` = `host.docker.internal:3001` cho cả backend container lẫn native.
+- **Plan:** `docs/task/meeting/meeting_module_plan.md` — Task 1–10 (1 hạ tầng + spike LiveKit thật, 2 tài liệu, 3 adapter, 4–7 backend, 8–9 frontend, 10 chạy thật 11 kịch bản), mỗi session một task, thứ tự 1→10. Số test mong đợi: 62 → 75 → 90 → 101 → 113 → 128. API `livekit-server-sdk` / `@livekit/components-react` trong plan đã đối chiếu docs (context7); chỗ chưa chắc (mã lỗi "không tìm thấy", tuỳ chọn timeout, `roomEndReason`) để Task 1 đo rồi sửa plan. Chưa bắt đầu code.
+
+## 2026-10-06 — Module meeting: Task 1 (hạ tầng LiveKit + spike)
+
+- **Xong:** service `livekit` trong `docker-compose.yml`; `infrastructure/livekit/livekit.yaml`; `LIVEKIT_URL` của backend → `http://livekit:7880`; 6 biến LiveKit trong `backend/.env.example`; `backend/.env` thêm `LIVEKIT_PUBLIC_URL`, đổi `LIVEKIT_URL` sang `http://`; cài `livekit-server-sdk` `^2.19.1`. Chạy thật LiveKit + 2 trình duyệt + webhook (spike đã xoá, không commit).
+- **Test:** `npm test` 62 passed (không đổi, task này không thêm test); `npm run build` backend OK. Backend container chạy lại, log `Nest application successfully started`.
+- **Commit:** chưa (chờ user cho phép).
+- **Phiên bản ghim:** `livekit/livekit-server:v1.13.7` (tag mới nhất lúc đo; image có shell, binary `/livekit-server`).
+- **Khai báo key một chỗ: cách A** — `entrypoint` của service ghép `LIVEKIT_KEYS="$LIVEKIT_API_KEY: $LIVEKIT_API_SECRET"` từ `env_file: backend/.env`. Tên key trong `livekit.yaml` (`webhook.api_key: devkey`) phải trùng `LIVEKIT_API_KEY`.
+- **Đo được (spec §3.3):**
+  - Hai trình duyệt (Chrome, camera giả) vào cùng room: cả hai `TrackSubscribed audio + video` từ người kia; webhook có `participant_joined` kèm `sid` (`PA_…`) cho từng người. ICE chạy ngay với `node_ip: 127.0.0.1`, không phải sửa gì.
+  - Lỗi "không tìm thấy" của SDK: `ServerError` với `code: 'not_found'`, `status: 404` (`deleteRoom` room lạ, `removeParticipant` room lạ / người lạ). `listRooms(['room lạ'])` **không lỗi**, trả `[]`. LiveKit không chạy: `TypeError: fetch failed` (không có `code`/`status`) → `roomExists` ném lỗi, đúng spec §4.2. **`isNotFound` ở Task 3 (`code === 'not_found'` / `status === 404`) đúng, không phải sửa plan.**
+  - Timeout request: có — `new RoomServiceClient(host, key, secret, { requestTimeout })`, **đơn vị giây** → Task 3 đặt `requestTimeout: 5`.
+  - `roomEndReason` có trong webhook và SDK đọc ra: room trống → `room_finished` đúng 60 s sau `participant_left` cuối, `roomEndReason=2` (`ROOM_END_IDLE_TIMEOUT`); `deleteRoom` khi có người → `participant_left` rồi `room_finished` `roomEndReason=1` (`API_DELETE`), lý do đóng participant `SERVICE_REQUEST_DELETE_ROOM`. `room_started` có `roomEndReason=0`.
+  - Chữ ký sai (`Authorization: abc`) → `WebhookReceiver.receive` ném `Invalid Compact JWS` → 401.
+  - **Khoảng gửi lại webhook** (backend luôn trả 500): **5 lần thử trong ~15 s** (t = 0, +1, +3, +7, +15 s), rồi `giving up after 5 attempt(s)`. LiveKit dùng `webhook/resource_url_notifier.go` (ResourceURLNotifier) — khớp ước tính trong spec §3.3.6. Cửa sổ tự hồi phục thật sự chỉ ~15 s: webhook lỡ khi backend sập lâu hơn thế **không được gửi lại** → phải dựa vào đường tự hồi phục (spec §9).
+- **Lệch khỏi plan:**
+  - Trang `lk-test.html` thêm tự kết nối khi URL có `#<token>`, và tôi mở Chrome bằng `--use-fake-ui-for-media-stream` để chạy không cần thao tác tay (đồ bỏ).
+  - Step 12 `requestTimeout` tìm thấy trong `ClientOptions.d.ts` (không cần sửa plan).
+  - `backend/.env` thực tế chưa có `LIVEKIT_PUBLIC_URL` và `LIVEKIT_URL` là `ws://` → đã sửa theo Step 5. Secret dài 32 ký tự (đạt ≥ 32).
+- **Task sau cần biết:**
+  - Webhook tới `host.docker.internal:3001` đã kiểm với tiến trình **chạy trên host** (spike). Đường tới backend **container** (cổng publish 3001) chưa kiểm bằng webhook thật vì endpoint chưa có (hiện 404) → Task 6 Step 7 kiểm cả hai chế độ.
+  - Khởi động lại container LiveKit làm mất room trong RAM (spec §3.4).
+  - Frontend `lk-test.html` ở Task 6/10: tạo lại từ Phụ lục A (đã xoá).
+  - `npm install` báo 1 vulnerability mức high (chưa xem, chưa chạy `npm audit fix`).
