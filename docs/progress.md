@@ -424,7 +424,7 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Xong:** service `livekit` trong `docker-compose.yml`; `infrastructure/livekit/livekit.yaml`; `LIVEKIT_URL` của backend → `http://livekit:7880`; 6 biến LiveKit trong `backend/.env.example`; `backend/.env` thêm `LIVEKIT_PUBLIC_URL`, đổi `LIVEKIT_URL` sang `http://`; cài `livekit-server-sdk` `^2.19.1`. Chạy thật LiveKit + 2 trình duyệt + webhook (spike đã xoá, không commit).
 - **Test:** `npm test` 62 passed (không đổi, task này không thêm test); `npm run build` backend OK. Backend container chạy lại, log `Nest application successfully started`.
-- **Commit:** chưa (chờ user cho phép).
+- **Commit:** `6353ee4` `chore: LiveKit dev trong Docker Compose, cài livekit-server-sdk`.
 - **Phiên bản ghim:** `livekit/livekit-server:v1.13.7` (tag mới nhất lúc đo; image có shell, binary `/livekit-server`).
 - **Khai báo key một chỗ: cách A** — `entrypoint` của service ghép `LIVEKIT_KEYS="$LIVEKIT_API_KEY: $LIVEKIT_API_SECRET"` từ `env_file: backend/.env`. Tên key trong `livekit.yaml` (`webhook.api_key: devkey`) phải trùng `LIVEKIT_API_KEY`.
 - **Đo được (spec §3.3):**
@@ -443,3 +443,39 @@ Cập nhật lại các role * đọc file rule/role.md
   - Khởi động lại container LiveKit làm mất room trong RAM (spec §3.4).
   - Frontend `lk-test.html` ở Task 6/10: tạo lại từ Phụ lục A (đã xoá).
   - `npm install` báo 1 vulnerability mức high (chưa xem, chưa chạy `npm audit fix`).
+
+## 2026-10-06 — Module meeting: Task 2 (sửa tài liệu thiết kế theo spec §15)
+
+- **Xong (chỉ tài liệu, không code):**
+  - `CLAUDE.md` dòng 3 bảng nguồn: `docs/adr/*.md` → `docs/decisions.md` (spec câu 6).
+  - `docs/decisions.md`: thêm **ADR-022** — tự kết thúc meeting bằng `emptyTimeout`/`departureTimeout` của LiveKit + webhook `room_finished`, `[phát sinh kỹ thuật]`, loại phương án cron + lock (§7.5).
+  - `architecture.md`: §4 tên file module `meetings`; §5 `participant.left` hết "check rỗng → auto-end", thêm dòng `room.finished`, ghi chú `room.dissolved` / kick / rời hiện gọi thẳng `MeetingsService` `[phát sinh kỹ thuật]`; §6 lifecycle trỏ ADR-022, **xoá dòng `ACTING_HOST`**.
+  - `PROJECT_CONTEXT.md`: §7.5 auto-end không dùng job (ADR-022), giữ quy tắc lock cho job khác; §15 thêm dòng `MEMBER_GRANT`.
+  - `webrtc.md`: §2 token flow (`name`, `MEMBER_GRANT`, `LIVEKIT_TOKEN_TTL_HOURS`, response `{ token, livekitUrl, myRole, meeting }`); §3 webhook flow (raw body, 401, idempotent theo `sid`, peak `$max` Mongo, realtime để bước gateway, thêm `participant_connection_aborted`); §4 ghi chú dev Docker Desktop Windows.
+- **Kiểm Step 6:** `Select-String ... -Pattern 'ACTING_HOST|toLiveKitGrant|docs/adr|check rỗng'` → không in gì.
+- **Test:** `npm test` 62 passed (không đổi); `npm run build` backend OK. Line ending CRLF của các file giữ nguyên, `git diff --check` sạch.
+- **Commit:** chưa (chờ user cho phép).
+- **Lệch khỏi plan:**
+  - PROJECT_CONTEXT §7.5: ngoài câu plan thay, đổi luôn ví dụ `SET lock:auto-end-meetings ...` → `SET lock:<tên-job> ...` — để nguyên thì mâu thuẫn với câu "auto-end không dùng job" ngay phía trên.
+  - ADR-022 không thêm câu "endedAt dư departureTimeout" vì Task 1 đã xác nhận `roomEndReason` có trong webhook.
+  - Sửa dòng **Commit** của mục Task 1 thành `6353ee4` (lúc ghi còn "chưa").
+- **Task sau cần biết:**
+  - Còn ghi chú cũ chưa sửa, đúng lịch plan: `DB_DESIGN.md` dòng 254, 506 (index "job auto-end"), dòng 533 (`presence:peak`) → Task 6; `webrtc.md` §5 (đánh dấu đã làm / chưa làm) → Task 10; `webrtc.md` dòng 3 vẫn ghi "[PLANNED] — chưa có code".
+  - `architecture.md` §4 vẫn liệt kê `DistributedLockService` trong `common/redis/` — không đụng (lock vẫn giữ cho job khác, spec không yêu cầu sửa).
+
+## 2026-10-06 — Module meeting: Task 3 (`MediaPort` + adapter LiveKit)
+
+- **Làm cùng session với Task 2** (user yêu cầu, Task 2 chỉ là tài liệu). Lúc bắt đầu Task 3 git status chưa sạch: còn thay đổi tài liệu của Task 2 chưa commit; Task 3 chỉ tạo file mới trong `backend/src/modules/meetings/` nên không đụng nhau.
+- **Xong:**
+  - `backend/src/modules/meetings/ports/media.port.ts`: `MEDIA_PORT`, `interface MediaPort` (6 hàm), `type MediaEvent` (4 dạng).
+  - `backend/src/modules/meetings/adapters/livekit-media.adapter.ts`: `LivekitMediaAdapter` (Zod kiểm env trong constructor), hàm thuần `livekitEnvSchema`, `computeEndedAt`, `isNotFound`, `toMediaEvent`; hằng `MEMBER_GRANT`.
+  - `livekit-media.adapter.spec.ts`: 13 test (env 4, `computeEndedAt` 3, `isNotFound` 2, `toMediaEvent` 4). Viết test trước, chạy thấy fail (chưa có file adapter), rồi mới viết code.
+  - Chưa đăng ký vào `MeetingsModule` (Task 4) → app khởi động như cũ.
+- **Test:** adapter spec 13 passed; `npm test` **75 passed** (62 → 75); `npm run build` exit 0. Thêm (ngoài plan): `npx tsc --noEmit -p tsconfig.json` không lỗi nào trong `modules/meetings` (chỉ còn lỗi có sẵn `test/app.e2e-spec.ts` thiếu `supertest/types`); `npx oxlint src/modules/meetings` exit 0.
+- **Commit:** chưa (chờ user cho phép).
+- **Đối chiếu `.d.ts` của SDK đã cài (`livekit-server-sdk` 2.19.1, zod 3.25.76):** `CreateOptions` có `departureTimeout` (không phải nâng SDK); `ClientOptions.requestTimeout` đơn vị giây; `WebhookEvent.createdAt: bigint`, `roomEndReason: RoomEndReason` (`API_DELETE = 1`, `IDLE_TIMEOUT = 2`); `WebhookEvent` gán được vào `LkWebhookEvent` không cần ép kiểu.
+- **Lệch khỏi plan:** `RoomServiceClient` truyền tham số thứ 4 `{ requestTimeout: 5 }` qua hằng `REQUEST_TIMEOUT_SEC` — plan ghi "nếu Task 1 thấy có tuỳ chọn timeout thì thêm", Task 1 đã thấy. Comment `isNotFound` ghi hình dạng lỗi đo ở Task 1. Không đổi interface.
+- **Task sau cần biết:**
+  - Task 4 đăng ký `{ provide: MEDIA_PORT, useClass: LivekitMediaAdapter }`; service inject bằng `@Inject(MEDIA_PORT)` + `import type { MediaPort }` (Global Constraints, `isolatedModules`).
+  - Khi đăng ký adapter, container backend **phải có đủ 6 biến LiveKit** (`backend/.env` đã có từ Task 1) — thiếu thì app không khởi động (đúng fail-fast).
+  - `toMediaEvent` không kiểm `roomName` / `identity` có phải ObjectId — việc đó ở service (Task 6, spec §6.2).

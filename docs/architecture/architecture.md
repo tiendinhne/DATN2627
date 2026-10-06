@@ -60,7 +60,7 @@ backend/src/
     ├── users/           [layered]    schemas
     ├── rooms/           [layered]    dto, schemas
     ├── room-members/    [layered]    dto, schemas
-    ├── meetings/        [hexagonal]  + ports/media-server, adapters/livekit, webhook controller
+    ├── meetings/        [hexagonal]  + ports/media.port.ts, adapters/livekit-media.adapter.ts, media-webhook.controller.ts
     ├── whiteboard/      [hexagonal]  + domain/lww-merge, ports/state, adapters/redis
     ├── chat/            [layered]    dto, schemas
     ├── ai-assistant/    [hexagonal]  + domain/dsl, ports/ai-provider, adapters/{gemini,elk}
@@ -95,11 +95,14 @@ Domain event đổi tự do. Realtime event là contract với client, đổi ph
 | `meeting.started` | meetings | whiteboard (tạo/clone board) |
 | `meeting.ended` | meetings | whiteboard (persist), chat (chốt count), participant (chốt duration), realtime |
 | `participant.joined` | meetings (webhook) | meetings, realtime |
-| `participant.left` | meetings (webhook) | meetings (check rỗng → auto-end), realtime |
+| `participant.left` | meetings (webhook) | meetings (đóng session, presence), realtime |
+| `room.finished` | meetings (webhook) | meetings (chốt `AUTO_EMPTY` / `ROOM_DISSOLVED` — ADR-022) |
 | `whiteboard.ops-applied` | whiteboard | realtime, persistence scheduler |
 | `chat.message-sent` | chat | realtime |
 | `ai.diagram-generated` | ai-assistant | whiteboard |
 | `member.imported` | import-export | rooms (memberCount), realtime |
+
+Hiện `room.dissolved` và kick / rời phòng → meetings **gọi thẳng** `MeetingsService` (`endActiveMeetingOfRoom`, `removeFromActiveMeeting`), chưa dùng `EventEmitter2` (chưa cài, mới có 1 nơi nghe) `[phát sinh kỹ thuật]` — spec meeting §8.
 
 Listener phải **idempotent** và **không được ném lỗi làm hỏng luồng chính**: persist whiteboard thất bại không được làm `endMeeting` thất bại theo.
 
@@ -118,7 +121,6 @@ User
 
 **Lifecycle:**
 - Room: `ACTIVE → DISSOLVED` (chỉ HOST, soft delete)
-- Meeting: `ACTIVE → ENDED` (HOST chủ động, hoặc auto khi 0 participant 3 phút)
+- Meeting: `ACTIVE → ENDED` (HOST chủ động, giải tán phòng, hoặc tự kết thúc khi room LiveKit trống 3 phút — ADR-022)
 - Một room tối đa 1 meeting ACTIVE (enforce bằng unique partial index)
-- Host disconnect: grace 120s  participant join sớm nhất thành `ACTING_HOST`; host gốc quay lại lấy lại quyền
 - Chỉ HOST được tạo và kết thúc meeting

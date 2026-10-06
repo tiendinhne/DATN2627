@@ -10,13 +10,14 @@ LiveKit: media transport, SFU forwarding, simulcast/dynacast, congestion control
 
 ```
 Client → POST /meetings/:id/join  (JWT)
-       → Backend: check membership + meeting ACTIVE + resolve role
+       → Backend: check membership + meeting ACTIVE + room LiveKit còn (không còn → tự hồi phục, 409)
        → sinh LiveKit AccessToken:
             identity   = userId
+            name       = displayName
             room       = meeting._id.toString()
-            grant      = toLiveKitGrant(role)   // HOST và MEMBER đều được publish
-            TTL        = 6 giờ
-       → trả { token, livekitUrl }
+            grant      = MEMBER_GRANT          // mọi thành viên cùng quyền: publish + subscribe, canPublishData: false (P2)
+            TTL        = LIVEKIT_TOKEN_TTL_HOURS (6 giờ)
+       → trả { token, livekitUrl, myRole, meeting }
 Client → connect LiveKit bằng token
 ```
 
@@ -27,15 +28,15 @@ Client → connect LiveKit bằng token
 ## 3. Webhook flow [CONFIRMED]
 
 ```
-LiveKit → POST /webhooks/livekit  (có chữ ký)
-        → VERIFY CHỮ KÝ (bắt buộc)
+LiveKit → POST /webhooks/livekit  (có chữ ký, Content-Type application/webhook+json, cần raw body)
+        → VERIFY CHỮ KÝ (bắt buộc) — sai → 401
         → parse room name → meetingId
-        → cập nhật MeetingParticipant (Mongo)
-        → cập nhật presence + peak (Redis)
-        → emit domain event → realtime broadcast qua Redis adapter
+        → cập nhật MeetingParticipant (Mongo) — idempotent theo participant.sid
+        → cập nhật presence (Redis) + peak ($max trong Mongo)
+        → (bước Realtime gateway) phát event realtime qua Redis adapter
 ```
 
-Event quan tâm: `participant_joined`, `participant_left`, `room_finished`.
+Event quan tâm: `participant_joined`, `participant_left`, `participant_connection_aborted` (xử lý như left), `room_finished` (chốt meeting — ADR-022). Chi tiết mã trả về / chống trùng: spec meeting §6.
 
 **Không verify chữ ký = ai cũng giả được webhook để đá người khác khỏi meeting.**
 
@@ -54,6 +55,7 @@ Event quan tâm: `participant_joined`, `participant_left`, `room_finished`.
 - **Single-port UDP mode** (`rtc.udp_port: 7882`), không dùng dải 50000–60000 vì Docker map 10.000 port cực chậm.
 - **TURN bắt buộc.** Không có TURN thì mạng trường / 4G / NAT đối xứng sẽ fail và buổi bảo vệ có thể hỏng. Dùng embedded TURN của LiveKit, TLS trên 5349 (không dùng 443 vì trùng NGINX).
 - **`network_mode: host`** cho container LiveKit trên Linux, tránh NAT hai lớp (Docker bridge + VPS NAT) làm hỏng ICE candidate. Nếu buộc dùng bridge thì set `rtc.use_external_ip: true`.
+- **Dev (Docker Desktop Windows):** không có `network_mode: host` → map cổng 7880 / 7881 / 7882udp + `rtc.node_ip: 127.0.0.1`; chỉ thử được bằng trình duyệt trên cùng máy (spec meeting §3).
 
 ## 5. Bandwidth — ràng buộc quyết định mục tiêu [CONFIRMED]
 
