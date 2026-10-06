@@ -2334,8 +2334,10 @@ Thay dòng `const app = await NestFactory.create(AppModule);` bằng:
   // rawBody: giữ body gốc để verify chữ ký webhook LiveKit (spec §4.4)
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   // LiveKit gửi webhook với Content-Type application/webhook+json — parser JSON mặc định bỏ qua loại này
-  app.useBodyParser('json', { type: 'application/webhook+json' });
+  app.useBodyParser('json', { type: ['application/json', 'application/webhook+json'] });
 ```
+
+> **[Sửa khi làm Task 6 — 2026-10-06]** Bản đầu của plan ghi `type: 'application/webhook+json'` → **sai**: `useBodyParser` gọi trước `init()` đăng ký middleware tên `jsonParser`, `ExpressAdapter.registerParserMiddleware` (Nest 12.0.3) thấy tên đó thì **bỏ qua parser JSON mặc định** → mọi route REST mất body (đo: `POST /auth/register` hợp lệ trả `400`). Unit test + build không bắt được. Phải liệt kê cả `application/json`. Chi tiết: `docs/progress.md` mục Task 6.
 
 - [ ] **Step 7: Toàn bộ test + build + chạy thật với LiveKit**
 

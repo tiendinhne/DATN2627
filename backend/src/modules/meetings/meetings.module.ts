@@ -6,6 +6,7 @@ import { MeetingParticipant, MeetingParticipantSchema } from './schemas/meeting-
 import { Room, RoomSchema } from '../rooms/schemas/room.schema.js';
 import { RoomMembersModule } from '../room-members/room-members.module.js';
 import { MeetingsController } from './meetings.controller.js';
+import { MediaWebhookController } from './media-webhook.controller.js';
 import { MeetingsService } from './meetings.service.js';
 import { MEDIA_PORT } from './ports/media.port.js';
 import { LivekitMediaAdapter } from './adapters/livekit-media.adapter.js';
@@ -23,7 +24,7 @@ import { LivekitMediaAdapter } from './adapters/livekit-media.adapter.js';
     // JwtAuthGuard cần AuthModuleOptions trong module dùng nó (bài học Task 10 module room)
     PassportModule.register({ session: false }),
   ],
-  controllers: [MeetingsController],
+  controllers: [MeetingsController, MediaWebhookController],
   // Port "media" cài bằng LiveKit — đổi vendor chỉ đổi useClass (ràng buộc 9)
   providers: [MeetingsService, { provide: MEDIA_PORT, useClass: LivekitMediaAdapter }],
   // RoomsService gọi khi kick / rời / giải tán (Task 7)

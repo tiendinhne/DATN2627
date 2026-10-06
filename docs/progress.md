@@ -501,7 +501,7 @@ Cập nhật lại các role * đọc file rule/role.md
   6ac504bdb7810c05010c6e85 Buoi 1 ACTIVE
   ```
   Kiểm thêm: response có đủ 12 field, không có `_id`; `listRooms` từ trong container backend → room LiveKit `6ac504bdb7810c05010c6e85` có thật, `emptyTimeout: 180`, `departureTimeout: 180`.
-- **Commit:** chưa (chờ user cho phép).
+- **Commit:** `1613082` (user commit chung với Task 5).
 - **Lệch khỏi plan:** không lệch code. Chỉ chạy `docker compose up -d --build backend` (thay vì cả stack) để không đụng container LiveKit — kết quả như nhau vì compose chỉ tạo lại service đổi.
 - **Task sau cần biết:**
   - Meeting smoke `6ac504bdb7810c05010c6e85` (room `6ac504bdb7810c05010c6e82`) còn ACTIVE trong Mongo dev: room LiveKit trống tự đóng sau 180 s, nhưng `POST /webhooks/livekit` chưa có (Task 6) → `room_finished` nhận 404 → LiveKit bỏ. Dữ liệu rác vô hại; HOST bắt đầu buổi mới ở room đó sẽ đi đường tự hồi phục.
@@ -535,8 +535,37 @@ Cập nhật lại các role * đọc file rule/role.md
   - Bấm kết thúc lần 2: `endedAt` không đổi (`14:38:57.920Z` cả hai lần).
   - Key `presence:{id}` đã xoá (`EXISTS` 1 → 0).
   - LiveKit: `listRooms` sau `/end` → `[]`; lần bấm 2 gọi `DeleteRoom` room đã mất → `isNotFound` nuốt lỗi → vẫn 204 (kiểm được với LiveKit thật).
-- **Commit:** chưa (chờ user cho phép).
+- **Commit:** `1613082` `feat: bắt đầu / vào / kết thúc buổi học bằng LiveKit, lịch sử buổi học` (user commit, gồm cả Task 4).
 - **Lệch khỏi plan:** không lệch code. `docker compose up -d --build backend` thay vì cả stack (như Task 4).
 - **Task sau cần biết:**
   - Dữ liệu thử trong Mongo dev: meeting `6ac507f61d778de28bf0f43b` có 1 `meeting_participants` chèn tay (session có field `sid` — schema chưa có tới Task 6). Vô hại.
   - Log LiveKit có `sent webhook room_finished` tới `host.docker.internal` lúc HOST kết thúc — backend chưa có route (Task 6), chưa xem backend trả mã gì.
+
+## 2026-10-06 — Module meeting: Task 6 (webhook LiveKit — `meeting_participants`, presence, tự kết thúc)
+
+- **Làm cùng session với Task 2–5** (user yêu cầu). Task 4 + 5 user đã commit `1613082`; bắt đầu Task 6 git status sạch, `npm test` 101 passed.
+- **Xong:**
+  - `meetings.service.ts`: `handleMediaEvent` (bỏ qua `ignored` / room không phải ObjectId 24 hex / không có meeting / identity không phải userId; `room_finished` → `endMeeting` lý do hệ thống), `onParticipantJoined` (meeting ENDED hoặc không còn thành viên → `removeParticipant`; lỗi không phải `HttpException` → ném 500; upsert participant, `$push` session theo `sid`, `SADD` + `EXPIRE 86400`, `$max peakParticipants`), `onParticipantLeft` (đóng session theo `sid` bằng `arrayFilters`; hết session mở → `SREM`).
+  - `media-webhook.controller.ts` (`POST /webhooks/livekit`, không JWT, 200 / 401 / 500); đăng ký trong `meetings.module.ts`.
+  - `meeting-participant.schema.ts`: `ParticipantSession.sid` (bắt buộc). `redis.service.ts`: `scard`. `main.ts`: `rawBody` + parser `application/webhook+json`.
+  - `docs/database/DB_DESIGN.md`: dòng 46 (peak `$max`), C.5 comment thống kê, index `{status, startedAt}` (dòng 254 + bảng tổng hợp), C.6 `sid` + đoạn Idempotent, Phần E bỏ `presence:peak`. `docs/api/endpoint.md`: `POST /webhooks/livekit`.
+- **Test:** thêm 12 test vào `meetings.service.spec.ts` trước → 12 fail / 26 pass → viết code → 38 passed. `npm test` **113 passed** (101 → 113); `npm run build` exit 0; `tsc --noEmit` không lỗi mới; `oxlint` (meetings, `main.ts`, `redis.service.ts`) sạch — warning `failingQuery` hết vì test Task 6 đã dùng.
+- **LỖI TRONG PLAN — `main.ts` (đã sửa, đo bằng request thật):** code plan `app.useBodyParser('json', { type: 'application/webhook+json' })` làm **mất body JSON của mọi route REST**. Nguyên nhân (đọc `@nestjs/platform-express` 12.0.3 `ExpressAdapter`): `useBodyParser` gọi trước `init()` đăng ký middleware tên `jsonParser`; lúc `init()`, `registerParserMiddleware` thấy `isMiddlewareApplied('jsonParser')` → **bỏ qua parser JSON mặc định** (`application/json`). Đo: build container với code plan → `POST /auth/register` body hợp lệ trả `400` (mọi field báo thiếu). Unit test + build không bắt được (113 passed). Sửa 1 dòng: `type: ['application/json', 'application/webhook+json']` — parser của mình thay luôn parser mặc định, cùng tuỳ chọn (limit mặc định, `verify` lưu rawBody). Sau sửa: register `OK`, webhook không chữ ký `401`.
+- **Chạy thật — chế độ container:** log `Mapped {/webhooks/livekit, POST}`.
+  1. `curl` không chữ ký → `401`.
+  2. B1 dòng 1–5: 403 / ACTIVE / 409 / 1 dòng ACTIVE / `ws://localhost:7880 MEMBER token 359`.
+  3. Sau khi MEMBER vào (Chrome): `meeting_participants` 1 bản ghi `displayName 'Member'`, `roleAtJoin 'MEMBER'`, 1 session `sid 'PA_AEoVgTohDBYg'`, `leftAt: null`; `presence:{id}` = `[userId MEMBER]`, TTL 86371; meeting `ACTIVE`, `peakParticipants: 1`.
+  4. Tắt Chrome → session `leftAt 15:18:29` (LiveKit báo rời ~20 s sau khi tắt đột ngột — chờ client kết nối lại); presence đã xoá (`EXISTS 0`).
+  5. Room trống → LiveKit `room closed` 15:21:29.118 (đúng 180 s) → `room_finished` → meeting `ENDED`, `AUTO_EMPTY`, `endedAt 15:18:29` = `leftAt` của MEMBER (**lệch 0 s** — `roomEndReason` IDLE_TIMEOUT thật), `totalParticipants 1`, `durationSeconds 84`, `totalDurationSeconds` MEMBER 67 (= 15:18:29 − 15:17:22).
+  - Thêm: meeting `6ac50f4913eb08e65b1e423e` (lần vào thất bại, xem dưới) cũng tự chốt `AUTO_EMPTY` qua `room_finished`, `endedAt` = lúc kết nối hỏng rời room.
+- **Sự cố hạ tầng lúc chạy thật — LiveKit vào room chậm 14 s (đã điều tra, chưa rõ gốc):** lần vào đầu, client hết hạn chờ signal 15 s (`room connection has timed out (signal)`). Bằng chứng: LiveKit log `starting RTC session` chậm 14 s sau khi client mở WebSocket; 3 lần thử `startConnection` (mã nguồn v1.13.7 `rtcservice.go`: thử lại với timeout 3 / 4 / 5 s) đều treo trước `StartSession`; IPv4 / IPv6 tới `localhost:7880` đều ~1 ms (loại giả thuyết mạng). Log Task 1 cũng có dấu hiệu tương tự (2 trình duyệt cùng "starting RTC session" cách nhau 2 ms, chậm 12,8 s — lúc đó chưa vượt 15 s nên không lộ). **Khởi động lại container LiveKit (đã chạy 8 giờ) → vào được ngay (signal 0,6–1,3 s)**, kiểm cả log level `debug` lẫn `info`. Không tìm được gốc trong phạm vi task; ghi để Task 9/10 để ý (nếu lặp lại: `docker compose restart livekit`, bật `logging.level: debug` để xem).
+- **Commit:** `feat: webhook LiveKit ghi người tham gia, presence, tự kết thúc meeting` (user cho phép 2026-10-06; kèm ghi chú sửa `main.ts` trong plan Task 6 Step 6).
+- **Lệch khỏi plan:**
+  - `main.ts`: sửa như trên (lỗi kỹ thuật, giữ đúng hành vi plan muốn).
+  - Step 7 không đặt `lk-test.html` vào `frontend/public` + `npm run dev`: dùng Phụ lục A (thêm tự kết nối khi URL có `#<token>`, như Task 1) trong scratchpad, mở bằng **Chrome headless** `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream` qua `file://` (spec §13 cho phép). "Đóng tab" = tắt tiến trình Chrome. Không có file nào trong repo phải dọn.
+  - Tạm đổi `infrastructure/livekit/livekit.yaml` `logging.level` → `debug` để điều tra, **đã trả về `info`** (`git diff` rỗng).
+  - `docker compose up -d --build backend` thay vì cả stack (như Task 4, 5).
+- **Task sau cần biết:**
+  - Task 7 (`removeFromActiveMeeting`, `endActiveMeetingOfRoom`) dùng lại `endMeeting`, `media.removeParticipant`, `media.closeRoom`; webhook `participant_joined` đã chặn người không còn là thành viên (spec §1 câu 2).
+  - Khởi động lại LiveKit lúc 15:17 và 15:22 → mọi room cũ trong RAM mất; meeting thử `6ac5121613eb08e65b1e4250` (MEMBER đã rời) sẽ tự chốt `AUTO_EMPTY` sau 3 phút.
+  - Dữ liệu thử trong Mongo dev: các meeting `6ac50f49…`, `6ac510ef…`, `6ac51216…` + user `h*/m*/probe*@test.com`.

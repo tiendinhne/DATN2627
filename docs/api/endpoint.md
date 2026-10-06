@@ -129,6 +129,17 @@ Kết thúc buổi học cho mọi người: chốt `ENDED` (`HOST_ENDED`), đó
 - Response `204`. **Idempotent**: buổi đã kết thúc vẫn trả `204` (không ghi đè `endedAt`) — dùng được khi meeting bị kẹt.
 - `403`: không phải HOST. `404`: meeting không tồn tại. `502`: không đóng được room LiveKit — bấm lại.
 
+### POST /webhooks/livekit
+Webhook của LiveKit (không dành cho client). Không dùng JWT — xác thực bằng chữ ký: header `Authorization` là JWT chứa sha256 của raw body; `Content-Type: application/webhook+json`.
+
+| Mã | Khi nào |
+|---|---|
+| `200` | xử lý xong, **hoặc** bỏ qua có chủ đích: room không phải meeting (room tạo bằng `lk`), identity không phải userId (bot load-test), không có meeting, event không quan tâm, người không còn là thành viên (đã bị đưa ra khỏi room) |
+| `401` | sai / thiếu chữ ký |
+| `500` | lỗi bất ngờ (Mongo, Redis, LiveKit API) → LiveKit gửi lại; mọi bước idempotent |
+
+Event xử lý: `participant_joined` (ghi session theo `sid`, presence, `$max` peak; không còn là thành viên / meeting đã kết thúc → `removeParticipant`), `participant_left` + `participant_connection_aborted` (đóng session theo `sid`), `room_finished` (chốt meeting `AUTO_EMPTY` / `ROOM_DISSOLVED` — ADR-022).
+
 ## Chat (thiết kế — chưa code)
 
 ### GET /rooms/:roomId/messages

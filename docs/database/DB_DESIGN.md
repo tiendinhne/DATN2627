@@ -43,7 +43,7 @@ rooms ──1:N──► meetings
 | **Không embed mảng không giới hạn** | `messages`, `room_members`, `meeting_participants` đều là collection riêng |
 | **Embed mảng có giới hạn** | `meeting_participants.sessions[]` (một user join/leave vài lần mỗi meeting) |
 | **Denormalize snapshot** | `messages.senderName` — tin nhắn hiển thị tên **tại thời điểm gửi**, tránh populate N+1 |
-| **Counter thay đổi liên tục KHÔNG để trong Mongo** | Số người đang online nằm ở Redis; Mongo chỉ lưu `peakParticipants` khi meeting kết thúc |
+| **Counter thay đổi liên tục KHÔNG để trong Mongo** | Số người đang online nằm ở Redis (`presence:{meetingId}`); `peakParticipants` cập nhật bằng `$max` mỗi lần có người vào `[phát sinh kỹ thuật]` — atomic, không cần Lua (spec meeting §10) |
 | **Soft delete** | `deletedAt` ở `rooms`, `messages` |
 | **Không lưu file vào Mongo** | Chỉ lưu metadata trỏ tới object storage (bắt buộc vì stateless) |
 
@@ -232,7 +232,7 @@ export class Meeting {
   @Prop({ type: String, enum: EndReason, default: null })
   endReason: EndReason | null;
 
-  // --- thống kê, chỉ ghi khi meeting kết thúc ---
+  // --- thống kê: peakParticipants cập nhật bằng $max khi có người vào; còn lại ghi khi kết thúc (finalize) ---
   @Prop({ default: 0 })  peakParticipants: number;
   @Prop({ default: 0 })  totalParticipants: number;   // số user DISTINCT từng vào
   @Prop({ default: 0 })  messageCount: number;
@@ -251,7 +251,7 @@ MeetingSchema.index(
 );
 ```
 
-- `{ status: 1, startedAt: 1 }` ← job auto-end quét meeting ACTIVE
+- `{ status: 1, startedAt: 1 }` ← giữ lại; hiện không job nào dùng — tự kết thúc meeting bằng timeout LiveKit + webhook (ADR-022)
 
 **Ghi chú quan trọng:** LiveKit room name = `meeting._id.toString()`. Không tạo field riêng, tránh lệch dữ liệu.
 
@@ -262,6 +262,7 @@ MeetingSchema.index(
 ```ts
 @Schema({ _id: false })
 class ParticipantSession {
+  @Prop({ required: true }) sid: string;   // participant.sid của LiveKit — khoá idempotent của webhook
   @Prop({ required: true }) joinedAt: Date;
   @Prop({ default: null })  leftAt: Date | null;
 }
@@ -293,6 +294,8 @@ export class MeetingParticipant {
 **Vì sao dùng `sessions[]` thay vì mỗi lần join là 1 document:** một user có thể rớt mạng và vào lại 3–5 lần trong một meeting — mảng nhỏ, có giới hạn thực tế. Gộp vào 1 doc giúp query "ai đã tham gia meeting này" chỉ trả về đúng số người, không phải group by.
 
 **Ai ghi vào đây:** **LiveKit webhook**, không phải client. Client không được tự báo đã join.
+
+**Idempotent:** session thêm bằng `$push` chỉ khi chưa có session cùng `sid`; đóng session bằng `arrayFilters` theo `sid` → LiveKit gửi lại event không ghi trùng. `participant_connection_aborted` xử lý như `participant_left` (spec meeting §6).
 
 ---
 
@@ -503,7 +506,7 @@ export class AiRequest {
 | room_members | `{ userId: 1, joinedAt: -1 }` | — | danh sách room của tôi |
 | meetings | `{ roomId: 1, startedAt: -1 }` | — | lịch sử meeting |
 | meetings | `{ roomId: 1 }` + partial ACTIVE | **unique partial** | 1 meeting ACTIVE / room |
-| meetings | `{ status: 1, startedAt: 1 }` | — | job auto-end |
+| meetings | `{ status: 1, startedAt: 1 }` | — | giữ lại, chưa dùng (ADR-022) |
 | meeting_participants | `{ meetingId: 1, userId: 1 }` | **unique** | 1 doc / user / meeting |
 | messages | `{ roomId: 1, createdAt: -1 }` | — | luồng chat room |
 | messages | `{ roomId: 1, clientMsgId: 1 }` | **unique** | chống gửi trùng |
@@ -529,8 +532,7 @@ export class AiRequest {
 | `wb:{meetingId}` | String (gzip) | 24h | Live state whiteboard |
 | `wb:seq:{meetingId}` | String (INCR) | 24h | Bộ đếm seq |
 | `wb:ops:{meetingId}` | List | 24h | Ring buffer 500 op gần nhất (LPUSH + LTRIM) |
-| `presence:{meetingId}` | Set | 24h | userId đang online |
-| `presence:peak:{meetingId}` | String | 24h | Đỉnh participant → ghi vào Mongo khi end |
+| `presence:{meetingId}` | Set | 24h | userId đang online — webhook joined (SADD) / left (SREM) ghi, finalize xoá khi meeting kết thúc |
 | `lock:{jobName}` | String | 30s | Distributed lock cho cron (SET NX PX) |
 | `rl:{scope}:{id}` | String | tuỳ | Rate limit counter |
 | `socket.io#*` | (adapter tự quản) | — | Pub/Sub broadcast giữa instance |

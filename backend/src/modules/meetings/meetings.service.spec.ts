@@ -436,3 +436,183 @@ describe('endByHost', () => {
     await expect(service.endByHost(userId, meetingId)).rejects.toBeInstanceOf(BadGatewayException);
   });
 });
+
+describe('handleMediaEvent', () => {
+  const sid = 'PA_abc';
+  const joinedAt = new Date('2026-10-05T07:05:00Z');
+  const leftAt = new Date('2026-10-05T07:15:00Z');
+  const joined = (overrides: Record<string, unknown> = {}) => ({
+    type: 'participant_joined' as const,
+    eventId: 'EV_1',
+    roomName: meetingId,
+    userId,
+    displayName: 'An',
+    sid,
+    at: joinedAt,
+    ...overrides,
+  });
+  const left = (overrides: Record<string, unknown> = {}) => ({
+    type: 'participant_left' as const,
+    eventId: 'EV_2',
+    roomName: meetingId,
+    userId,
+    sid,
+    at: leftAt,
+    ...overrides,
+  });
+
+  it('event không quan tâm / room không phải meeting (room lk khi thử) / không có meeting → không làm gì', async () => {
+    const { service, meetingModel, participantModel } = build();
+
+    await service.handleMediaEvent({ type: 'ignored', eventId: 'EV_0', event: 'track_published' });
+    await service.handleMediaEvent(joined({ roomName: 'spike-room' }));
+    expect(meetingModel.findById).not.toHaveBeenCalled();
+
+    await service.handleMediaEvent(joined());
+    expect(participantModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('identity không phải userId (bot lk load-test) → bỏ qua', async () => {
+    const { service, meetingModel, participantModel, access } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+
+    await service.handleMediaEvent(joined({ userId: 'pub_0' }));
+
+    expect(access.assertRoomAccess).not.toHaveBeenCalled();
+    expect(participantModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('joined: thành viên vào → upsert participant, thêm session theo sid, SADD presence, $max peak', async () => {
+    const { service, meetingModel, participantModel, access, redis } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    redis.scard.mockResolvedValue(2);
+
+    await service.handleMediaEvent(joined());
+
+    expect(access.assertRoomAccess).toHaveBeenCalledWith(userId, roomId);
+    expect(participantModel.updateOne).toHaveBeenNthCalledWith(
+      1,
+      { meetingId, userId },
+      { $setOnInsert: { displayName: 'An', roleAtJoin: RoomRole.MEMBER, sessions: [], totalDurationSeconds: 0 } },
+      { upsert: true },
+    );
+    // Gửi lại cùng sid → filter $ne không khớp → không thêm lần 2
+    expect(participantModel.updateOne).toHaveBeenNthCalledWith(
+      2,
+      { meetingId, userId, 'sessions.sid': { $ne: sid } },
+      { $push: { sessions: { sid, joinedAt, leftAt: null } } },
+    );
+    expect(redis.sadd).toHaveBeenCalledWith(`presence:${meetingId}`, userId);
+    expect(redis.expire).toHaveBeenCalledWith(`presence:${meetingId}`, 86400);
+    expect(meetingModel.updateOne).toHaveBeenCalledWith({ _id: meetingId }, { $max: { peakParticipants: 2 } });
+  });
+
+  it('joined: không còn là thành viên (bị kick, vào lại bằng token cũ) → removeParticipant, không ghi gì', async () => {
+    const { service, meetingModel, participantModel, access, redis, media } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    access.assertRoomAccess.mockRejectedValue(new ForbiddenException());
+
+    await service.handleMediaEvent(joined());
+
+    expect(media.removeParticipant).toHaveBeenCalledWith(meetingId, userId);
+    expect(participantModel.updateOne).not.toHaveBeenCalled();
+    expect(redis.sadd).not.toHaveBeenCalled();
+  });
+
+  it('joined: meeting đã ENDED (room LiveKit chưa kịp đóng) → removeParticipant', async () => {
+    const { service, meetingModel, participantModel, access, media } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting({ status: MeetingStatus.ENDED })));
+
+    await service.handleMediaEvent(joined());
+
+    expect(media.removeParticipant).toHaveBeenCalledWith(meetingId, userId);
+    expect(access.assertRoomAccess).not.toHaveBeenCalled();
+    expect(participantModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('joined: Mongo lỗi khi kiểm thành viên → ném lỗi (500, LiveKit gửi lại), KHÔNG đá người ra', async () => {
+    const { service, meetingModel, access, media } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    access.assertRoomAccess.mockRejectedValue(new Error('mongo down'));
+
+    await expect(service.handleMediaEvent(joined())).rejects.toThrow('mongo down');
+    expect(media.removeParticipant).not.toHaveBeenCalled();
+  });
+
+  it('joined: upsert báo trùng (2 tab cùng lúc) → vẫn thêm session', async () => {
+    const { service, meetingModel, participantModel } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    participantModel.updateOne.mockReturnValueOnce(failingQuery(duplicateKeyError()));
+
+    await service.handleMediaEvent(joined());
+
+    expect(participantModel.updateOne).toHaveBeenCalledTimes(2);
+  });
+
+  it('left: đóng đúng session theo sid; hết session mở → SREM presence', async () => {
+    const { service, meetingModel, participantModel, redis } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+
+    await service.handleMediaEvent(left());
+
+    expect(participantModel.updateOne).toHaveBeenCalledWith(
+      { meetingId, userId },
+      { $set: { 'sessions.$[s].leftAt': leftAt } },
+      { arrayFilters: [{ 's.sid': sid, 's.leftAt': null }] },
+    );
+    expect(participantModel.exists).toHaveBeenCalledWith({
+      meetingId,
+      userId,
+      sessions: { $elemMatch: { leftAt: null } },
+    });
+    expect(redis.srem).toHaveBeenCalledWith(`presence:${meetingId}`, userId);
+  });
+
+  it('left: còn session mở (tab mới vào trước khi tab cũ báo rời) → không SREM', async () => {
+    const { service, meetingModel, participantModel, redis } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    participantModel.exists.mockReturnValue(query({ _id: new Types.ObjectId() }));
+
+    await service.handleMediaEvent(left());
+
+    expect(redis.srem).not.toHaveBeenCalled();
+  });
+
+  it('room_finished, phòng còn ACTIVE → AUTO_EMPTY với endedAt adapter tính sẵn', async () => {
+    const { service, meetingModel } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    const endedAt = new Date('2026-10-05T07:40:00Z');
+
+    await service.handleMediaEvent({ type: 'room_finished', eventId: 'EV_3', roomName: meetingId, endedAt });
+
+    expect(meetingModel.updateOne).toHaveBeenCalledWith(
+      { _id: meetingId, status: MeetingStatus.ACTIVE },
+      { $set: { status: MeetingStatus.ENDED, endedAt, endedBy: null, endReason: EndReason.AUTO_EMPTY } },
+    );
+  });
+
+  it('room_finished, phòng đã giải tán → ROOM_DISSOLVED', async () => {
+    const { service, meetingModel, roomModel } = build();
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    roomModel.findById.mockReturnValue(query({ status: RoomStatus.DISSOLVED }));
+
+    await service.handleMediaEvent({
+      type: 'room_finished',
+      eventId: 'EV_4',
+      roomName: meetingId,
+      endedAt: new Date('2026-10-05T07:40:00Z'),
+    });
+
+    expect(meetingModel.updateOne).toHaveBeenCalledWith(
+      { _id: meetingId, status: MeetingStatus.ACTIVE },
+      { $set: expect.objectContaining({ endReason: EndReason.ROOM_DISSOLVED }) },
+    );
+  });
+
+  it('Mongo lỗi khi đọc meeting → lỗi bay lên (500)', async () => {
+    const { service, meetingModel } = build();
+    meetingModel.findById.mockReturnValue(failingQuery(new Error('mongo down')));
+
+    await expect(service.handleMediaEvent(left())).rejects.toThrow('mongo down');
+  });
+});

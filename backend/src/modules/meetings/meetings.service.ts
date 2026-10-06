@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  HttpException,
   Inject,
   Injectable,
   Logger,
@@ -18,7 +19,7 @@ import type { RoomDocument } from '../rooms/schemas/room.schema.js';
 import { RoomAccessService } from '../room-members/room-access.service.js';
 import { RedisService } from '../../common/services/redis.service.js';
 import { MEDIA_PORT } from './ports/media.port.js';
-import type { MediaPort } from './ports/media.port.js';
+import type { MediaEvent, MediaPort } from './ports/media.port.js';
 import { EndReason, MeetingStatus, RoomStatus } from '../../shared/enums.js';
 import { RoomAction } from '../../shared/permissions.js';
 import { StartMeetingDto } from './dto/start-meeting.dto.js';
@@ -32,6 +33,16 @@ function isDuplicateKey(err: unknown): boolean {
 function secondsBetween(from: Date, to: Date): number {
   return Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 1000));
 }
+
+// Tên room / identity do backend tạo luôn là String(ObjectId) — 24 ký tự hex.
+// Chặt hơn ObjectId.isValid (nhận cả chuỗi 12 ký tự bất kỳ như "bench-room-1")
+const OBJECT_ID_HEX = /^[a-f\d]{24}$/i;
+
+// TTL key presence:{meetingId} (DB_DESIGN Phần E) — làm mới mỗi lần có người vào
+const PRESENCE_TTL_SECONDS = 24 * 60 * 60;
+
+type JoinedEvent = Extract<MediaEvent, { type: 'participant_joined' }>;
+type LeftEvent = Extract<MediaEvent, { type: 'participant_left' }>;
 
 // Meeting đọc từ Mongo (document hoặc object lean)
 type MeetingLike = {
@@ -168,6 +179,30 @@ export class MeetingsService {
     await this.viaMedia(() => this.media.closeRoom(meetingId));
   }
 
+  // Webhook LiveKit (spec §6). Điều kiện biết trước → return (controller trả 200, LiveKit không gửi lại).
+  // Lỗi bất ngờ (Mongo, Redis, LiveKit API) → ném ra → 500 → LiveKit gửi lại; mọi bước idempotent nên an toàn
+  async handleMediaEvent(event: MediaEvent) {
+    if (event.type === 'ignored') return;
+    // Room không do backend tạo (lk room create khi thử / benchmark)
+    if (!OBJECT_ID_HEX.test(event.roomName)) return;
+
+    const meeting = await this.meetingModel.findById(event.roomName).lean().exec();
+    if (!meeting) return;
+
+    if (event.type === 'room_finished') {
+      await this.endMeeting(event.roomName, await this.systemEndReason(meeting.roomId), event.endedAt);
+      return;
+    }
+    // Identity không phải userId (bot lk load-test) hoặc thiếu sid → không ghi
+    if (!OBJECT_ID_HEX.test(event.userId) || !event.sid) return;
+
+    if (event.type === 'participant_joined') {
+      await this.onParticipantJoined(meeting, event);
+    } else {
+      await this.onParticipantLeft(event.roomName, event);
+    }
+  }
+
   // Kết thúc meeting — dùng chung cho HOST kết thúc, giải tán phòng, room_finished, tự hồi phục (spec §7.1).
   // Chạy lại bao nhiêu lần cũng ra cùng kết quả
   async endMeeting(meetingId: string, reason: EndReason, endedAt: Date, endedBy: string | null = null) {
@@ -222,6 +257,82 @@ export class MeetingsService {
       .exec();
 
     await this.redis.del(`presence:${meetingId}`);
+  }
+
+  private async onParticipantJoined(meeting: { _id: unknown; roomId: unknown; status: MeetingStatus }, e: JoinedEvent) {
+    const meetingId = String(meeting._id);
+
+    // Meeting đã kết thúc nhưng room LiveKit chưa kịp đóng → không cho ở lại
+    if (meeting.status !== MeetingStatus.ACTIVE) {
+      await this.media.removeParticipant(meetingId, e.userId);
+      return;
+    }
+
+    // Không còn là thành viên (bị kick / tự rời / phòng giải tán) mà vào lại bằng token cũ → đưa ra ngay.
+    // LiveKit tự host không thu hồi token khi removeParticipant (spec §1 câu 2)
+    let member;
+    try {
+      member = await this.access.assertRoomAccess(e.userId, String(meeting.roomId));
+    } catch (err) {
+      // Lỗi Mongo (không phải 4xx) → ném → 500 → LiveKit gửi lại; không đá nhầm người đang hợp lệ
+      if (!(err instanceof HttpException)) throw err;
+      await this.media.removeParticipant(meetingId, e.userId);
+      return;
+    }
+
+    // 1 document / user / meeting. 2 event cùng user chạy song song (2 tab) → upsert báo trùng thì bỏ qua
+    await this.participantModel
+      .updateOne(
+        { meetingId, userId: e.userId },
+        {
+          $setOnInsert: {
+            displayName: e.displayName.slice(0, 60) || 'Thành viên',
+            roleAtJoin: member.role,
+            sessions: [],
+            totalDurationSeconds: 0,
+          },
+        },
+        { upsert: true },
+      )
+      .exec()
+      .catch((err) => {
+        if (!isDuplicateKey(err)) throw err;
+      });
+
+    // Thêm session theo sid — LiveKit gửi lại cùng sid thì không thêm lần 2
+    await this.participantModel
+      .updateOne(
+        { meetingId, userId: e.userId, 'sessions.sid': { $ne: e.sid } },
+        { $push: { sessions: { sid: e.sid, joinedAt: e.at, leftAt: null } } },
+      )
+      .exec();
+
+    // Presence ở Redis; đỉnh số người ghi Mongo bằng $max — atomic, event trùng không làm sai (spec §10)
+    const key = `presence:${meetingId}`;
+    await this.redis.sadd(key, e.userId);
+    await this.redis.expire(key, PRESENCE_TTL_SECONDS);
+    const online = await this.redis.scard(key);
+    await this.meetingModel.updateOne({ _id: meetingId }, { $max: { peakParticipants: online } }).exec();
+  }
+
+  // participant_left và participant_connection_aborted xử lý y hệt nhau (spec §6.3)
+  private async onParticipantLeft(meetingId: string, e: LeftEvent) {
+    // Đóng đúng session theo sid. Gửi lại / aborted chưa từng có session → không khớp → không làm gì
+    await this.participantModel
+      .updateOne(
+        { meetingId, userId: e.userId },
+        { $set: { 'sessions.$[s].leftAt': e.at } },
+        { arrayFilters: [{ 's.sid': e.sid, 's.leftAt': null }] },
+      )
+      .exec();
+
+    // Còn session mở (tab mới vào trước khi tab cũ báo rời) → vẫn đang ở trong meeting
+    const stillIn = await this.participantModel
+      .exists({ meetingId, userId: e.userId, sessions: { $elemMatch: { leftAt: null } } })
+      .exec();
+    if (!stillIn) {
+      await this.redis.srem(`presence:${meetingId}`, e.userId);
+    }
   }
 
   // Meeting theo id: sai định dạng → 400, không có → 404

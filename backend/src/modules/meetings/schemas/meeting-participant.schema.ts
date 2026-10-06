@@ -8,6 +8,10 @@ export type MeetingParticipantDocument = MeetingParticipant & Document;
 
 @Schema({ _id: false })
 export class ParticipantSession {
+  // participant.sid của LiveKit — mỗi kết nối một sid; khoá idempotent của webhook (spec §6.1)
+  @Prop({ required: true })
+  sid!: string;
+
   @Prop({ required: true })
   joinedAt!: Date;
 
