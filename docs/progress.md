@@ -454,7 +454,7 @@ Cập nhật lại các role * đọc file rule/role.md
   - `webrtc.md`: §2 token flow (`name`, `MEMBER_GRANT`, `LIVEKIT_TOKEN_TTL_HOURS`, response `{ token, livekitUrl, myRole, meeting }`); §3 webhook flow (raw body, 401, idempotent theo `sid`, peak `$max` Mongo, realtime để bước gateway, thêm `participant_connection_aborted`); §4 ghi chú dev Docker Desktop Windows.
 - **Kiểm Step 6:** `Select-String ... -Pattern 'ACTING_HOST|toLiveKitGrant|docs/adr|check rỗng'` → không in gì.
 - **Test:** `npm test` 62 passed (không đổi); `npm run build` backend OK. Line ending CRLF của các file giữ nguyên, `git diff --check` sạch.
-- **Commit:** chưa (chờ user cho phép).
+- **Commit:** `b47c6e3` (user commit chung với Task 3).
 - **Lệch khỏi plan:**
   - PROJECT_CONTEXT §7.5: ngoài câu plan thay, đổi luôn ví dụ `SET lock:auto-end-meetings ...` → `SET lock:<tên-job> ...` — để nguyên thì mâu thuẫn với câu "auto-end không dùng job" ngay phía trên.
   - ADR-022 không thêm câu "endedAt dư departureTimeout" vì Task 1 đã xác nhận `roomEndReason` có trong webhook.
@@ -472,10 +472,71 @@ Cập nhật lại các role * đọc file rule/role.md
   - `livekit-media.adapter.spec.ts`: 13 test (env 4, `computeEndedAt` 3, `isNotFound` 2, `toMediaEvent` 4). Viết test trước, chạy thấy fail (chưa có file adapter), rồi mới viết code.
   - Chưa đăng ký vào `MeetingsModule` (Task 4) → app khởi động như cũ.
 - **Test:** adapter spec 13 passed; `npm test` **75 passed** (62 → 75); `npm run build` exit 0. Thêm (ngoài plan): `npx tsc --noEmit -p tsconfig.json` không lỗi nào trong `modules/meetings` (chỉ còn lỗi có sẵn `test/app.e2e-spec.ts` thiếu `supertest/types`); `npx oxlint src/modules/meetings` exit 0.
-- **Commit:** chưa (chờ user cho phép).
+- **Commit:** `b47c6e3` `feat: MediaPort và adapter LiveKit (token, room, webhook) gồm ports/ và adapters/` (user commit, gồm cả tài liệu Task 2).
 - **Đối chiếu `.d.ts` của SDK đã cài (`livekit-server-sdk` 2.19.1, zod 3.25.76):** `CreateOptions` có `departureTimeout` (không phải nâng SDK); `ClientOptions.requestTimeout` đơn vị giây; `WebhookEvent.createdAt: bigint`, `roomEndReason: RoomEndReason` (`API_DELETE = 1`, `IDLE_TIMEOUT = 2`); `WebhookEvent` gán được vào `LkWebhookEvent` không cần ép kiểu.
 - **Lệch khỏi plan:** `RoomServiceClient` truyền tham số thứ 4 `{ requestTimeout: 5 }` qua hằng `REQUEST_TIMEOUT_SEC` — plan ghi "nếu Task 1 thấy có tuỳ chọn timeout thì thêm", Task 1 đã thấy. Comment `isNotFound` ghi hình dạng lỗi đo ở Task 1. Không đổi interface.
 - **Task sau cần biết:**
   - Task 4 đăng ký `{ provide: MEDIA_PORT, useClass: LivekitMediaAdapter }`; service inject bằng `@Inject(MEDIA_PORT)` + `import type { MediaPort }` (Global Constraints, `isolatedModules`).
   - Khi đăng ký adapter, container backend **phải có đủ 6 biến LiveKit** (`backend/.env` đã có từ Task 1) — thiếu thì app không khởi động (đúng fail-fast).
   - `toMediaEvent` không kiểm `roomName` / `identity` có phải ObjectId — việc đó ở service (Task 6, spec §6.2).
+
+## 2026-10-06 — Module meeting: Task 4 (`MeetingsService` — bắt đầu, lịch sử, `endMeeting` / `finalize`)
+
+- **Làm cùng session với Task 2, 3** (user yêu cầu). Task 2 + 3 user đã commit chung `b47c6e3`.
+- **Xong:**
+  - `meetings.service.ts`: `startMeeting` (HOST; LiveKit trước Mongo sau; tự hồi phục khi meeting ACTIVE mà room LiveKit đã đóng; `roomExists` lỗi → 502 không chốt gì; trùng index → `closeRoom` + 409; `$inc meetingCount`), `listMeetings` (lấy dư 1 để tính `hasMore`), `endMeeting` (update có điều kiện `status: ACTIVE`, `endedAt ≥ startedAt`) + `finalize` (đóng session mở, tính lại `totalDurationSeconds`, `totalParticipants`, `durationSeconds`, `DEL presence`), `toMeetingResponse`, `systemEndReason`, `viaMedia`.
+  - `meetings.controller.ts`: `POST` / `GET /rooms/:roomId/meetings`. DTO `start-meeting.dto.ts`, `list-meetings-query.dto.ts`.
+  - `meetings.module.ts`: thêm model `Room`, `RoomMembersModule`, `PassportModule`, controller, service, `{ provide: MEDIA_PORT, useClass: LivekitMediaAdapter }`; export `MeetingsService`.
+  - `docs/api/endpoint.md`: nhóm **Meetings** (2 endpoint của task này) giữa Rooms và Chat.
+- **Test:** viết `meetings.service.spec.ts` trước, chạy thấy fail (chưa có service), rồi mới viết code → 15 passed. `npm test` **90 passed** (75 → 90); `npm run build` exit 0; `tsc --noEmit` không lỗi mới (chỉ lỗi có sẵn `test/app.e2e-spec.ts`); `oxlint src/modules/meetings` 0 lỗi, 1 warning `failingQuery` chưa dùng — giữ nguyên vì là code test của plan, Task 6/7 dùng.
+- **Chạy thật:** `docker compose up -d --build backend` → log `Mapped {/rooms/:roomId/meetings, POST}`, `Mapped {/rooms/:roomId/meetings, GET}`, `Nest application successfully started` (adapter đọc đủ 6 biến LiveKit). Phụ lục B — B1 dòng 1–4:
+  ```
+  # 1. MEMBER bắt đầu buổi học → 403
+  403
+  # 2. HOST bắt đầu → có id, status ACTIVE
+  6ac504bdb7810c05010c6e85 Buoi 1 ACTIVE
+  # 3. HOST bắt đầu lần 2 → 409
+  409
+  # 4. Lịch sử (MEMBER) → 1 dòng ACTIVE
+  6ac504bdb7810c05010c6e85 Buoi 1 ACTIVE
+  ```
+  Kiểm thêm: response có đủ 12 field, không có `_id`; `listRooms` từ trong container backend → room LiveKit `6ac504bdb7810c05010c6e85` có thật, `emptyTimeout: 180`, `departureTimeout: 180`.
+- **Commit:** chưa (chờ user cho phép).
+- **Lệch khỏi plan:** không lệch code. Chỉ chạy `docker compose up -d --build backend` (thay vì cả stack) để không đụng container LiveKit — kết quả như nhau vì compose chỉ tạo lại service đổi.
+- **Task sau cần biết:**
+  - Meeting smoke `6ac504bdb7810c05010c6e85` (room `6ac504bdb7810c05010c6e82`) còn ACTIVE trong Mongo dev: room LiveKit trống tự đóng sau 180 s, nhưng `POST /webhooks/livekit` chưa có (Task 6) → `room_finished` nhận 404 → LiveKit bỏ. Dữ liệu rác vô hại; HOST bắt đầu buổi mới ở room đó sẽ đi đường tự hồi phục.
+  - Task 5 thêm vào `MeetingsController` (`join`, `end`) — `@Controller()` không prefix, route viết đủ `meetings/:meetingId/...`.
+
+## 2026-10-06 — Module meeting: Task 5 (vào meeting bằng token + HOST kết thúc)
+
+- **Làm cùng session với Task 2–4** (user yêu cầu). Task 4 **chưa commit** lúc bắt đầu → diff Task 4 + 5 chung một working tree (cùng sửa `meetings.service.ts`, spec, controller, `endpoint.md`).
+- **Xong:**
+  - `meetings.service.ts`: `joinMeeting` (tìm meeting → `assertRoomAccess` → ENDED 409 → `roomExists` false thì tự hồi phục + 409, lỗi thì 502 → `createJoinToken` → `{ token, livekitUrl, myRole, meeting }`), `endByHost` (`assertRoomPermission MANAGE_MEETING` → `endMeeting HOST_ENDED` → `closeRoom`, lỗi 502; idempotent), private `findMeeting` (400 / 404).
+  - `meetings.controller.ts`: `POST /meetings/:meetingId/join` (200), `POST /meetings/:meetingId/end` (204).
+  - `docs/api/endpoint.md`: thêm 2 endpoint vào nhóm Meetings.
+- **Test:** thêm 11 test vào `meetings.service.spec.ts` trước, chạy thấy 11 fail / 15 pass, rồi mới viết code → 26 passed. `npm test` **101 passed** (90 → 101); `npm run build` exit 0; `tsc --noEmit` không lỗi mới; `oxlint` 0 lỗi (vẫn 1 warning `failingQuery`, Task 6/7 dùng).
+- **Đối chiếu trước khi code:** `JwtStrategy.validate` trả document User; `User.displayName` bắt buộc, ≤ 60 ký tự (khớp `MeetingParticipant.displayName`) → `req.user.displayName` luôn có.
+- **Chạy thật:** `docker compose up -d --build backend` → log có thêm `Mapped {/meetings/:meetingId/join, POST}`, `Mapped {/meetings/:meetingId/end, POST}`, `Nest application successfully started`. Phụ lục B — B1 toàn bộ:
+  ```
+  # 1. MEMBER bắt đầu → 403            403
+  # 2. HOST bắt đầu → ACTIVE           6ac507f61d778de28bf0f43b Buoi 1 ACTIVE
+  # 3. HOST bắt đầu lần 2 → 409         409
+  # 4. Lịch sử → 1 dòng ACTIVE          6ac507f61d778de28bf0f43b Buoi 1 ACTIVE
+  # 5. MEMBER vào                       ws://localhost:7880 / MEMBER / token 359 ký tự
+  # 6. MEMBER kết thúc → 403            403
+  # 7. HOST kết thúc → OK; bấm lại → OK OK / OK
+  # 8. MEMBER vào lại → 409             409
+  # 9. Lịch sử → ENDED, HOST_ENDED      Buoi 1 ENDED HOST_ENDED 11
+  ```
+  Dòng 5 = container backend gọi được LiveKit qua `http://livekit:7880` (`roomExists`).
+- **Kiểm thêm (ngoài plan) — `finalize` lần đầu chạy trên Mongo thật:** script đồ bỏ chèn tay vào Mongo 1 `meeting_participants` (session 1 đã đóng 1 s, session 2 còn mở) + `SADD presence:{id}` — giả dữ liệu webhook Task 6 sẽ ghi — rồi HOST kết thúc. Kết quả đọc thẳng Mongo / Redis:
+  - Meeting: `ENDED`, `HOST_ENDED`, `endedBy` lưu đúng ObjectId, `durationSeconds 11` = `endedAt − startedAt`, `totalParticipants 1`.
+  - `updateMany` + `arrayFilters`: session 1 giữ `leftAt` cũ, session 2 `leftAt` = `endedAt`; `totalDurationSeconds 9` = 1 + 8 (đúng giá trị tính tay).
+  - Bấm kết thúc lần 2: `endedAt` không đổi (`14:38:57.920Z` cả hai lần).
+  - Key `presence:{id}` đã xoá (`EXISTS` 1 → 0).
+  - LiveKit: `listRooms` sau `/end` → `[]`; lần bấm 2 gọi `DeleteRoom` room đã mất → `isNotFound` nuốt lỗi → vẫn 204 (kiểm được với LiveKit thật).
+- **Commit:** chưa (chờ user cho phép).
+- **Lệch khỏi plan:** không lệch code. `docker compose up -d --build backend` thay vì cả stack (như Task 4).
+- **Task sau cần biết:**
+  - Dữ liệu thử trong Mongo dev: meeting `6ac507f61d778de28bf0f43b` có 1 `meeting_participants` chèn tay (session có field `sid` — schema chưa có tới Task 6). Vô hại.
+  - Log LiveKit có `sent webhook room_finished` tới `host.docker.internal` lúc HOST kết thúc — backend chưa có route (Task 6), chưa xem backend trả mã gì.
