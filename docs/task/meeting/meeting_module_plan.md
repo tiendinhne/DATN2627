@@ -2573,6 +2573,8 @@ Expected: 8 test mới FAIL (`is not a function`), 38 test cũ pass.
   }
 ```
 
+> **[Sửa khi làm Task 7 — 2026-10-07]** Hành vi giữ nguyên, chỉ thêm id vào log cho đủ spec §8 ("ghi log kèm `roomId`, `meetingId`, `userId`"): `removeFromActiveMeeting` giữ `meetingId` trong biến (`'?'` khi Mongo lỗi trước lúc biết id) và in ra; 2 log bước (a), (b) của `endActiveMeetingOfRoom` in thêm `roomId`. Chi tiết: `docs/progress.md` mục Task 7.
+
 - [ ] **Step 4: Chạy test meetings — phải pass**
 
 ```powershell
@@ -3002,6 +3004,8 @@ export function MeetingSection({ roomId, token, isHost }: { roomId: string; toke
 }
 ```
 
+> **[Sửa khi làm Task 8 — 2026-10-07, user chốt]** Ô tên không còn điền sẵn: `useState('')`, bỏ `required`, thêm `placeholder`; `start()` gửi `title.trim() || defaultTitle()` → tên mặc định tính **lúc bấm** Bắt đầu. Lý do: bản trên tính giờ một lần lúc mở trang (`useState(defaultTitle)`) → để trang mở lâu rồi mới bấm thì tên mang giờ cũ. Step 6.1 tương ứng: ô trống + gợi ý; bấm không gõ → tên theo giờ lúc bấm. Spec §11.2 đã sửa theo. Chi tiết: `docs/progress.md` mục Task 8.
+
 - [ ] **Step 4: Gắn vào trang room**
 
 `frontend/app/rooms/[roomId]/page.tsx`: thêm import (cạnh các import `@/components/ui/...`):
@@ -3313,6 +3317,10 @@ export default function MeetingPage() {
   );
 }
 ```
+
+> **[Sửa khi làm Task 9 — 2026-10-08, lỗi kỹ thuật, giữ hành vi spec §11.3 / §11.5]** Hai chỗ khác bản trên (đã chạy thật trước / sau khi sửa — `docs/progress.md` mục Task 9):
+> 1. `onError` thêm dòng đầu `if (err instanceof DOMException) return;`. Lý do (mã nguồn bản đã cài `@livekit/components-react` 2.9.24 `useLiveKitRoom.ts`, `livekit-client` 2.22.3): thiết bị được bật ngay ở `RoomEvent.SignalConnected` — **trước** `Connected` — và lỗi `getUserMedia` (`NotAllowedError`, `NotFoundError`, `NotReadableError` — đều là `DOMException`) được báo qua **cả** `onMediaDeviceFailure` **lẫn** `onError`. Bản trên: chặn quyền camera → `onError` chạy khi `connectedRef` còn `false` → màn hình chặn "Không kết nối được buổi học", không vào được cuộc gọi (đo được). Lỗi kết nối của LiveKit là `ConnectionError` / `Error` thường, không phải `DOMException` → vẫn chặn như cũ.
+> 2. `data-lk-theme="default"` chuyển từ div ngoài xuống `<LiveKitRoom>`: theme đặt `color: var(--lk-fg)` (trắng) → tên buổi học ở header chữ trắng trên nền trắng, không nhìn thấy.
 
 - [ ] **Step 4: Build + lint**
 

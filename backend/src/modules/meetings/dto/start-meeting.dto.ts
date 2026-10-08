@@ -5,7 +5,7 @@ import { IsString, MaxLength, MinLength } from 'class-validator';
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
 export class StartMeetingDto {
-  // Bắt buộc. Frontend điền sẵn "Buổi học dd/MM HH:mm" theo giờ trình duyệt → backend không xử lý múi giờ (spec §5.2)
+  // Bắt buộc. HOST bỏ trống thì frontend gửi "Buổi học dd/MM HH:mm" theo giờ trình duyệt → backend không xử lý múi giờ (spec §5.2)
   @Transform(trim)
   @IsString()
   @MinLength(1, { message: 'Tên buổi học không được để trống' })

@@ -616,3 +616,81 @@ describe('handleMediaEvent', () => {
     await expect(service.handleMediaEvent(left())).rejects.toThrow('mongo down');
   });
 });
+
+describe('removeFromActiveMeeting', () => {
+  it('phòng không có meeting ACTIVE → không gọi LiveKit', async () => {
+    const { service, media } = build();
+
+    await service.removeFromActiveMeeting(roomId, userId);
+
+    expect(media.removeParticipant).not.toHaveBeenCalled();
+  });
+
+  it('có meeting ACTIVE → đưa người đó ra khỏi room LiveKit', async () => {
+    const { service, meetingModel, media } = build();
+    meetingModel.findOne.mockReturnValue(query(fakeMeeting()));
+
+    await service.removeFromActiveMeeting(roomId, userId);
+
+    expect(meetingModel.findOne).toHaveBeenCalledWith({ roomId, status: MeetingStatus.ACTIVE });
+    expect(media.removeParticipant).toHaveBeenCalledWith(meetingId, userId);
+  });
+
+  it('LiveKit lỗi → không ném lỗi (không làm hỏng kick / rời phòng)', async () => {
+    const { service, meetingModel, media } = build();
+    meetingModel.findOne.mockReturnValue(query(fakeMeeting()));
+    media.removeParticipant.mockRejectedValue(new Error('fetch failed'));
+
+    await expect(service.removeFromActiveMeeting(roomId, userId)).resolves.toBeUndefined();
+  });
+
+  it('Mongo lỗi → không ném lỗi', async () => {
+    const { service, meetingModel } = build();
+    meetingModel.findOne.mockReturnValue(failingQuery(new Error('mongo down')));
+
+    await expect(service.removeFromActiveMeeting(roomId, userId)).resolves.toBeUndefined();
+  });
+});
+
+describe('endActiveMeetingOfRoom', () => {
+  it('phòng không có meeting ACTIVE → không làm gì', async () => {
+    const { service, meetingModel, media } = build();
+
+    await service.endActiveMeetingOfRoom(roomId);
+
+    expect(meetingModel.updateOne).not.toHaveBeenCalled();
+    expect(media.closeRoom).not.toHaveBeenCalled();
+  });
+
+  it('chốt ROOM_DISSOLVED rồi đóng room LiveKit', async () => {
+    const { service, meetingModel, media } = build();
+    meetingModel.findOne.mockReturnValue(query(fakeMeeting()));
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+
+    await service.endActiveMeetingOfRoom(roomId);
+
+    expect(meetingModel.updateOne).toHaveBeenCalledWith(
+      { _id: meetingId, status: MeetingStatus.ACTIVE },
+      { $set: expect.objectContaining({ endReason: EndReason.ROOM_DISSOLVED }) },
+    );
+    expect(media.closeRoom).toHaveBeenCalledWith(meetingId);
+  });
+
+  it('chốt lỗi (Mongo) → VẪN đóng room LiveKit, không ném lỗi', async () => {
+    const { service, meetingModel, media } = build();
+    meetingModel.findOne.mockReturnValue(query(fakeMeeting()));
+    meetingModel.findById.mockReturnValue(failingQuery(new Error('mongo down')));
+
+    await expect(service.endActiveMeetingOfRoom(roomId)).resolves.toBeUndefined();
+    expect(media.closeRoom).toHaveBeenCalledWith(meetingId);
+  });
+
+  it('closeRoom lỗi → không ném lỗi', async () => {
+    const { service, meetingModel, media } = build();
+    meetingModel.findOne.mockReturnValue(query(fakeMeeting()));
+    meetingModel.findById.mockReturnValue(query(fakeMeeting()));
+    media.closeRoom.mockRejectedValue(new Error('fetch failed'));
+
+    await expect(service.endActiveMeetingOfRoom(roomId)).resolves.toBeUndefined();
+  });
+});

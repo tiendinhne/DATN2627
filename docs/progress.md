@@ -559,7 +559,7 @@ Cập nhật lại các role * đọc file rule/role.md
   5. Room trống → LiveKit `room closed` 15:21:29.118 (đúng 180 s) → `room_finished` → meeting `ENDED`, `AUTO_EMPTY`, `endedAt 15:18:29` = `leftAt` của MEMBER (**lệch 0 s** — `roomEndReason` IDLE_TIMEOUT thật), `totalParticipants 1`, `durationSeconds 84`, `totalDurationSeconds` MEMBER 67 (= 15:18:29 − 15:17:22).
   - Thêm: meeting `6ac50f4913eb08e65b1e423e` (lần vào thất bại, xem dưới) cũng tự chốt `AUTO_EMPTY` qua `room_finished`, `endedAt` = lúc kết nối hỏng rời room.
 - **Sự cố hạ tầng lúc chạy thật — LiveKit vào room chậm 14 s (đã điều tra, chưa rõ gốc):** lần vào đầu, client hết hạn chờ signal 15 s (`room connection has timed out (signal)`). Bằng chứng: LiveKit log `starting RTC session` chậm 14 s sau khi client mở WebSocket; 3 lần thử `startConnection` (mã nguồn v1.13.7 `rtcservice.go`: thử lại với timeout 3 / 4 / 5 s) đều treo trước `StartSession`; IPv4 / IPv6 tới `localhost:7880` đều ~1 ms (loại giả thuyết mạng). Log Task 1 cũng có dấu hiệu tương tự (2 trình duyệt cùng "starting RTC session" cách nhau 2 ms, chậm 12,8 s — lúc đó chưa vượt 15 s nên không lộ). **Khởi động lại container LiveKit (đã chạy 8 giờ) → vào được ngay (signal 0,6–1,3 s)**, kiểm cả log level `debug` lẫn `info`. Không tìm được gốc trong phạm vi task; ghi để Task 9/10 để ý (nếu lặp lại: `docker compose restart livekit`, bật `logging.level: debug` để xem).
-- **Commit:** `feat: webhook LiveKit ghi người tham gia, presence, tự kết thúc meeting` (user cho phép 2026-10-06; kèm ghi chú sửa `main.ts` trong plan Task 6 Step 6).
+- **Commit:** `2e1385a` `feat: webhook LiveKit ghi người tham gia, presence, tự kết thúc meeting` (user cho phép 2026-10-06; kèm ghi chú sửa `main.ts` trong plan Task 6 Step 6).
 - **Lệch khỏi plan:**
   - `main.ts`: sửa như trên (lỗi kỹ thuật, giữ đúng hành vi plan muốn).
   - Step 7 không đặt `lk-test.html` vào `frontend/public` + `npm run dev`: dùng Phụ lục A (thêm tự kết nối khi URL có `#<token>`, như Task 1) trong scratchpad, mở bằng **Chrome headless** `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream` qua `file://` (spec §13 cho phép). "Đóng tab" = tắt tiến trình Chrome. Không có file nào trong repo phải dọn.
@@ -569,3 +569,166 @@ Cập nhật lại các role * đọc file rule/role.md
   - Task 7 (`removeFromActiveMeeting`, `endActiveMeetingOfRoom`) dùng lại `endMeeting`, `media.removeParticipant`, `media.closeRoom`; webhook `participant_joined` đã chặn người không còn là thành viên (spec §1 câu 2).
   - Khởi động lại LiveKit lúc 15:17 và 15:22 → mọi room cũ trong RAM mất; meeting thử `6ac5121613eb08e65b1e4250` (MEMBER đã rời) sẽ tự chốt `AUTO_EMPTY` sau 3 phút.
   - Dữ liệu thử trong Mongo dev: các meeting `6ac50f49…`, `6ac510ef…`, `6ac51216…` + user `h*/m*/probe*@test.com`.
+
+## 2026-10-07 — Module meeting: Task 7 (kick / rời / giải tán phòng → đưa ra khỏi call, kết thúc meeting)
+
+- **Bắt đầu:** git status sạch (Task 6 đã commit `2e1385a`), `npm test` 113 passed.
+- **Xong:**
+  - `meetings.service.ts`: `removeFromActiveMeeting(roomId, userId)` (có meeting ACTIVE → `removeParticipant`), `endActiveMeetingOfRoom(roomId)` (tìm meeting ACTIVE → (a) `endMeeting ROOM_DISSOLVED` → (b) `closeRoom`, mỗi bước try/catch riêng, (a) lỗi vẫn chạy (b)). Cả hai **không bao giờ ném lỗi**, chỉ ghi log (spec §8).
+  - `rooms.service.ts`: constructor thêm tham số thứ 6 `meetings: MeetingsService`; `kickMember` gọi `removeFromActiveMeeting` **sau** khi xoá thành viên thành công; `leaveRoom` luôn gọi (kể cả khi `deleteOne` xoá 0 bản ghi); `dissolveRoom` gọi `endActiveMeetingOfRoom` sau `updateOne` DISSOLVED (thay `TODO(module meeting)`). `rooms.module.ts` import `MeetingsModule`.
+  - `docs/api/endpoint.md` nhóm Rooms: lỗi LiveKit không đổi mã `204`; rời / kick → bị đưa ra khỏi cuộc gọi; giải tán → `ROOM_DISSOLVED` (bỏ dòng "Chưa làm").
+- **Test:** 8 test meetings viết trước → 8 fail (`is not a function`) / 38 pass → code → 46 passed. 7 test rooms viết trước → 4 fail / 43 pass (3 test "không gọi meeting" pass sẵn) → code → pass. `npm test` **128 passed** (113 → 128); `npm run build` exit 0; `tsc --noEmit` không lỗi mới (chỉ lỗi có sẵn `test/app.e2e-spec.ts`); `oxlint src/modules/meetings src/modules/rooms` exit 0.
+- **Chạy thật — container:** `docker compose up -d --build backend` → `MeetingsModule dependencies initialized`, `RoomsModule dependencies initialized`, `Nest application successfully started` (không lỗi DI vòng). Phụ lục B — B1 + B2:
+  ```
+  # 1–9 (B1)                                     403 / ACTIVE / 409 / 1 dòng ACTIVE / ws://localhost:7880 MEMBER 359 / 403 / OK OK / 409 / ENDED HOST_ENDED
+  # 10. kick MEMBER (không ở trong room LiveKit) OK
+  # 11. HOST giải tán                            OK
+  # 12. meeting vừa tạo                          status 'ENDED', endReason 'ROOM_DISSOLVED', endedAt 13:46:31.133Z
+  # 13. log backend                              không có dòng lỗi
+  ```
+  Log LiveKit: dòng 10 `RemoveParticipant` → `404` (adapter nuốt "không tìm thấy", kick vẫn 204); dòng 11 `DeleteRoom` `200` (`API_DELETE`) sau khi Mongo đã chốt, `room_finished` gửi tới backend.
+- **Chạy thật thêm (ngoài plan) — người đang Ở TRONG call** (B2 chỉ thử khi MEMBER không ở trong call; đường này mock không kiểm được). 3 Chrome headless (camera giả) mở trang `lk-test.html` đồ bỏ trong scratchpad (Phụ lục A + tự kết nối khi URL có `#<token>`, in `RoomEvent.Disconnected` ra console). HOST + Member1 + Member2 cùng vào: presence 3, `peakParticipants 3`.
+  1. **HOST kick Member1** → `204`; Member1 bị ngắt `reason=4 PARTICIPANT_REMOVED`; webhook `participant_left` → session `leftAt 13:50:55`, ra khỏi presence.
+  2. **Member1 vào lại bằng token LiveKit cũ** (bật cam + mic) → `Connected`, **1,9 s** sau bị ngắt `PARTICIPANT_REMOVED`; Mongo không có session mới, presence không có Member1 (spec §13 kịch bản 10 — code Task 6).
+  3. **Member2 tự rời phòng** → `204`; bị ngắt `PARTICIPANT_REMOVED` ngay khi request trả về; session đóng, ra khỏi presence; `GET /rooms/:id` → `403`.
+  4. **HOST giải tán khi còn trong call** → `204`; HOST bị ngắt `reason=5 ROOM_DELETED`. Meeting `ENDED`, `ROOM_DISSOLVED`, `endedBy null`, `endedAt 13:59:11.116` (sau `dissolvedAt 13:59:11.073`), `totalParticipants 3`, `durationSeconds 620` (= endedAt − startedAt). Session HOST được `finalize` đóng bằng `endedAt`; `totalDurationSeconds` 600 / 104 / 267 (đúng tính tay). Key `presence:{id}` đã xoá. `room_finished` tới sau không ghi đè `endedAt`. Sau đó join → `404`, bắt đầu buổi mới → `404`.
+  - Log backend suốt đợt chạy: không có dòng WARN / ERROR. Chrome headless đã tắt hết; không có file nào trong repo phải dọn.
+- **Commit:** gộp chung một commit với Task 8 + 9 (user chốt 2026-10-08: "commit 1 lần") — xem mục Task 9.
+- **Lệch khỏi plan:**
+  - Log của 2 hàm mới in thêm id cho đủ spec §8 ("ghi log kèm `roomId`, `meetingId`, `userId`"): `removeFromActiveMeeting` giữ `meetingId` trong biến (`'?'` khi Mongo lỗi trước lúc biết id); log bước (a), (b) của `endActiveMeetingOfRoom` in thêm `roomId`. Hành vi không đổi. Đã chú thích dưới Step 3 trong plan.
+  - `docker compose up -d --build backend` thay vì cả stack (như Task 4–6).
+- **Task sau cần biết:**
+  - Spec §12.1 ghi "kick lỗi (400 / 403 / 404) → không gọi meeting"; plan chỉ test 403 / 404. Đường 400 (userId sai / tự kick) `throw` trước `removeMember` nên không thể gọi meeting — không thêm test (giữ đúng bộ test của plan).
+  - Kick bằng `userId` **viết hoa** (chỉ khi gửi request tay; frontend luôn gửi id thường): Mongo vẫn xoá đúng thành viên, nhưng identity LiveKit phân biệt hoa thường → `removeParticipant` báo "không tìm thấy" (bị nuốt) → người đó còn trong call tới khi tự thoát (như giới hạn spec §14.1; vào lại vẫn bị webhook chặn). Chưa sửa — ngoài plan.
+  - Spec §13 kịch bản 10 mong log backend có dòng "không phải thành viên → removeParticipant", nhưng `onParticipantJoined` (Task 6) không ghi log ở nhánh này; plan Task 10 Step 5 chỉ kiểm "không có lỗi" → Task 10 kiểm bằng log LiveKit (`participant closing … SERVICE_REQUEST_REMOVE_PARTICIPANT`, `RemoveParticipant` 200) hoặc thêm 1 dòng log.
+  - Độ trễ request có gọi LiveKit — **chưa rõ gốc**, không do code Task 7: lần gọi đầu sau vài phút backend nghỉ có lúc chậm (join 1,18 s so với 50–120 ms các lần sau; rời phòng 1,8 s, trong đó ~1 s nằm giữa lúc ghi Mongo và lúc LiveKit nhận `RemoveParticipant`), có lúc không (giải tán 0,39 s). DNS `livekit` trong container 17–71 ms → không phải DNS. Bước benchmark đo join latency (`webrtc.md` §7) nên tách lần gọi đầu.
+  - Dữ liệu thử trong Mongo dev: phòng `6ac64d32…` (B2), `6ac64dc1…` (chạy thật) đã giải tán; user `h*/m*/rth*/rtm*/rtn*@test.com`.
+
+## 2026-10-07 — Module meeting: Task 8 (frontend — khu "Buổi học" ở trang phòng)
+
+- **Bắt đầu:** Task 7 chưa commit (user: "không cần commit") → git status không sạch, Task 8 chỉ sửa `frontend/` nên không đụng nhau. Backend `npm test` 128 passed (chạy lại cuối task — backend không đổi).
+- **Xong:**
+  - `src/services/room.service.ts`: `export` hàm `request` (dùng lại, không tạo helper mới — spec §11.1).
+  - `src/types/meeting.ts`: `Meeting`, `MeetingListResponse`, `JoinMeetingResponse`, `MeetingStatus`, `EndReason` — đã đối chiếu `toMeetingResponse` / `joinMeeting` backend (đủ 12 field).
+  - `src/services/meeting.service.ts`: `startMeeting`, `listMeetings` (20 buổi gần nhất), `joinMeeting`, `endMeeting`.
+  - `src/features/meetings/meeting-section.tsx`: `MeetingSection` — `items[0]` ACTIVE → tên + **Tham gia** (+ **Kết thúc** cho HOST, có `confirm`); không có buổi ACTIVE → HOST thấy ô tên (không bắt buộc — bỏ trống thì tên "Buổi học dd/MM HH:mm" theo giờ **lúc bấm**, xem "Sửa sau review" dưới) + **Bắt đầu** → chuyển thẳng `/meetings/<id>`; lỗi (409…) → hiện lỗi + tải lại danh sách; lịch sử có thời lượng, tối đa / tổng số người, nhãn lý do kết thúc.
+  - `app/rooms/[roomId]/page.tsx`: gắn `<MeetingSection>` giữa khối "Mời người khác vào phòng" và "Thành viên".
+- **Kiểm:** frontend `npm run build` exit 0; `npm run lint` 5 problems (2 errors, 3 warnings) — **đúng y các lỗi có sẵn** trước khi sửa (`auth.context.tsx` 35:7, 36:7, 103:5; `auth.service.ts` 25:3; `app/page.tsx` 9:9), không lỗi mới. Không viết unit test (page UI — CLAUDE.md).
+- **Sự cố môi trường (đã xử lý, không phải code):** build gốc **trước khi sửa** đã fail `TS1005` / `TS1128` trong `.next/dev/types/routes.d.ts` + `validator.ts` — file do `next dev` tự sinh (2026-10-06 13:58), bị lặp phần đuôi (ghi đè nội dung ngắn hơn mà không cắt), danh sách route còn thiếu `/rooms/[roomId]`. Xoá `.next/dev/types` (gitignore, `next dev` tự sinh lại) → build gốc exit 0. Gốc chưa rõ; nghi `next dev` và `next build` (hoặc 2 dev server) cùng ghi một lúc → task này chỉ build khi đã tắt dev server.
+- **Chạy thật (Step 6) — tự động bằng 2 Chrome headless** (2 profile = 2 localStorage), điều khiển qua DevTools Protocol bằng script đồ bỏ trong scratchpad (chỉ dùng `fetch` / `WebSocket` có sẵn của Node 22, không thêm package); đăng nhập = đặt `accessToken` vào localStorage; bấm nút thật, đọc DOM, đọc Mongo, chụp màn hình để xem giao diện. Backend + LiveKit trong Docker, `npm run dev`. Kết quả lần chạy cuối (bản **trước** "Sửa sau review" — dòng 6.1 đầu tiên là hành vi cũ "điền sẵn"):
+  ```
+  PASS  6.1 ô tên điền sẵn "Buổi học dd/MM HH:mm" theo giờ máy   ["Buổi học 07/10 21:45" / máy "Buổi học 07/10 21:45"]
+  PASS  6.1 thứ tự khối: Mời người khác → Buổi học → Thành viên
+  PASS  6.1 Bắt đầu → chuyển sang /meetings/<id>   [6ac65af6a9f21d32c13423c0]
+  PASS  6.1 trang /meetings/<id> chưa có → 404 (đúng ở task này)
+  PASS  6.1 Mongo lưu đúng tên đã điền, ACTIVE
+  PASS  6.1 HOST: tên buổi + "Đang diễn ra từ" / link Tham gia → /meetings/<id> / có Kết thúc, không còn ô Bắt đầu
+  PASS  6.2 MEMBER: thấy buổi đang diễn ra + Tham gia; không có Kết thúc, không có ô Bắt đầu
+  PASS  6.3 có hộp xác nhận "Kết thúc buổi học? Mọi người trong cuộc gọi sẽ bị ngắt."
+  PASS  6.3 buổi học xuống lịch sử, nhãn "Host kết thúc"; ô Bắt đầu hiện lại; Mongo ENDED HOST_ENDED
+        lịch sử: Buổi học 07/10 21:45 · 21:45:11 7/10/2026 · 0 phút · tối đa 0 / tổng 0 người · Host kết thúc
+  PASS  MEMBER (không có buổi ACTIVE): "Chưa có buổi học nào đang diễn ra." + lịch sử
+  PASS  409: (buổi bắt đầu qua API khi trang HOST còn ô Bắt đầu) hiện lỗi "Phòng đang có buổi học diễn ra",
+        danh sách tải lại thấy buổi đang diễn ra, vẫn ở trang phòng; bấm Kết thúc xoá lỗi cũ
+  PASS  6.4 bấm 2 lần → đúng 1 buổi ACTIVE, chỉ tạo thêm 1 buổi   [ACTIVE=1, thêm 1] — trang chuyển sang /meetings/<id>
+  console error/warning + exception — HOST: 0, MEMBER: 0
+  ALL PASS
+  ```
+  - 6.4 có **2 request song song thật**: log LiveKit 14:45:43.821 / .845 hai `CreateRoom` (`…c5`, `…c4`) rồi `DeleteRoom …c4` — request thứ hai qua được bước kiểm ACTIVE, bị unique partial index chặn ở `Meeting.create` → `closeRoom` room thừa → 409 (đúng spec §5.2 bước 4).
+  - Thêm (ngoài plan): buổi của 6.4 không ai vào → LiveKit tự đóng sau 180 s → `AUTO_EMPTY`, `endedAt` = `startedAt` (thời lượng 0, spec §7.2) → trang MEMBER hiện nhãn **"Tự kết thúc"**. Nhãn "Phòng giải tán" không xem được trên UI (phòng giải tán thì trang phòng trả 404).
+  - Ảnh chụp đã xem: khối Buổi học khi chưa có buổi / đang diễn ra (HOST có Kết thúc, MEMBER không) / lỗi 409 / lịch sử — bố cục đúng, cùng kiểu card với trang phòng.
+- **Sửa sau review — tên buổi học (user chốt 2026-10-07):**
+  - Lỗi của bản plan: `useState(defaultTitle)` tính giờ **một lần lúc khối Buổi học hiện ra** → để trang phòng mở lâu rồi mới bấm Bắt đầu (kể cả lần đầu, hoặc sau khi bấm Kết thúc ngay trên trang) thì tên mang giờ lúc mở trang. Chỉ sai tên hiển thị; `startedAt` do server ghi vẫn đúng.
+  - User hỏi tên có quan trọng không (Google Meet không đặt tên) → đề cương không yêu cầu tên (chỉ "Lịch sử meeting sẽ được lưu lại trong phòng"); `title` chỉ để hiển thị. User chọn **giữ ô để đặt tên riêng**.
+  - Sửa `meeting-section.tsx`: `useState('')`, bỏ `required`, thêm `placeholder="Tên buổi học (bỏ trống: Buổi học + ngày giờ bắt đầu)"`; `start()` gửi `title.trim() || defaultTitle()` → bỏ trống / chỉ dấu cách thì tên tính **lúc bấm**. Gợi ý không ghi giờ cụ thể vì giờ trong gợi ý cũng sẽ cũ như lỗi đang sửa. Backend, API, schema không đổi.
+  - Tài liệu sửa theo: spec §5.2 + §11.2 (`[user chốt 2026-10-07]`), `endpoint.md` (dòng `title`), comment `start-meeting.dto.ts`, ghi chú dưới Step 3 Task 8 trong plan.
+  - Kiểm: frontend build exit 0, lint 5 problems có sẵn (không lỗi mới); backend `npm test` 128 passed, build exit 0. Chạy thật (Chrome headless):
+    ```
+    PASS  ô tên để trống, có gợi ý, không bắt buộc   [{"value":"","placeholder":"Tên buổi học (bỏ trống: Buổi học + ngày giờ bắt đầu)","required":false}]
+          trang mở lúc 22:54:31, chờ 30 s sang phút mới rồi mới bấm
+    PASS  không gõ gì → tên theo giờ lúc bấm, không phải giờ mở trang   ["Buổi học 07/10 22:55" / lúc mở "Buổi học 07/10 22:54" / lúc bấm "Buổi học 07/10 22:55"]
+    PASS  gõ tên riêng → lưu đúng tên (đã bỏ khoảng trắng 2 đầu)   [Ôn thi chương 3]
+    PASS  chỉ gõ dấu cách → tên mặc định theo giờ lúc bấm, không lỗi 400   [Buổi học 07/10 22:55]
+    console error/warning + exception: 0
+    ALL PASS
+    ```
+  - Trục trặc của script test (không phải code app): (1) dùng lại profile Chrome cũ còn token hết hạn → `AuthProvider` gọi `/auth/me` bị 401 và `removeItem` xoá luôn token mới đặt → trang đá về `/login`; sửa script dùng profile mới mỗi lần. (2) Một lần `fetch failed` ở client Node khi gọi `POST /meetings/:id/end` (backend vẫn chạy bình thường) — nghi kết nối keep-alive bị server đóng, **chưa xác nhận**; thêm thử lại 1 lần, lần chạy cuối không gặp lại. Buổi bị bỏ dở lúc đó tự kết thúc `AUTO_EMPTY` sau đúng 180 s.
+- **Commit:** gộp chung một commit với Task 7 + 9 (user chốt 2026-10-08) — xem mục Task 9.
+- **Lệch khỏi plan:**
+  - Code đúng như plan; chỉ thêm 1 dòng ghi chú trên `export async function request` (lý do export).
+  - Step 6 (chạy tay 2 profile Chrome) làm tự động bằng Chrome headless + CDP thay vì bấm tay; kiểm thêm đường 409, MEMBER khi không có buổi ACTIVE, nhãn `AUTO_EMPTY`.
+- **Task sau cần biết:**
+  - Task 9 tạo `app/meetings/[meetingId]/page.tsx` — hiện `/meetings/<id>` là 404 (đúng). Dùng `joinMeeting` / `endMeeting` / kiểu `JoinMeetingResponse` từ Task 8.
+  - Nếu `next build` báo lỗi TS trong `.next/dev/types/*`: xoá `.next/dev/types` rồi build lại; không chạy `next build` khi `next dev` đang chạy.
+  - **Phiên đăng nhập frontend chỉ sống 15 phút** (`JWT_EXPIRES_IN=15m`; backend có schema `refresh-token` nhưng không có endpoint làm mới, frontend không làm mới token — PROJECT_CONTEXT thiết kế "access 15m + refresh rotation" nhưng chưa làm). Ảnh hưởng Task 9 / 10: HOST ở trong cuộc gọi > 15 phút bấm "Kết thúc buổi học" sẽ nhận 401 (cuộc gọi LiveKit vẫn chạy vì token LiveKit 6h); tải lại trang thì bị đưa về `/login`. Có sẵn từ module auth, ngoài phạm vi module meeting — cần quyết khi test kịch bản dài.
+  - Container backend chạy `nest start --watch` nhưng **không thấy file đổi từ ổ Windows** (sửa `start-meeting.dto.ts` không làm backend khởi động lại) → sửa code backend vẫn phải `docker compose up -d --build backend` như Task 4–7.
+  - Dữ liệu thử trong Mongo dev: 4 phòng "Phong UI Task 8", 3 phòng "Phong UI ten buoi hoc", user `uih*/uim*/uit*@test.com`; mọi buổi thử đã ENDED.
+
+## 2026-10-07/08 — Module meeting: Task 9 (frontend — trang cuộc gọi `/meetings/[meetingId]`)
+
+- **Bắt đầu:** Task 7 + 8 chưa commit (user: "không cần commit") → git status không sạch; Task 9 chỉ tạo file mới trong `frontend/` + sửa `package.json` / lock nên không đụng nhau. Backend `npm test` 128 passed.
+- **Xong:**
+  - Cài 3 package đã duyệt: `livekit-client` `^2.22.3`, `@livekit/components-react` `^2.9.24`, `@livekit/components-styles` `^1.2.0` (`npm install`, **không lỗi peer dependency**, không cần `--legacy-peer-deps`).
+  - `src/features/meetings/meeting-stage.tsx`: `MeetingStage` — `useTracks` (camera có placeholder + màn hình chia sẻ) → `GridLayout` / `ParticipantTile`, `ControlBar controls={{ chat: false }}`, `RoomAudioRenderer`. Đúng như plan.
+  - `app/meetings/[meetingId]/page.tsx`: gọi `joinMeeting` có cờ huỷ, chỉ render `<LiveKitRoom>` khi có token; `ROOM_OPTIONS` cấp module (adaptiveStream, dynacast, quay 360p); 4 callback `useCallback` deps cố định, cờ "đã kết nối" trong `useRef`; thông báo theo `DisconnectReason`; banner lỗi thiết bị; HOST có "Kết thúc buổi học". Theo plan + 2 chỗ sửa dưới.
+- **Đối chiếu mã thật trước khi tin plan:** `LiveKitRoomProps` (`.d.ts` 2.9.24) khớp mọi prop plan dùng. `src/hooks/useLiveKitRoom.ts` bản đã cài **giống phân tích spec §11.4**: effect gắn listener khai báo trước effect `disconnect` khi unmount; effect kết nối deps `[connect, token, JSON.stringify(connectOptions), room, onError, serverUrl, simulateParticipants]`; `Room` tạo trong effect. `ControlBar`: nút chat chỉ hiện khi `canPublishData && controls.chat`. Docs Next 16 trong `node_modules/next/dist/docs` (theo `frontend/AGENTS.md`): `useParams` dùng trong client component, import CSS của package được ở bất kỳ đâu trong `app/`.
+- **LỖI TRONG PLAN 1 — lỗi thiết bị thành màn hình chặn (đã sửa, đo trước / sau):** `useLiveKitRoom` bật cam / mic ở `RoomEvent.SignalConnected` — trước khi chờ ICE và trước `Connected` (`livekit-client` `Room.ts` dòng 1090 → 1119 → 1139); `LocalParticipant.setTrackEnabled` gặp lỗi `getUserMedia` thì phát `MediaDevicesError` **rồi ném lại** → `Promise.all` reject → `onError(e)`. ⇒ Chặn quyền camera: `onError` chạy khi `connectedRef` còn `false` → code plan hiện màn hình "Không kết nối được buổi học". Đo bằng Chrome headless chặn camera, giữ micro:
+  ```
+  # code plan (tạm bỏ dòng sửa)
+  MEMBER sau 8 s: "Không kết nối được buổi học: Client initiated disconnect  Vào lại  ← Về phòng"   ô=0
+  FAIL  MEMBER thấy banner lỗi camera / FAIL vẫn ở trong cuộc gọi / FAIL HOST thấy ô MEMBER + nghe micro MEMBER
+  # sau khi sửa
+  MEMBER sau 8 s: "Không bật được camera: trình duyệt chưa được cấp quyền. Bạn vẫn nghe và xem được mọi người; …"   ô=2
+  PASS ×3   ALL PASS
+  ```
+  Sửa 1 dòng đầu `onError`: `if (err instanceof DOMException) return;` — lỗi `getUserMedia` (`NotAllowedError`, `NotFoundError`, `NotReadableError`) là `DOMException`; lỗi kết nối của LiveKit là `ConnectionError` / `Error` thường → vẫn chặn như spec. (`MediaDeviceFailure.getFailure` không dùng được để phân biệt: trả `Other` cho mọi `Error`.) Giữ đúng hành vi spec §11.5; ghi chú dưới Step 3 Task 9 trong plan + 1 dòng ở spec §11.5.
+- **LỖI TRONG PLAN 2 — tên buổi học không nhìn thấy (đã sửa):** `data-lk-theme="default"` ở div ngoài → CSS `[data-lk-theme]{ color: var(--lk-fg) }` làm `<h1>` tên buổi học chữ trắng trên nền trắng (thấy trên ảnh chụp, DOM vẫn có chữ). Chuyển `data-lk-theme` xuống `<LiveKitRoom>` (nhận HTML attribute, tự có nền tối `.lk-room-container`). Kiểm: màu chữ `<h1>` `lab(2.75 0 0)` trên nền `lab(100 0 0)`, vùng cuộc gọi `rgb(17, 17, 17)`.
+- **Kiểm (code cuối):**
+  ```
+  frontend  npm run build   ✓ Compiled successfully · Finished TypeScript · route ƒ /meetings/[meetingId] · exit 0
+  frontend  npm run lint    ✖ 5 problems (2 errors, 3 warnings) — đúng y lỗi có sẵn: auth.context.tsx 35:7, 36:7, 103:5; auth.service.ts 25:3; app/page.tsx 9:9
+  backend   npm test        Test Files 7 passed (7) · Tests 128 passed (128)
+  backend   npm run build   nest build · exit 0
+  ```
+  Không viết unit test (page UI — CLAUDE.md). Build chỉ chạy khi đã tắt `next dev`.
+- **Chạy thật (Step 5) — tự động bằng Chrome headless + DevTools Protocol** (script đồ bỏ trong scratchpad, chỉ `fetch` / `WebSocket` của Node 22 như Task 8): mỗi bên 1 Chrome (camera / mic giả), đăng nhập = đặt `accessToken`; HOST bấm **Bắt đầu** ở trang phòng, MEMBER bấm **Tham gia**; đọc DOM, Mongo, Redis, chụp ảnh. Backend + LiveKit trong Docker, `npm run dev` (Strict Mode). Lần chạy cuối (code cuối):
+  ```
+  PASS  hai bên thấy nhau: mỗi trang 2 ô camera có hình   [Host T9:640x360, Member T9:640x360]
+  PASS  hai bên nghe nhau: mỗi trang có <audio> track micro của người kia đang chạy   [HOST=1 MEMBER=1]
+  PASS  thanh điều khiển không có nút chat   [Microphone | Camera | Share screen | Leave]
+  PASS  HOST có nút "Kết thúc buổi học", MEMBER không có
+  PASS  tên buổi học ở header nhìn thấy được; vùng cuộc gọi vẫn nền tối theo theme LiveKit
+  PASS  Strict Mode (npm run dev): ở yên 5 s vẫn trong cuộc gọi, không bị đá về trang phòng
+  PASS  Mongo: 2 participant, mỗi người đúng 1 session có sid, leftAt null
+  PASS  Redis presence 2 userId · PASS peakParticipants = 2
+  PASS  MEMBER chia sẻ màn hình → HOST thấy ô màn hình có hình   [960x540; nút MEMBER đổi thành "Stop screen share"]
+  PASS  MEMBER bấm Rời → về trang phòng, không hiện "Mất kết nối"
+  PASS  Mongo: session MEMBER có leftAt · PASS presence chỉ còn HOST · PASS HOST vẫn trong cuộc gọi, còn 1 ô
+  PASS  MEMBER vào lại khi camera bị chặn → banner "Không bật được camera: trình duyệt chưa được cấp quyền…"
+  PASS  MEMBER vẫn ở trong cuộc gọi, vẫn xem camera HOST · HOST thấy ô MEMBER (placeholder) + nghe micro MEMBER
+  PASS  Mongo: MEMBER có session thứ 2 (vào lại)
+  PASS  có hộp xác nhận "Kết thúc buổi học cho mọi người?"
+  PASS  HOST bấm Kết thúc buổi học → cả hai thấy "Buổi học đã kết thúc" (không có nút "Vào lại")
+  PASS  Mongo: ENDED, HOST_ENDED, totalParticipants 2, durationSeconds 85 · mọi session đã đóng · key presence đã xoá
+  ALL PASS
+  ```
+  - Console 2 trang: chỉ có **warning**, không có error / exception: `Item with key lk-user-choices does not exist in local storage` (ControlBar đọc lựa chọn thiết bị đã lưu, lần đầu chưa có), `could not createOffer with closed peer connection` (lúc room bị xoá), `error waiting for media permissons` + `NotAllowedError` (trình duyệt chặn camera — đúng).
+  - Ảnh chụp đã xem: lưới 3 ô (2 camera + ô "Member T9's screen"), thanh điều khiển Microphone / Camera / Share screen / Leave; banner lỗi camera + ô placeholder; màn hình "Buổi học đã kết thúc" + "← Về phòng".
+  - Strict Mode: API `join` bị gọi **2 lần** mỗi lần vào (thấy ở Network) nhưng LiveKit chỉ có **1** `starting RTC session` / người, Mongo 1 session — đúng spec §11.4.
+- **Đo thời gian vào (dev + headless, 3 lần đo, chỉ để tham khảo):** MEMBER bấm Tham gia → thấy 2 ô có hình: 12,3 s / 9,6 s / 7,0 s. Tách theo Network + log LiveKit: API `join` xong sau ~1,1–1,5 s (backend nhanh: `ListRooms` 1–8 ms); ICE + publish sau khi LiveKit nhận phiên ~2–3 s. **Mỗi lần có một khoảng ~3–4 s "chết" ở chỗ khác nhau:** lần 2 và 4 nằm **phía trình duyệt** giữa lúc nhận token và lúc tạo WebSocket tới LiveKit (+1,45 → +5,03 s; +1,09 → +3,88 s — trong `Room.connect` không thấy chỗ nào chờ lâu như vậy: không phải LiveKit Cloud nên bỏ region, backoff chỉ áp dụng sau lần lỗi); lần 3 nằm ở **đường trả response** của request `join` thứ 2 (`ListRooms` 2 ms lúc 07:43:59.3, trình duyệt nhận response lúc ≈07:44:02.6). Gốc **chưa rõ** — giống hiện tượng chậm Task 6 / 7 đã ghi; không do code Task 9.
+- **Sự cố lúc chạy (không phải code app):**
+  1. Cờ `--use-fake-ui-for-media-stream` tự đồng ý mọi quyền, **đè** `Browser.setPermission(camera: denied)` → lần thử đầu tiền điều kiện FAIL (camera vẫn bật được), kết quả vô hiệu. Sửa script: người bị chặn camera dùng Chrome **không** có cờ đó, cấp micro qua `Browser.grantPermissions(['audioCapture'])`, chặn camera.
+  2. **Máy ngủ giữa một lần chạy** (log 2026-10-07 16:15 UTC → 2026-10-08 07:38 UTC): thức dậy thì token LiveKit (6 h) đã hết hạn → client tự kết nối lại bị `401 invalid authorization token: token is expired`, room đóng. Buổi đó tự chốt `AUTO_EMPTY`, `durationSeconds 54921` (gồm cả lúc ngủ). Bỏ lần chạy đó, chạy lại.
+  3. Một lần (không lặp lại ở lần sau): Chrome mới mở trang phòng thì bị đưa về `/login` — 2 request `GET /auth/me` (Strict Mode) không thấy hoàn tất, `AuthProvider` xoá token. Backend không có dòng lỗi. Đây là hành vi có sẵn của `auth.context.tsx` (`/auth/me` lỗi / không OK → đăng xuất); script lúc đó chưa ghi mã HTTP nên chưa biết là 401 hay lỗi mạng — giống "fetch failed" không rõ gốc ở Task 8.
+- **`npm install`:** cảnh báo `EBADENGINE` — `machina@7.0.1` (dependency của `livekit-client`) đòi Node ≥ 22.22, máy đang 22.16 (chỉ cảnh báo; build, chạy thật đều ổn). `npm audit` báo 13 vulnerability — **đều có sẵn** (next, shadcn, eslint-config-next, sharp…), không cái nào từ 3 gói LiveKit. Chưa chạy `npm audit fix`.
+- **Commit:** một commit chung cho Task 7 + 8 + 9 (user chốt 2026-10-08: "commit 1 lần") — `feat: đưa người ra khỏi cuộc gọi khi kick / rời / giải tán phòng, khu buổi học và trang cuộc gọi LiveKit`.
+- **Lệch khỏi plan:**
+  - 2 chỗ sửa code ở trên (lỗi kỹ thuật, giữ hành vi spec); ghi chú dưới Step 3 Task 9 trong plan.
+  - Step 5 (chạy tay 2 profile Chrome) làm tự động bằng Chrome headless + CDP; kiểm thêm: tên buổi học nhìn thấy được, Mongo / Redis sau mỗi bước, lỗi thiết bị (một phần kịch bản 11 Task 10), nút xác nhận kết thúc.
+- **Task sau cần biết (Task 10):**
+  - Kịch bản 11 tự động bằng headless: **không** dùng `--use-fake-ui-for-media-stream` cho trình duyệt cần chặn quyền (xem sự cố 1). Chặn bằng biểu tượng khoá ở Chrome thường thì không bị.
+  - Kịch bản 9 "console không có lỗi đỏ": sẽ thấy các warning vàng ở trên (`lk-user-choices`…) — không phải lỗi.
+  - Khoảng chậm ~3–4 s lúc vào: bước tạm bật `setLogLevel('debug')` ở kịch bản 11 cho mốc thời gian `connecting` → mở WebSocket, xem khoảng chậm phía trình duyệt nằm ở đâu; bước benchmark đo join latency nên đo trên `next build` + `next start`, không trên `npm run dev`.
+  - Tắt sleep của máy khi chạy kịch bản dài (kịch bản 5, 7 chờ 3 phút+): máy ngủ làm token LiveKit hết hạn và cuộc gọi đứt.
+  - `frontend/AGENTS.md` (do `next dev` sinh) không bị đổi trong task này.
+  - Dữ liệu thử trong Mongo dev: 8 phòng "Phong T9 …", user `t9h*/t9m*@test.com`; mọi buổi thử đã ENDED.

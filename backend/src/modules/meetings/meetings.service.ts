@@ -203,6 +203,48 @@ export class MeetingsService {
     }
   }
 
+  // Gọi từ RoomsService khi kick / rời phòng (spec §8). KHÔNG BAO GIỜ ném lỗi —
+  // thao tác chính (xoá thành viên) đã xong; lỗi ở đây chỉ ghi log
+  async removeFromActiveMeeting(roomId: string, userId: string) {
+    let meetingId = '?';
+    try {
+      const active = await this.meetingModel.findOne({ roomId, status: MeetingStatus.ACTIVE }).lean().exec();
+      if (!active) return;
+      meetingId = String(active._id);
+      await this.media.removeParticipant(meetingId, userId);
+    } catch (err) {
+      // Người đó còn trong call tới khi tự thoát; vào lại bị webhook chặn; HOST có thể kết thúc buổi học
+      this.logger.error(`Không đưa được user ${userId} ra khỏi meeting ${meetingId} của room ${roomId}: ${err}`);
+    }
+  }
+
+  // Gọi từ RoomsService khi giải tán phòng (spec §8). KHÔNG BAO GIỜ ném lỗi.
+  // 2 bước độc lập: bước chốt lỗi vẫn đóng room → room_finished tới sau vẫn chốt ROOM_DISSOLVED
+  async endActiveMeetingOfRoom(roomId: string) {
+    let meetingId: string;
+    try {
+      const active = await this.meetingModel.findOne({ roomId, status: MeetingStatus.ACTIVE }).lean().exec();
+      if (!active) return;
+      meetingId = String(active._id);
+    } catch (err) {
+      // Không biết meetingId → không đóng được room; room trống dần → room_finished → ROOM_DISSOLVED
+      this.logger.error(`Không tìm được meeting ACTIVE của room ${roomId} khi giải tán: ${err}`);
+      return;
+    }
+
+    try {
+      await this.endMeeting(meetingId, EndReason.ROOM_DISSOLVED, new Date());
+    } catch (err) {
+      this.logger.error(`Không chốt được meeting ${meetingId} của room ${roomId} khi giải tán: ${err}`);
+    }
+
+    try {
+      await this.media.closeRoom(meetingId);
+    } catch (err) {
+      this.logger.error(`Không đóng được room LiveKit ${meetingId} của room ${roomId} khi giải tán: ${err}`);
+    }
+  }
+
   // Kết thúc meeting — dùng chung cho HOST kết thúc, giải tán phòng, room_finished, tự hồi phục (spec §7.1).
   // Chạy lại bao nhiêu lần cũng ra cùng kết quả
   async endMeeting(meetingId: string, reason: EndReason, endedAt: Date, endedBy: string | null = null) {

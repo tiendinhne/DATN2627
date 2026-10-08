@@ -8,6 +8,7 @@ Vd: Auth,...
 ## Rooms
 
 Mọi endpoint cần header `Authorization: Bearer <accessToken>`. Lỗi validate → 400.
+Rời phòng / kick / giải tán: lỗi khi gọi LiveKit **không** đổi mã trả về (vẫn `204`) — chỉ ghi log.
 
 **Room response** (dùng chung cho các endpoint trả về một phòng):
 `{ id, name, description, joinCode, ownerId, status, memberCount, createdAt, myRole }` — `myRole` là `HOST` hoặc `MEMBER` của người đang gọi.
@@ -76,19 +77,21 @@ Thêm một người **đã có tài khoản** vào phòng bằng email, với r
 Tự rời phòng. Quyền: thành viên không phải HOST.
 - Response `204`.
 - `400`: HOST gọi — HOST không rời được, chỉ giải tán (ADR-020).
+- Đang ở trong buổi học → bị đưa ra khỏi cuộc gọi.
 
 ### DELETE /rooms/:roomId/members/:userId
 Kick thành viên (xoá khỏi phòng, người đó nhập lại mã vẫn vào được — ADR-020). Quyền: HOST.
 - Response `204`.
 - `400`: `userId` sai định dạng, hoặc tự kick chính mình.
 - `403`: không phải HOST. `404`: người đó không có trong phòng.
+- Người bị kick đang ở trong buổi học → bị đưa ra khỏi cuộc gọi; vào lại bằng token cũ cũng bị đưa ra (webhook kiểm thành viên).
 
 ### POST /rooms/:roomId/dissolve
 Giải tán phòng: `status = DISSOLVED`, `dissolvedAt = now`. Quyền: HOST.
 - Response `204`.
 - `403`: không phải HOST.
 - Sau khi giải tán: mọi endpoint theo `roomId` trả `404`, join bằng mã trả `404`. `room_members` được giữ làm lịch sử.
-- Chưa làm: kết thúc meeting đang diễn ra (chờ module meeting).
+- Buổi học đang diễn ra kết thúc với `ROOM_DISSOLVED`, mọi người bị ngắt khỏi cuộc gọi.
 
 ## Meetings
 
@@ -101,7 +104,7 @@ Bắt đầu buổi học. Quyền: HOST.
 
 | Body | Kiểu | Ràng buộc |
 |---|---|---|
-| title | string | bắt buộc, 1–100 ký tự (đã trim) — frontend điền sẵn "Buổi học dd/MM HH:mm" |
+| title | string | bắt buộc, 1–100 ký tự (đã trim) — HOST bỏ trống thì frontend gửi "Buổi học dd/MM HH:mm" (giờ lúc bấm) |
 
 - Response `201`: meeting response (`status: ACTIVE`).
 - `403`: không phải HOST. `404`: phòng không tồn tại / đã giải tán.

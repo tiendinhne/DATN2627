@@ -2,8 +2,9 @@ import type { Room, RoomListResponse, RoomMember } from '@/types/room';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-// Gọi API kèm token; lỗi thì ném Error với message backend trả về
-async function request<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+// Gọi API kèm token; lỗi thì ném Error với message backend trả về.
+// Export để meeting.service dùng lại (spec meeting §11.1) — không tạo helper mới
+export async function request<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {

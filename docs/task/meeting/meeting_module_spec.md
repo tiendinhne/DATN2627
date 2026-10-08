@@ -199,7 +199,7 @@ Mọi route REST cần JWT (ADR-008). Response trả `id`, không `_id`. `roomId
 
 ### 5.2 Chi tiết
 
-**`POST /rooms/:roomId/meetings`** — body `{ title: string 1–100 (trim), bắt buộc }`. Frontend điền sẵn "Buổi học dd/MM HH:mm" theo giờ trình duyệt → backend không xử lý múi giờ (container chạy UTC).
+**`POST /rooms/:roomId/meetings`** — body `{ title: string 1–100 (trim), bắt buộc }`. HOST bỏ trống ô tên thì frontend gửi "Buổi học dd/MM HH:mm" tính theo giờ trình duyệt **lúc bấm** (§11.2) → backend không xử lý múi giờ (container chạy UTC).
 1. `assertRoomPermission(..., MANAGE_MEETING)` → `403` / `404`.
 2. Tìm meeting ACTIVE của room. Có →
    - `roomExists(id)` = true → `409` "Phòng đang có buổi học diễn ra".
@@ -365,7 +365,8 @@ Dùng chung cho 4 đường: HOST kết thúc, giải tán phòng, `room_finishe
 ### 11.2 Trang room — `src/features/meetings/meeting-section.tsx`
 Gắn vào `app/rooms/[roomId]/page.tsx` (đã 267 dòng → tách component). Nút chỉ ẩn / hiện theo `myRole`; backend mới là nơi kiểm quyền.
 - `items[0]` ACTIVE → tên buổi học + **Tham gia** (link `/meetings/[id]`). HOST thêm **Kết thúc** (dùng được cho cả meeting bị kẹt).
-- Không có meeting ACTIVE, HOST → ô tên điền sẵn "Buổi học dd/MM HH:mm" (giờ trình duyệt) + **Bắt đầu** → thành công thì chuyển thẳng vào trang meeting. `409` → hiện lỗi + tải lại danh sách (thấy meeting đang chạy).
+- Không có meeting ACTIVE, HOST → ô tên **không bắt buộc** (để trống, có gợi ý) + **Bắt đầu** → thành công thì chuyển thẳng vào trang meeting. `409` → hiện lỗi + tải lại danh sách (thấy meeting đang chạy).
+  - Bỏ trống (hoặc chỉ gõ dấu cách) → tên "Buổi học dd/MM HH:mm" tính theo giờ trình duyệt **lúc bấm**, không phải lúc mở trang. `[user chốt 2026-10-07]` — bản đầu điền sẵn giờ lúc mở trang, để trang mở lâu rồi mới bấm thì tên mang giờ cũ.
 - Lịch sử: 20 buổi gần nhất — tên, giờ bắt đầu, thời lượng, số người tối đa / tổng số người, lý do kết thúc (`HOST_ENDED` "Host kết thúc", `AUTO_EMPTY` "Tự kết thúc", `ROOM_DISSOLVED` "Phòng giải tán"). Không phân trang.
 
 ### 11.3 Trang meeting
@@ -416,6 +417,7 @@ Mã nguồn `components-js` `useLiveKitRoom.ts`:
 ### 11.5 Lỗi thiết bị và lỗi kết nối
 - `onMediaDeviceFailure(failure, kind)` (`MediaDeviceFailure`: `PermissionDenied`, `NotFound`, `DeviceInUse`, `Other`) → **banner không chặn cuộc gọi**, vd "Không bật được camera: thiết bị đang được ứng dụng khác dùng. Bạn vẫn nghe và xem được mọi người; có thể bật lại ở thanh điều khiển." Người dùng vẫn ở trong call — kết nối LiveKit và publish thiết bị là hai bước tách nhau.
 - `onError`: chỉ là lỗi chặn khi xảy ra **trước** `Connected` (token sai, room không tồn tại…) → màn hình lỗi + **Vào lại**. Sau khi đã kết nối, lỗi thiết bị do banner lo, `onError` không hiện thêm.
+  - `[phát sinh kỹ thuật — Task 9]` `useLiveKitRoom` bật cam / mic ngay ở `SignalConnected` (**trước** `Connected`) và báo lỗi `getUserMedia` qua **cả** `onMediaDeviceFailure` lẫn `onError` → `onError` bỏ qua lỗi `DOMException` (lỗi thiết bị), nếu không thì chặn quyền camera sẽ ra màn hình lỗi chặn thay vì banner. Đo ở progress Task 9.
 
 ---
 
