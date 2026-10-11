@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { MeetingSection } from '@/features/meetings/meeting-section';
 
 // Chi tiết phòng. Nút của HOST chỉ ẩn/hiện theo myRole — backend mới là nơi kiểm quyền.
 export default function RoomDetailPage() {
@@ -178,6 +179,9 @@ export default function RoomDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Buổi học: bắt đầu / tham gia / kết thúc / lịch sử */}
+        <MeetingSection roomId={roomId} token={token} isHost={isHost} />
 
         {/* Thành viên */}
         <Card>

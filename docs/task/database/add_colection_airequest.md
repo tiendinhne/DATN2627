@@ -1,0 +1,1 @@
+Log yêu cầu AI: Mục 5.9 trong đề cương (`docs/DATN_decuong.md`) yêu cầu "đánh giá khả năng hoạt động của trợ lý AI" — hiện DB không lưu lịch sử prompt/kết quả AI. Nếu phần đánh giá cần số liệu (tỷ lệ thành công, thời gian phản hồi...) thì nên cân nhắc thêm một collection nhỏ ai_requests để có dữ liệu làm báo cáo kiểm thử.

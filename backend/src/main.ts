@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
@@ -25,7 +26,12 @@ class RedisIoAdapter extends IoAdapter {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: giữ body gốc để verify chữ ký webhook LiveKit (spec §4.4)
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  // LiveKit gửi webhook với Content-Type application/webhook+json — parser JSON mặc định bỏ qua loại này.
+  // Phải liệt kê cả application/json: thấy đã có middleware tên "jsonParser" thì Nest KHÔNG đăng ký
+  // parser JSON mặc định nữa (ExpressAdapter.registerParserMiddleware) → thiếu dòng này mọi REST mất body
+  app.useBodyParser('json', { type: ['application/json', 'application/webhook+json'] });
 
   app.enableCors({
     origin: (process.env.FRONTEND_URL || 'http://localhost:3000').split(','),

@@ -8,6 +8,7 @@ Vd: Auth,...
 ## Rooms
 
 Mọi endpoint cần header `Authorization: Bearer <accessToken>`. Lỗi validate → 400.
+Rời phòng / kick / giải tán: lỗi khi gọi LiveKit **không** đổi mã trả về (vẫn `204`) — chỉ ghi log.
 
 **Room response** (dùng chung cho các endpoint trả về một phòng):
 `{ id, name, description, joinCode, ownerId, status, memberCount, createdAt, myRole }` — `myRole` là `HOST` hoặc `MEMBER` của người đang gọi.
@@ -76,19 +77,71 @@ Thêm một người **đã có tài khoản** vào phòng bằng email, với r
 Tự rời phòng. Quyền: thành viên không phải HOST.
 - Response `204`.
 - `400`: HOST gọi — HOST không rời được, chỉ giải tán (ADR-020).
+- Đang ở trong buổi học → bị đưa ra khỏi cuộc gọi.
 
 ### DELETE /rooms/:roomId/members/:userId
 Kick thành viên (xoá khỏi phòng, người đó nhập lại mã vẫn vào được — ADR-020). Quyền: HOST.
 - Response `204`.
 - `400`: `userId` sai định dạng, hoặc tự kick chính mình.
 - `403`: không phải HOST. `404`: người đó không có trong phòng.
+- Người bị kick đang ở trong buổi học → bị đưa ra khỏi cuộc gọi; vào lại bằng token cũ cũng bị đưa ra (webhook kiểm thành viên).
 
 ### POST /rooms/:roomId/dissolve
 Giải tán phòng: `status = DISSOLVED`, `dissolvedAt = now`. Quyền: HOST.
 - Response `204`.
 - `403`: không phải HOST.
 - Sau khi giải tán: mọi endpoint theo `roomId` trả `404`, join bằng mã trả `404`. `room_members` được giữ làm lịch sử.
-- Chưa làm: kết thúc meeting đang diễn ra (chờ module meeting).
+- Buổi học đang diễn ra kết thúc với `ROOM_DISSOLVED`, mọi người bị ngắt khỏi cuộc gọi.
+
+## Meetings
+
+Mọi endpoint REST cần header `Authorization: Bearer <accessToken>`. `roomId` / `meetingId` sai định dạng → `400`. Không gọi được LiveKit → `502` "Không kết nối được máy chủ media" (không đổi trạng thái gì).
+
+**Meeting response:** `{ id, roomId, title, status, createdBy, startedAt, endedAt, endReason, peakParticipants, totalParticipants, messageCount, durationSeconds }` — `status`: `ACTIVE` | `ENDED`; `endReason`: `HOST_ENDED` | `AUTO_EMPTY` (hệ thống tự kết thúc: phòng trống 3 phút hoặc media server dừng) | `ROOM_DISSOLVED` | `null`.
+
+### POST /rooms/:roomId/meetings
+Bắt đầu buổi học. Quyền: HOST.
+
+| Body | Kiểu | Ràng buộc |
+|---|---|---|
+| title | string | bắt buộc, 1–100 ký tự (đã trim) — HOST bỏ trống thì frontend gửi "Buổi học dd/MM HH:mm" (giờ lúc bấm) |
+
+- Response `201`: meeting response (`status: ACTIVE`).
+- `403`: không phải HOST. `404`: phòng không tồn tại / đã giải tán.
+- `409`: phòng đang có buổi học diễn ra. Meeting cũ còn ACTIVE trong DB nhưng room LiveKit đã đóng → tự chốt meeting cũ (`AUTO_EMPTY`) rồi tạo mới, không trả 409.
+
+### GET /rooms/:roomId/meetings
+Lịch sử buổi học, mới nhất trước (buổi đang diễn ra đứng đầu). Quyền: thành viên.
+
+| Query | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| page | number | 1 | 1–1000 |
+| limit | number | 20 | 1–50 |
+
+Response `200`: `{ items: MeetingResponse[], page, limit, hasMore }`.
+
+### POST /meetings/:meetingId/join
+Vào buổi học — cấp token LiveKit mới mỗi lần gọi. Quyền: thành viên phòng của meeting.
+
+- Response `200`: `{ token, livekitUrl, myRole, meeting }` — `livekitUrl` là địa chỉ LiveKit cho trình duyệt (dev `ws://localhost:7880`); token: `identity = userId`, `name = displayName`, `room = meetingId`, mọi thành viên cùng quyền publish + subscribe, **không** gửi data qua LiveKit (`canPublishData: false`), hạn `LIVEKIT_TOKEN_TTL_HOURS` giờ.
+- `403`: không phải thành viên. `404`: meeting không tồn tại / phòng đã giải tán.
+- `409`: buổi học đã kết thúc (kể cả khi DB còn ACTIVE nhưng room LiveKit đã đóng — tự chốt meeting).
+
+### POST /meetings/:meetingId/end
+Kết thúc buổi học cho mọi người: chốt `ENDED` (`HOST_ENDED`), đóng room LiveKit → mọi người bị ngắt. Quyền: HOST.
+- Response `204`. **Idempotent**: buổi đã kết thúc vẫn trả `204` (không ghi đè `endedAt`) — dùng được khi meeting bị kẹt.
+- `403`: không phải HOST. `404`: meeting không tồn tại. `502`: không đóng được room LiveKit — bấm lại.
+
+### POST /webhooks/livekit
+Webhook của LiveKit (không dành cho client). Không dùng JWT — xác thực bằng chữ ký: header `Authorization` là JWT chứa sha256 của raw body; `Content-Type: application/webhook+json`.
+
+| Mã | Khi nào |
+|---|---|
+| `200` | xử lý xong, **hoặc** bỏ qua có chủ đích: room không phải meeting (room tạo bằng `lk`), identity không phải userId (bot load-test), không có meeting, event không quan tâm, người không còn là thành viên (đã bị đưa ra khỏi room) |
+| `401` | sai / thiếu chữ ký |
+| `500` | lỗi bất ngờ (Mongo, Redis, LiveKit API) → LiveKit gửi lại; mọi bước idempotent |
+
+Event xử lý: `participant_joined` (ghi session theo `sid`, presence, `$max` peak; không còn là thành viên / meeting đã kết thúc → `removeParticipant`), `participant_left` + `participant_connection_aborted` (đóng session theo `sid`), `room_finished` (chốt meeting `AUTO_EMPTY` / `ROOM_DISSOLVED` — ADR-022).
 
 ## Chat (thiết kế — chưa code)
 

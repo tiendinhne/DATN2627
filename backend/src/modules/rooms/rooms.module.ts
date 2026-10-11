@@ -5,6 +5,7 @@ import { Room, RoomSchema } from './schemas/room.schema.js';
 import { File, FileSchema } from './schemas/file.schema.js';
 import { RoomMember, RoomMemberSchema } from '../room-members/schemas/room-member.schema.js';
 import { RoomMembersModule } from '../room-members/room-members.module.js';
+import { MeetingsModule } from '../meetings/meetings.module.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
 import { RoomsController } from './rooms.controller.js';
 import { RoomsService } from './rooms.service.js';
@@ -20,6 +21,8 @@ import { RoomsService } from './rooms.service.js';
     ]),
     // Lấy RoomAccessService để kiểm quyền
     RoomMembersModule,
+    // MeetingsService: kick / rời / giải tán ảnh hưởng meeting đang diễn ra
+    MeetingsModule,
     // JwtAuthGuard cần AuthModuleOptions trong module dùng nó: Nest 12 không kế thừa @Optional()
     // của AuthGuard('jwt') sang lớp con → thiếu dòng này app không khởi động được
     PassportModule.register({ session: false }),

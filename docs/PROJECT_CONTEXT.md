@@ -119,10 +119,10 @@ Webhook chỉ tới **một** instance. Mọi side effect phải đi qua Mongo h
 
 ### 7.5 Scheduled job
 
-`@nestjs/schedule` chạy trên mọi replica. Job auto-end meeting phải bọc distributed lock:
+`@nestjs/schedule` chạy trên mọi replica. Job định kỳ (nếu có) phải bọc distributed lock. **Auto-end meeting không dùng job** — dùng timeout của LiveKit + webhook `room_finished` (ADR-022). Quy tắc lock dưới đây giữ cho job khác sau này:
 
 ```
-SET lock:auto-end-meetings <instanceId> NX PX 30000
+SET lock:<tên-job> <instanceId> NX PX 30000
 ```
 
 Giải phóng bằng Lua script kiểm tra token khớp, tránh xoá nhầm lock của instance khác. Giới hạn: chỉ một Redis nên lock là single point of failure — ghi rõ trong phần Limitations.
@@ -347,6 +347,7 @@ Frontend hiển thị lỗi **ngay tại field**, không chỉ toast chung.
 Enforce ở **backend**, cả REST guard lẫn Socket.IO handler. Frontend chỉ ẩn/hiện UI.
 Permission được biểu diễn dưới dạng **dữ liệu** (bảng tra) trong `shared/`, không phải chuỗi if-else, dùng chung cho backend và frontend.
 **Role map thẳng sang LiveKit token grant** (hiện HOST và MEMBER đều `canPublish: true`, xem `docs/rule/role.md`) → quyền media enforce ngay ở SFU, không chỉ ẩn nút ở UI. Token TTL 6 giờ, cấp lại mỗi lần join meeting.
+Hiện hai role có grant giống hệt nhau nên code dùng **một hằng số `MEMBER_GRANT`** trong adapter LiveKit (`canPublish`, `canSubscribe`, `canPublishData: false` — P2); khi có role mới (vd VIEWER) mới cần bảng theo role (spec meeting §4.3).
 Lưu ý nhỏ: token đã cấp thì không tự cập nhật. Nếu cần đổi quyền ngay giữa buổi họp (ví dụ host tắt quyền nói của ai đó), bạn phải gọi API updateParticipant của LiveKit từ backend để đổi permission trực tiếp, chứ chờ họ join lại thì quá chậm.
 ---
 

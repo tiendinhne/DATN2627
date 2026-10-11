@@ -15,7 +15,7 @@ Trong code nhớ ghi chú cơ bản dễ nhìn vào dễ hiểu
 |---|---|---|
 | 1 | `docs/DATN_decuong.md` | Văn bản GVHD đã duyệt. **Không gì được mâu thuẫn với file này.** |
 | 2 | `docs/PROJECT_CONTEXT.md` | Đặc tả kỹ thuật. `§n` trỏ section n của nó |
-| 3 | `docs/adr/*.md` | Quyết định kỹ thuật đã chốt — một file một quyết định, xem `docs/adr/README.md` |
+| 3 | `docs/decisions.md` | Quyết định kỹ thuật đã chốt — ADR-001…, mỗi ADR một mục |
 | 4 | `docs/progress.md` | Đang làm tới đâu. Cập nhật sau **mỗi** task |
 | 5 | `docs/api/endpoint.md`, `docs/database/DB_DESIGN.md` | Chi tiết endpoint, schema |
 

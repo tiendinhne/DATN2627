@@ -18,6 +18,7 @@ import type { RoomMemberDocument } from '../room-members/schemas/room-member.sch
 import { User } from '../users/schemas/user.schema.js';
 import type { UserDocument } from '../users/schemas/user.schema.js';
 import { RoomAccessService } from '../room-members/room-access.service.js';
+import { MeetingsService } from '../meetings/meetings.service.js';
 import { RedisService } from '../../common/services/redis.service.js';
 import { RoomRole, RoomStatus } from '../../shared/enums.js';
 import { RoomAction } from '../../shared/permissions.js';
@@ -92,6 +93,8 @@ export class RoomsService {
     private access: RoomAccessService,
     private redis: RedisService,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    // Kick / rời / giải tán ảnh hưởng meeting đang diễn ra (spec meeting §8)
+    private meetings: MeetingsService,
   ) {}
 
   // POST /rooms — người tạo thành HOST
@@ -257,6 +260,8 @@ export class RoomsService {
     if (!removed) {
       throw new NotFoundException('Người này không có trong phòng');
     }
+    // Đưa ra khỏi cuộc gọi đang diễn ra — hàm không ném lỗi, kick vẫn 204
+    await this.meetings.removeFromActiveMeeting(roomId, targetUserId);
     // TODO(chat gateway): thu hồi socket của người bị kick khỏi kênh room:{roomId}
   }
 
@@ -268,6 +273,8 @@ export class RoomsService {
     }
     // Không xoá được (vừa rời/bị kick ở request khác) vẫn coi là đã rời → 204
     await this.removeMember(roomId, userId);
+    // Rời phòng thì rời luôn cuộc gọi đang diễn ra
+    await this.meetings.removeFromActiveMeeting(roomId, userId);
     // TODO(chat gateway): thu hồi socket của người vừa rời khỏi kênh room:{roomId}
   }
 
@@ -282,7 +289,8 @@ export class RoomsService {
         { $set: { status: RoomStatus.DISSOLVED, dissolvedAt: new Date() } },
       )
       .exec();
-    // TODO(module meeting): kết thúc meeting ACTIVE của room với EndReason.ROOM_DISSOLVED
+    // Kết thúc meeting đang diễn ra (ROOM_DISSOLVED) + đóng room LiveKit — hàm không ném lỗi
+    await this.meetings.endActiveMeetingOfRoom(roomId);
   }
 
   // Xoá thành viên; chỉ giảm memberCount khi thật sự xoá được → 2 request cùng lúc không trừ 2 lần

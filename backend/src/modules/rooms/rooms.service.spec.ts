@@ -72,14 +72,20 @@ function build() {
   const userModel = {
     findOne: q(null),
   };
+  // Module meeting: hai hàm không bao giờ ném lỗi (spec meeting §8)
+  const meetings = {
+    removeFromActiveMeeting: vi.fn().mockResolvedValue(undefined),
+    endActiveMeetingOfRoom: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new RoomsService(
     roomModel as any,
     memberModel as any,
     access as any,
     redis as any,
     userModel as any,
+    meetings as any,
   );
-  return { service, roomModel, memberModel, access, redis, userModel };
+  return { service, roomModel, memberModel, access, redis, userModel, meetings };
 }
 
 // Lỗi trùng unique index của Mongo
@@ -538,5 +544,72 @@ describe('dissolveRoom', () => {
       { $set: { status: RoomStatus.DISSOLVED, dissolvedAt: expect.any(Date) } },
     );
     expect(memberModel.deleteOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('tích hợp module meeting', () => {
+  const targetId = new Types.ObjectId().toString();
+
+  it('kick thành công → đưa người bị kick ra khỏi meeting đang diễn ra, SAU khi xoá thành viên', async () => {
+    const { service, memberModel, meetings } = build();
+
+    await service.kickMember(userId, roomId, targetId);
+
+    expect(meetings.removeFromActiveMeeting).toHaveBeenCalledWith(roomId, targetId);
+    expect(memberModel.deleteOne.mock.invocationCallOrder[0]).toBeLessThan(
+      meetings.removeFromActiveMeeting.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('kick người không có trong phòng (404) → không gọi meeting', async () => {
+    const { service, memberModel, meetings } = build();
+    memberModel.deleteOne.mockReturnValue(query({ deletedCount: 0 }));
+
+    await expect(service.kickMember(userId, roomId, targetId)).rejects.toBeInstanceOf(NotFoundException);
+    expect(meetings.removeFromActiveMeeting).not.toHaveBeenCalled();
+  });
+
+  it('MEMBER kick (403) → không gọi meeting', async () => {
+    const { service, access, meetings } = build();
+    access.assertRoomPermission.mockRejectedValue(new ForbiddenException());
+
+    await expect(service.kickMember(userId, roomId, targetId)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(meetings.removeFromActiveMeeting).not.toHaveBeenCalled();
+  });
+
+  it('rời phòng → đưa mình ra khỏi meeting đang diễn ra', async () => {
+    const { service, meetings } = build();
+
+    await service.leaveRoom(userId, roomId);
+
+    expect(meetings.removeFromActiveMeeting).toHaveBeenCalledWith(roomId, userId);
+  });
+
+  it('rời phòng khi bản ghi đã bị xoá ở request khác → vẫn đưa ra khỏi meeting', async () => {
+    const { service, memberModel, meetings } = build();
+    memberModel.deleteOne.mockReturnValue(query({ deletedCount: 0 }));
+
+    await service.leaveRoom(userId, roomId);
+
+    expect(meetings.removeFromActiveMeeting).toHaveBeenCalledWith(roomId, userId);
+  });
+
+  it('giải tán → kết thúc meeting đang diễn ra, SAU khi đổi status phòng', async () => {
+    const { service, roomModel, meetings } = build();
+
+    await service.dissolveRoom(userId, roomId);
+
+    expect(meetings.endActiveMeetingOfRoom).toHaveBeenCalledWith(roomId);
+    expect(roomModel.updateOne.mock.invocationCallOrder[0]).toBeLessThan(
+      meetings.endActiveMeetingOfRoom.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('MEMBER giải tán (403) → không gọi meeting', async () => {
+    const { service, access, meetings } = build();
+    access.assertRoomPermission.mockRejectedValue(new ForbiddenException());
+
+    await expect(service.dissolveRoom(userId, roomId)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(meetings.endActiveMeetingOfRoom).not.toHaveBeenCalled();
   });
 });

@@ -153,7 +153,6 @@ vite.config.ts.timestamp-*
 # MongoDB for VS Code — playground scratch files (không phải code thật của dự án)
 playground-*.mongodb.js
 
-docs/task 
 # Riêng máy: override cục bộ
 .claude/settings.local.json
 

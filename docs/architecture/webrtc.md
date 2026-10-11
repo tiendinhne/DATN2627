@@ -1,6 +1,6 @@
 # WebRTC / LiveKit
 
-Trạng thái: **[PLANNED]** — chưa có code. Toàn bộ mục này là thiết kế
+Trạng thái: **[MỘT PHẦN ĐÃ LÀM]** — module meeting (spec `docs/task/meeting/meeting_module_spec.md`): token, webhook, LiveKit dev trong Docker Compose, trang cuộc gọi. Chưa có: TURN (bước deploy), benchmark (§7), audio-only.
 ## 1. Phân chia trách nhiệm
 
 Backend **không phải** media server. Backend: auth, sinh access token, nhận webhook, business logic.
@@ -10,13 +10,14 @@ LiveKit: media transport, SFU forwarding, simulcast/dynacast, congestion control
 
 ```
 Client → POST /meetings/:id/join  (JWT)
-       → Backend: check membership + meeting ACTIVE + resolve role
+       → Backend: check membership + meeting ACTIVE + room LiveKit còn (không còn → tự hồi phục, 409)
        → sinh LiveKit AccessToken:
             identity   = userId
+            name       = displayName
             room       = meeting._id.toString()
-            grant      = toLiveKitGrant(role)   // HOST và MEMBER đều được publish
-            TTL        = 6 giờ
-       → trả { token, livekitUrl }
+            grant      = MEMBER_GRANT          // mọi thành viên cùng quyền: publish + subscribe, canPublishData: false (P2)
+            TTL        = LIVEKIT_TOKEN_TTL_HOURS (6 giờ)
+       → trả { token, livekitUrl, myRole, meeting }
 Client → connect LiveKit bằng token
 ```
 
@@ -27,15 +28,15 @@ Client → connect LiveKit bằng token
 ## 3. Webhook flow [CONFIRMED]
 
 ```
-LiveKit → POST /webhooks/livekit  (có chữ ký)
-        → VERIFY CHỮ KÝ (bắt buộc)
+LiveKit → POST /webhooks/livekit  (có chữ ký, Content-Type application/webhook+json, cần raw body)
+        → VERIFY CHỮ KÝ (bắt buộc) — sai → 401
         → parse room name → meetingId
-        → cập nhật MeetingParticipant (Mongo)
-        → cập nhật presence + peak (Redis)
-        → emit domain event → realtime broadcast qua Redis adapter
+        → cập nhật MeetingParticipant (Mongo) — idempotent theo participant.sid
+        → cập nhật presence (Redis) + peak ($max trong Mongo)
+        → (bước Realtime gateway) phát event realtime qua Redis adapter
 ```
 
-Event quan tâm: `participant_joined`, `participant_left`, `room_finished`.
+Event quan tâm: `participant_joined`, `participant_left`, `participant_connection_aborted` (xử lý như left), `room_finished` (chốt meeting — ADR-022). Chi tiết mã trả về / chống trùng: spec meeting §6.
 
 **Không verify chữ ký = ai cũng giả được webhook để đá người khác khỏi meeting.**
 
@@ -54,6 +55,7 @@ Event quan tâm: `participant_joined`, `participant_left`, `room_finished`.
 - **Single-port UDP mode** (`rtc.udp_port: 7882`), không dùng dải 50000–60000 vì Docker map 10.000 port cực chậm.
 - **TURN bắt buộc.** Không có TURN thì mạng trường / 4G / NAT đối xứng sẽ fail và buổi bảo vệ có thể hỏng. Dùng embedded TURN của LiveKit, TLS trên 5349 (không dùng 443 vì trùng NGINX).
 - **`network_mode: host`** cho container LiveKit trên Linux, tránh NAT hai lớp (Docker bridge + VPS NAT) làm hỏng ICE candidate. Nếu buộc dùng bridge thì set `rtc.use_external_ip: true`.
+- **Dev (Docker Desktop Windows):** không có `network_mode: host` → map cổng 7880 / 7881 / 7882udp + `rtc.node_ip: 127.0.0.1`; chỉ thử được bằng trình duyệt trên cùng máy (spec meeting §3).
 
 ## 5. Bandwidth — ràng buộc quyết định mục tiêu [CONFIRMED]
 
@@ -70,12 +72,12 @@ Server egress ≈ N × (N − 1) × bitrate_per_stream
 Meeting 10 người ở 360p ≈ **20 GB egress mỗi giờ**. Hệ thống có thể chết vì network trước khi chết vì CPU — phát hiện này phải nêu trong báo cáo.
 
 **Bật ngay từ đầu, không để tối ưu sau:**
-- simulcast (LiveKit mặc định bật cho camera)
-- dynacast (ngừng forward layer không ai subscribe)
-- adaptive stream (client chỉ nhận layer đúng kích thước tile)
-- giới hạn resolution theo layout: grid ≥5 người → 180p/360p; speaker view → 720p
-- chỉ subscribe video của tile trong viewport (paginate 9 tile/trang)
-- audio-only mode cho meeting đông
+- simulcast — ✅ mặc định của livekit-client
+- dynacast — ✅ `RoomOptions.dynacast`
+- adaptive stream — ✅ `RoomOptions.adaptiveStream` (nhận layer theo kích thước ô, dừng video ô không hiển thị)
+- giới hạn resolution — ✅ quay 360p (`videoCaptureDefaults`); phía nhận do adaptive stream chọn layer theo ô
+- chỉ subscribe video của ô trong viewport — ✅ `GridLayout` phân trang + adaptive stream
+- audio-only mode cho meeting đông — ⏳ để bước benchmark, quyết theo số đo B1/B3 (spec meeting §1 câu 9)
 
 ## 6. Mục tiêu participant [CONFIRMED — là mục tiêu, chưa phải kết quả]
 
