@@ -3424,6 +3424,7 @@ Expected: log trang có `Connected` rồi trong khoảng 1 giây `Disconnected, 
    setComponentsLogLevel('debug');
    ```
    (`@livekit/components-react` không export `setLogLevel` → import từ `@livekit/components-core`.)
+   > **[Sửa khi làm Task 10 — 2026-10-08]** Bản đã cài `@livekit/components-react` 2.9.24 **có** export `setLogLevel` (re-export từ `@livekit/components-core`, và hàm này đặt luôn log level cho `livekit-client`) → 4 dòng trên dùng được nguyên, câu trong ngoặc không còn đúng.
 2. Chrome thường: chặn quyền camera cho `localhost:3000` (biểu tượng khoá trên thanh địa chỉ → Camera → Chặn). HOST vào buổi học.
 Expected: banner "Không bật được camera: trình duyệt chưa được cấp quyền…"; vẫn ở trong call, vẫn nghe MEMBER. Console: **đúng 1** dòng `connecting`, **không có** dòng `already connected to room`.
 3. Gỡ 2 dòng tạm; `git diff frontend/app` phải rỗng. Mở lại quyền camera.

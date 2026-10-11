@@ -1,6 +1,6 @@
 # WebRTC / LiveKit
 
-Trạng thái: **[PLANNED]** — chưa có code. Toàn bộ mục này là thiết kế
+Trạng thái: **[MỘT PHẦN ĐÃ LÀM]** — module meeting (spec `docs/task/meeting/meeting_module_spec.md`): token, webhook, LiveKit dev trong Docker Compose, trang cuộc gọi. Chưa có: TURN (bước deploy), benchmark (§7), audio-only.
 ## 1. Phân chia trách nhiệm
 
 Backend **không phải** media server. Backend: auth, sinh access token, nhận webhook, business logic.
@@ -72,12 +72,12 @@ Server egress ≈ N × (N − 1) × bitrate_per_stream
 Meeting 10 người ở 360p ≈ **20 GB egress mỗi giờ**. Hệ thống có thể chết vì network trước khi chết vì CPU — phát hiện này phải nêu trong báo cáo.
 
 **Bật ngay từ đầu, không để tối ưu sau:**
-- simulcast (LiveKit mặc định bật cho camera)
-- dynacast (ngừng forward layer không ai subscribe)
-- adaptive stream (client chỉ nhận layer đúng kích thước tile)
-- giới hạn resolution theo layout: grid ≥5 người → 180p/360p; speaker view → 720p
-- chỉ subscribe video của tile trong viewport (paginate 9 tile/trang)
-- audio-only mode cho meeting đông
+- simulcast — ✅ mặc định của livekit-client
+- dynacast — ✅ `RoomOptions.dynacast`
+- adaptive stream — ✅ `RoomOptions.adaptiveStream` (nhận layer theo kích thước ô, dừng video ô không hiển thị)
+- giới hạn resolution — ✅ quay 360p (`videoCaptureDefaults`); phía nhận do adaptive stream chọn layer theo ô
+- chỉ subscribe video của ô trong viewport — ✅ `GridLayout` phân trang + adaptive stream
+- audio-only mode cho meeting đông — ⏳ để bước benchmark, quyết theo số đo B1/B3 (spec meeting §1 câu 9)
 
 ## 6. Mục tiêu participant [CONFIRMED — là mục tiêu, chưa phải kết quả]
 
