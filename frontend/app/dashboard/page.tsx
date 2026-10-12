@@ -27,8 +27,8 @@ export default function DashboardPage() {
     return null;
   }
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout(); // chờ backend xoá cookie refresh
     router.push('/login');
   };
 
@@ -88,7 +88,7 @@ export default function DashboardPage() {
               {token}
             </div>
             <p className="text-xs text-blue-600 mt-2">
-              💡 Token này được lưu trong localStorage để tự động xác thực các request
+              💡 Token này chỉ nằm trong bộ nhớ trang, sống 15 phút và được tự làm mới bằng refresh token trong cookie httpOnly
             </p>
           </div>
 
