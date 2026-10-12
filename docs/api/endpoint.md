@@ -5,6 +5,42 @@ Khi code xong module/api. phải thêm chi tiết api đó là gì, request/resp
 Phân chia thêm từng nhóm module riêng biệt
 Vd: Auth,...
 
+## Auth
+
+Hai loại token (ADR-023):
+- **Access token** — JWT 15 phút (`JWT_EXPIRES_IN`), trả trong body, frontend chỉ giữ trong memory, gửi bằng header `Authorization: Bearer <accessToken>`.
+- **Refresh token** — 7 ngày, **chỉ nằm trong cookie** `refresh_token` (`HttpOnly; SameSite=Lax; Path=/auth`, thêm `Secure` khi production). Không bao giờ có trong body. Mongo chỉ lưu hash (`refresh_tokens`).
+
+Request đặt / gửi cookie phải có `credentials: 'include'` (CORS đã bật `credentials`).
+
+**User response:** `{ id, email, username, displayName, avatarUrl, provider }`.
+
+### POST /auth/register
+Body: `{ email, username (3–30, chữ / số / _), displayName (1–20), password (≥ 6) }`.
+- `201`: `{ accessToken, user }` + `Set-Cookie: refresh_token=…`.
+- `400`: validate sai, email hoặc username đã dùng.
+
+### POST /auth/login
+Body: `{ identifier, password }` — `identifier` là email hoặc username.
+- `201`: `{ accessToken, user }` + `Set-Cookie: refresh_token=…`.
+- `401`: sai tài khoản / mật khẩu.
+
+### POST /auth/refresh
+Không body; đọc cookie `refresh_token`. Frontend gọi khi tải trang và trước khi access token hết hạn 60 giây.
+- `200`: `{ accessToken, user }` + cookie mới (**xoay vòng**: token cũ bị thu hồi, `replacedByTokenHash` trỏ token mới).
+- `200` **không có** `Set-Cookie`: token vừa bị xoay vòng trong 10 giây (2 tab / Strict Mode refresh cùng lúc) → chỉ cấp access token, cookie trình duyệt đã là token mới.
+- `401`: không có cookie, sai định dạng, không tồn tại, hết hạn, bị thu hồi do đăng xuất, hoặc bị xoay vòng quá 10 giây.
+
+### POST /auth/logout
+Không body; đọc cookie `refresh_token`.
+- `204`: thu hồi refresh token (nếu có) + xoá cookie. Gọi lại / không có cookie vẫn `204`. Access token đã cấp vẫn dùng được tới khi hết hạn (≤ 15 phút).
+
+### GET /auth/me
+Header `Authorization: Bearer <accessToken>` → `200` thông tin user; `401` token sai / hết hạn.
+
+### GET /auth/google, GET /auth/google/callback
+Chỉ hoạt động khi có `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Callback đặt cookie `refresh_token` rồi chuyển về `<FRONTEND_URL>/auth/callback` **không kèm token trên query** (PROJECT_CONTEXT §16); frontend lấy access token bằng `POST /auth/refresh`.
+
 ## Rooms
 
 Mọi endpoint cần header `Authorization: Bearer <accessToken>`. Lỗi validate → 400.

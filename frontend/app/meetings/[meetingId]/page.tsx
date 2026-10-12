@@ -57,11 +57,19 @@ export default function MeetingPage() {
   // Cờ "đã kết nối" để trong ref, không trong state → onError có deps [] (spec §11.4)
   const connectedRef = useRef(false);
 
+  // Access token được tự làm mới mỗi ~14 phút → token đổi KHÔNG được làm gọi lại API vào meeting
+  // (sẽ đổi token LiveKit → <LiveKitRoom> kết nối lại). Effect chỉ theo "đã có token chưa", đọc token qua ref.
+  const tokenRef = useRef(token);
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+  const hasToken = !!token;
+
   // Cờ huỷ: Strict Mode chạy effect 2 lần → API bị gọi 2 lần nhưng chỉ 1 token tới <LiveKitRoom> (spec §11.4)
   useEffect(() => {
-    if (!token) return;
+    if (!hasToken || !tokenRef.current) return;
     let cancelled = false;
-    joinMeeting(token, meetingId)
+    joinMeeting(tokenRef.current, meetingId)
       .then((res) => {
         if (!cancelled) setJoin(res);
       })
@@ -71,7 +79,7 @@ export default function MeetingPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, meetingId, attempt]);
+  }, [hasToken, meetingId, attempt]);
 
   const roomId = join?.meeting.roomId;
 
