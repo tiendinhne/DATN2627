@@ -19,6 +19,7 @@ function query(result: unknown) {
     sort: vi.fn(() => chain),
     populate: vi.fn(() => chain),
     select: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
     exec: vi.fn().mockResolvedValue(result),
   };
   return chain;
@@ -70,6 +71,7 @@ function build() {
     expire: vi.fn().mockResolvedValue(true),
   };
   const userModel = {
+    find: q([]),
     findOne: q(null),
   };
   // Module meeting: hai hàm không bao giờ ném lỗi (spec meeting §8)
@@ -90,6 +92,72 @@ function build() {
 
 // Lỗi trùng unique index của Mongo
 const duplicateKeyError = () => Object.assign(new Error('E11000 duplicate key'), { code: 11000 });
+
+describe('searchUsers', () => {
+ it('HOST chỉ nhận user khớp đầu email/username, chưa ở phòng, tối đa 10', async () => {
+    const { service, access, memberModel, userModel } = build();
+    const existingUserId = new Types.ObjectId();
+    const match = {
+      _id: new Types.ObjectId(),
+      email: 'student@example.com',
+      username: 'student',
+      displayName: 'Student',
+      avatarUrl: null,
+    };
+    const existingMembers = query([{ userId: existingUserId }]);
+    const searchResults = query([match]);
+    memberModel.find.mockReturnValue(existingMembers);
+    userModel.find.mockReturnValue(searchResults);
+
+    const result = await service.searchUsers(userId, roomId, 'dent@exam');
+
+    expect(access.assertRoomPermission).toHaveBeenCalledWith(userId, roomId, 'ADD_MEMBER');
+    expect(memberModel.find).toHaveBeenCalledWith({ roomId });
+    expect(existingMembers.select).toHaveBeenCalledWith('userId');
+    expect(userModel.find).toHaveBeenCalledWith({
+      $and: [
+        { $or: [{ email: /dent@exam/i }, { username: /dent@exam/i }] },
+        { _id: { $nin: [existingUserId] } },
+      ],
+    });
+    expect(searchResults.select).toHaveBeenCalledWith('email username displayName avatarUrl');
+    expect(searchResults.sort).toHaveBeenCalledWith({ username: 1 });
+    expect(searchResults.limit).toHaveBeenCalledWith(10);
+    expect(result).toEqual([
+      {
+        id: String(match._id),
+        email: match.email,
+        username: match.username,
+        displayName: match.displayName,
+        avatarUrl: null,
+      },
+    ]);
+  });
+
+  it('coi ký tự regex nhập vào là ký tự thường khi tìm giữa chuỗi', async () => {
+    const { service, userModel } = build();
+    const searchResults = query([]);
+    userModel.find.mockReturnValue(searchResults);
+
+    await service.searchUsers(userId, roomId, 's.t');
+
+    expect(userModel.find).toHaveBeenCalledWith({
+      $and: [
+        { $or: [{ email: /s\.t/i }, { username: /s\.t/i }] },
+        { _id: { $nin: [] } },
+      ],
+    });
+  });
+
+  it('người không có quyền HOST không được tìm user', async () => {
+    const { service, access, memberModel, userModel } = build();
+    access.assertRoomPermission.mockRejectedValue(new ForbiddenException());
+
+    await expect(service.searchUsers(userId, roomId, 'stu')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(memberModel.find).not.toHaveBeenCalled();
+    expect(userModel.find).not.toHaveBeenCalled();
+  });
+});
 
 describe('generateJoinCode', () => {
   it('8 ký tự base32 A–Z, 2–7', () => {

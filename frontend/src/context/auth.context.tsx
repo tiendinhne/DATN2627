@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   username: string;
@@ -10,7 +10,7 @@ interface User {
   avatarUrl?: string;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
@@ -49,8 +49,6 @@ async function requestRefresh(): Promise<Session | null> {
   }
 }
 
-// Access token (15 phút) chỉ giữ trong memory (PROJECT_CONTEXT §5), không localStorage.
-// Refresh token nằm trong cookie httpOnly do backend đặt → mọi request auth phải gửi kèm cookie.
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -58,22 +56,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Áp kết quả làm mới vào state; null → coi như chưa đăng nhập
   const applySession = useCallback((session: Session | null) => {
-    setToken(session?.accessToken ?? null);
-    setUser(session?.user ?? null);
+    const accessToken = session?.accessToken ?? null;
+    const currentUser = session?.user ?? null;
+    setToken(accessToken);
+    setUser(currentUser);
+    if (accessToken) {
+      localStorage.setItem('accessToken', accessToken);
+    } else {
+      localStorage.removeItem('accessToken');
+    }
   }, []);
 
-  // Mỗi lần tải trang (kể cả F5) lấy access token từ cookie.
-  // Dev Strict Mode gọi 2 lần cùng một cookie → backend cho lần sau đi qua nhờ ân hạn 10 giây.
+  // Mỗi lần tải trang (kể cả F5) lấy access token từ cookie refresh
   useEffect(() => {
     requestRefresh()
-      .then(applySession)
+      .then((session) => {
+        if (session) {
+          applySession(session);
+        } else {
+          // Thử khôi phục từ localStorage nếu có
+          const savedToken = localStorage.getItem('accessToken');
+          if (savedToken) {
+            setToken(savedToken);
+            fetch(`${API_URL}/auth/me`, {
+              headers: { Authorization: `Bearer ${savedToken}` },
+              credentials: 'include',
+            })
+              .then((res) => (res.ok ? res.json() : null))
+              .then((userData) => {
+                if (userData) {
+                  setUser(userData);
+                } else {
+                  localStorage.removeItem('accessToken');
+                  setToken(null);
+                }
+              })
+              .catch(() => {
+                localStorage.removeItem('accessToken');
+                setToken(null);
+              });
+          }
+        }
+      })
       .finally(() => setIsLoading(false));
   }, [applySession]);
 
-  // Hẹn giờ làm mới trước khi hết hạn. Máy ngủ làm timer trễ → khi tab được mở lại thì kiểm ngay
+  // Hẹn giờ làm mới trước khi hết hạn. Khi tab được mở lại thì kiểm ngay
   useEffect(() => {
     if (!token) return;
     const expiresAt = tokenExpiresAt(token);
+    if (!expiresAt) return;
     const refresh = () => requestRefresh().then(applySession);
     const timer = setTimeout(refresh, Math.max(expiresAt - Date.now() - REFRESH_BEFORE_MS, 0));
     const onVisible = () => {
@@ -94,15 +126,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ identifier, password }),
     });
     if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Sai tài khoản hoặc mật khẩu');
+      const error = await res.json().catch(() => ({}));
+      const message = Array.isArray(error.message) ? error.message.join(', ') : error.message;
+      throw new Error(message || 'Sai tài khoản hoặc mật khẩu');
     }
     const { accessToken, user } = await res.json();
     setToken(accessToken);
     setUser(user);
+    localStorage.setItem('accessToken', accessToken);
   };
 
-  // displayName bắt buộc ở RegisterDto backend (1–20 ký tự)
   const register = async (email: string, username: string, displayName: string, password: string) => {
     const res = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
@@ -111,20 +144,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, username, displayName, password }),
     });
     if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Đăng ký thất bại');
+      const error = await res.json().catch(() => ({}));
+      const message = Array.isArray(error.message) ? error.message.join(', ') : error.message;
+      throw new Error(message || 'Đăng ký thất bại');
     }
     const { accessToken, user } = await res.json();
     setToken(accessToken);
     setUser(user);
+    localStorage.setItem('accessToken', accessToken);
   };
 
-  // Backend thu hồi refresh token + xoá cookie (JS không xoá được cookie httpOnly).
-  // Lỗi mạng vẫn đăng xuất phía trình duyệt.
   const logout = async () => {
-    await fetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    await fetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => { });
     setToken(null);
     setUser(null);
+    localStorage.removeItem('accessToken');
   };
 
   const loginWithGoogle = () => {

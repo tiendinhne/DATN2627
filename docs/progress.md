@@ -851,3 +851,28 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Giới hạn biết trước:** đăng xuất ở một tab → tab khác vẫn dùng access token đang có tới khi hết hạn (≤ 15 phút), lần làm mới tiếp theo bị 401 → về `/login`. Token bị xoay vòng còn dùng được trong 10 s (chỉ để lấy access token).
 - **Commit:** chưa — chờ user.
 - **Task sau cần biết:** gateway Socket.IO lấy `token` từ `useAuth()` (memory) khi kết nối; token đổi mỗi ~14 phút — socket đang mở không cần kết nối lại, chỉ lần kết nối lại sau đó dùng token mới. Effect nào phụ thuộc `token` mà gọi API có side effect (như vào meeting) thì làm như trang cuộc gọi (`hasToken` + ref).
+
+## 2026-10-17 — Xem tất cả phòng đã tham gia
+
+- **Đã xong:** Nút “Xem tất cả” trên dashboard mở `/rooms`, nơi hiển thị tất cả phòng người dùng tham gia bằng kiểu thẻ phòng đã có. Trang tải hết các trang API có `hasMore`; mỗi thẻ mở đúng trang chi tiết phòng. Route `/rooms` không còn chuyển hướng tự động sang phòng đầu tiên.
+- **Kiểm tra:** ESLint các file sửa đổi pass. `next build` biên dịch thành công nhưng kiểm tra type dừng ở lỗi có sẵn `src/lib/utils.ts:1` (`Cannot find module 'cn'`); `tsc --noEmit` gặp cùng lỗi. `npm exec eslint` ban đầu không nhận `.eslintrc.json` do ESLint 9 mặc định flat config; chạy với `ESLINT_USE_FLAT_CONFIG=false` pass.
+- **Quyết định:** không có; không đổi giao diện thẻ phòng hiện tại.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa commit.
+
+## 2026-10-17 — Tìm và mời thành viên theo email/username
+
+- **Đã xong:** Thêm API tìm user cho HOST theo tiền tố email/username, giới hạn 10 kết quả và loại thành viên hiện tại; modal mời tìm sau 300 ms, cho chọn kết quả rồi thêm user đã chọn ngay bằng endpoint thành viên hiện có.
+- **Quyết định:** theo xác nhận của user, chọn người sẽ thêm vào phòng ngay, không tạo lời mời chờ chấp nhận.
+- **Tài liệu:** cập nhật `docs/api/endpoint.md`.
+- **Kiểm tra:** backend `rooms.service.spec.ts` 50/50 pass; `npm run build` pass; backend lint pass với 2 warning có sẵn ở `meeting.gateway.ts`. Frontend lint các file sửa đổi pass. Frontend type-check còn dừng ở lỗi sẵn có `src/lib/utils.ts:1` (`Cannot find module 'cn'`). Backend dependencies được khôi phục từ lockfile để chạy test.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa commit.
+
+## 2026-10-18 — Ghim nội dung trong meeting (chỉ phía người dùng)
+
+- **Đã xong:** Thêm ghim/bỏ ghim camera người tham gia, màn hình đang share và whiteboard. Nội dung ghim hiển thị ở vùng chính; lựa chọn được lưu trong React state trên client hiện tại, không gửi backend. Preview demo cũng hỗ trợ ghim tile người tham gia.
+- **Kiểm tra:** ESLint cho `MeetingWorkspace.tsx` và `VideoRail.tsx` pass; `git diff --check` pass. `npm run build` bị chặn bởi lỗi lint có sẵn tại `RoomOverviewTab.tsx:102` (dấu ngoặc kép JSX chưa escape). `tsc --noEmit` không báo lỗi mới ở code ghim; còn các lỗi sẵn có trong LiveKit dependencies, `EndMeetingModal` và `src/lib/utils.ts`.
+- **Quyết định:** một nội dung được ghim tại một thời điểm; ghim local-only theo yêu cầu.
+- **Lệch khỏi tài liệu:** không thay đổi backend/realtime contract.
+- **Commit:** chưa commit.

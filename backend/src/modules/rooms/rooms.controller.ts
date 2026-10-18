@@ -6,6 +6,7 @@ import { JoinRoomDto } from './dto/join-room.dto.js';
 import { ListRoomsQueryDto } from './dto/list-rooms-query.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
+import { SearchRoomUsersQueryDto } from './dto/search-room-users-query.dto.js';
 
 // Mọi route room đều cần đăng nhập (ADR-008).
 // req.user là user đã xác thực (JwtStrategy.validate trả về document User → dùng req.user.id).
@@ -49,6 +50,16 @@ export class RoomsController {
   @Get(':roomId/members')
   members(@Req() req: any, @Param('roomId') roomId: string) {
     return this.roomsService.listMembers(req.user.id, roomId);
+  }
+
+  // GET /rooms/:roomId/members/search?q=...
+  @Get(':roomId/members/search')
+  searchMembers(
+    @Req() req: any,
+    @Param('roomId') roomId: string,
+    @Query() query: SearchRoomUsersQueryDto,
+  ) {
+    return this.roomsService.searchUsers(req.user.id, roomId, query.q);
   }
 
   // POST /rooms/:roomId/members  { email } — HOST thêm người đã có tài khoản

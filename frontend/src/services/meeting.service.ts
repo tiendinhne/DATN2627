@@ -1,10 +1,10 @@
-import type { JoinMeetingResponse, Meeting, MeetingListResponse } from '@/types/meeting';
-import { request } from './room.service';
+import type { JoinMeetingResponse, Meeting, MeetingListResponse } from '@/types/backend';
+import { request } from './api';
 
 export const startMeeting = (token: string, roomId: string, title: string) =>
   request<Meeting>(token, `/rooms/${roomId}/meetings`, { method: 'POST', body: JSON.stringify({ title }) });
 
-// 20 buổi gần nhất — không phân trang (spec §11.2)
+// 20 buổi gần nhất — theo backend spec §11.2
 export const listMeetings = (token: string, roomId: string) =>
   request<MeetingListResponse>(token, `/rooms/${roomId}/meetings?page=1&limit=20`);
 

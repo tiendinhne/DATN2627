@@ -215,6 +215,43 @@ export class RoomsService {
       }));
   }
 
+  // GET /rooms/:roomId/members/search — tìm trong email/username, bỏ user đã ở trong phòng
+  async searchUsers(hostId: string, roomId: string, query: string) {
+    await this.access.assertRoomPermission(hostId, roomId, RoomAction.ADD_MEMBER);
+
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const existingMembers = await this.memberModel
+      .find({ roomId })
+      .select('userId')
+      .lean()
+      .exec();
+    const users = await this.userModel
+      .find({
+        $and: [
+          {
+            $or: [
+              { email: new RegExp(`^${escapedQuery}`, 'i') },
+              { username: new RegExp(`^${escapedQuery}`, 'i') },
+            ],
+          },
+          { _id: { $nin: existingMembers.map((member) => member.userId) } },
+        ],
+      })
+      .select('email username displayName avatarUrl')
+      .sort({ username: 1 })
+      .limit(10)
+      .lean()
+      .exec();
+
+    return users.map((user) => ({
+      id: String(user._id),
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl ?? null,
+    }));
+  }
+
   // POST /rooms/:roomId/members — chỉ HOST. Thêm 1 người đã có tài khoản vào phòng bằng email
   async addMember(hostId: string, roomId: string, email: string) {
     await this.access.assertRoomPermission(hostId, roomId, RoomAction.ADD_MEMBER);

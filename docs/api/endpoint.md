@@ -98,6 +98,16 @@ Phải có ít nhất 1 field (không thì `400`). `403` nếu không phải HOS
 Danh sách thành viên, HOST đứng đầu rồi theo thời gian vào phòng. Quyền: thành viên.
 Response `200`: `[{ userId, displayName, avatarUrl, role, joinedAt }]`.
 
+### GET /rooms/:roomId/members/search?q=...
+Tìm user theo tiền tố email hoặc username để HOST chọn thêm vào phòng. Chỉ trả tối đa 10 kết quả và loại user đã là thành viên.
+
+| Query | Kiểu | Ràng buộc |
+|---|---|---|
+| q | string | trim, 2–100 ký tự |
+
+- Response `200`: `[{ id, email, username, displayName, avatarUrl }]`.
+- `400`: query không hợp lệ. `403`: không phải HOST.
+
 ### POST /rooms/:roomId/members
 Thêm một người **đã có tài khoản** vào phòng bằng email, với role MEMBER (`invitedBy` = HOST). Quyền: HOST.
 
