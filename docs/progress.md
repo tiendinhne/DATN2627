@@ -9,7 +9,7 @@ Rooms, room-members	REST đầy đủ + frontend (chạy thật qua Docker 2026-
 Meetings, chat, whiteboard	Mới có schema, chưa có service hay controller
 Socket gateway /meeting	Mới là khung, chỉ ghi log, chưa có auth hay validate
 AI, files, health, LiveKit	Chưa có
-Frontend	Mới có các trang login, register, dashboard và Google callback. Chưa cài socket.io-client, LiveKit hay Excalidraw
+Frontend	Mới có các trang login, register, dashboard và Google callback. Chưa cài socket.io-client, LiveKit. Excalidraw đã nhúng vào meeting (2026-10-22) — chạy local, chưa đồng bộ
 
 ---
 
@@ -876,3 +876,42 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Quyết định:** một nội dung được ghim tại một thời điểm; ghim local-only theo yêu cầu.
 - **Lệch khỏi tài liệu:** không thay đổi backend/realtime contract.
 - **Commit:** chưa commit.
+
+## 2026-10-22 — Nhúng Excalidraw vào meeting (local, chưa đồng bộ)
+
+- **Nhánh:** `feature/whiteboard` tạo từ `main` (`afdbd2e`).
+- **Phạm vi (user chốt 2026-10-22):** chỉ thay bảng vẽ giả bằng Excalidraw thật, chạy local; chưa đồng bộ, chưa lưu, không đụng backend / realtime contract. Đồng bộ + nền socket + lưu Redis/Mongo để task sau. Thiết kế ngắn trong chat, user duyệt, không spec (phạm vi chỉ còn thay 1 component frontend).
+- **Đã xong:**
+  - Thêm dependency `@excalidraw/excalidraw` `^0.18.1` (bản mới nhất, peer React 17–19) — user đồng ý.
+  - `WhiteboardCanvas.tsx`: bỏ sơ đồ / con trỏ / zoom giả; render `Excalidraw` qua `next/dynamic` `ssr: false` + `@excalidraw/excalidraw/index.css` (cách README Excalidraw hướng dẫn cho Next.js); `theme` theo dark/light của meeting; thêm prop `hidden`.
+  - `MeetingWorkspace.tsx` (bản LiveKit + bản preview): luôn render bảng vẽ, ẩn bằng `hidden` khi ghim camera / màn hình / người tham gia. Trước đây bảng bị gỡ khỏi cây khi ghim → với bảng thật, bỏ ghim là mất nét vẽ.
+  - Xoá `WhiteboardToolbar.tsx`, type `WhiteboardTool`, CSS chỉ mock dùng (`.whiteboard-toolbar`, `.diagram-*`, `.cursor-*`, `.zoom-control`, nền chấm của `.whiteboard`) — grep xác nhận không chỗ nào khác dùng. Excalidraw có sẵn toolbar, zoom, undo/redo.
+- **Đọc repo Excalidraw để chuẩn bị bước đồng bộ** (`excalidraw-app/collab/Collab.tsx`, `Portal.tsx`, `packages/excalidraw/data/reconcile.ts`):
+  - `reconcileElements` export sẵn: LWW đúng ADR-003 (version cao thắng; hoà → `versionNonce` nhỏ thắng) + giữ element local đang sửa (editing / resizing / newElement) + sắp lại fractional index.
+  - Chống echo: nhớ `getSceneVersion()` (tổng version) lần gửi / nhận cuối, `onChange` chỉ gửi khi lớn hơn; chỉ gửi element có `version` > bản đã gửi (map `broadcastedElementVersions`); mỗi 20 s gửi lại toàn scene để tự sửa lệch.
+  - Element đã xoá chỉ sync trong 1 ngày (`DELETED_ELEMENT_TIMEOUT`), element vô hình không sync. Con trỏ: `onPointerUpdate` throttle → `updateScene({ collaborators })`.
+- **Kiểm tra (chạy thật):**
+  - `npm run lint`: chỉ 2 error có sẵn `RoomOverviewTab.tsx:102`. `npm run build`: `Compiled successfully in 81s`, rồi dừng ở bước lint vì đúng lỗi đó. `tsc --noEmit`: 3 lỗi, trùng y baseline chạy trên code gốc (`git stash`) — `EndMeetingModal.tsx(14)`, `MeetingWorkspace.tsx(326)` (`meetingTitle`), `src/lib/utils.ts(1)` (`cn`) → 0 lỗi mới. `git diff --check` sạch.
+  - Chrome headless + DevTools Protocol trên `/meeting` (preview, không cần backend; script đồ bỏ ở scratchpad, không vào repo): Excalidraw hiện sau ~2,6–4,6 s từ lúc tải lại (dev) · vẽ hình chữ nhật + mũi tên + chữ "Xin chào nhóm" → hiện đúng trên ảnh chụp · ghim người tham gia → `.whiteboard` `hidden`, `display: none` · bỏ ghim → hiện lại 1012×722, nét vẽ còn nguyên · `studyspace_theme=dark` → `.excalidraw.theme--dark`. Console: 0 exception; chỉ `favicon.ico` 404 và `/auth/refresh` `ERR_CONNECTION_REFUSED` (backend không chạy).
+- **Gặp thật:** `langCode="vi-VN"` (có trong thiết kế đã duyệt) không có tác dụng — Excalidraw 0.18.1 chỉ bật ngôn ngữ dịch ≥ 85% (`VT=85` trong bundle), tiếng Việt mới 49% → giao diện Excalidraw giữ tiếng Anh. Đã bỏ prop, ghi chú lý do trong code.
+- **npm audit:** 9 → 22 cảnh báo; 13 mới đều là phụ thuộc bắc cầu của Excalidraw (`nanoid`, `sass`→`chokidar`, `@excalidraw/mermaid-to-excalidraw`→`mermaid` / `katex` / `langium` / `chevrotain` / `lodash-es`). 0.18.1 là bản mới nhất → không nâng được; chưa xử lý.
+- **Không kiểm trên trình duyệt:** trang cuộc gọi thật `/meetings/:id` (cần backend + LiveKit + đăng nhập) — đoạn sửa ở đó giống hệt bản preview, mới qua lint / type.
+- **Lệch khỏi tài liệu:** không đổi backend / realtime contract. Ghi chú `docs/task/whiteboard/add_exacaldraw.md` ("đã npm install") trước đó không đúng — package chưa có trong `package.json` lẫn `node_modules`; đã sửa ghi chú.
+- **Mâu thuẫn tài liệu phát hiện, chưa xử lý (để bước đồng bộ quyết):**
+  1. `whiteboard.md` §6 có quyền `DRAW_WHITEBOARD` / `DELETE_OTHERS_ELEMENT` / `CLEAR_BOARD`; `role.md` + `shared/permissions.ts`: MEMBER làm được hết → chỉ cần là thành viên.
+  2. PROJECT_CONTEXT §10, §19.2 "`lww-merge` ở `shared/`, client và server dùng chung một bản"; nhưng frontend / backend là 2 project npm độc lập (ADR-021), frontend không import được `backend/src/shared`.
+  3. `whiteboard.md` §3 chống echo bằng cờ `isApplyingRemote`; Excalidraw chính thức so `getSceneVersion`.
+- **Commit:** chưa — chờ user.
+- **Task sau cần biết:** bước đồng bộ cần nền socket trước (JWT handshake, `meeting:join` kiểm thành viên, publisher envelope) — gateway `/meeting` hiện chỉ ghi log; frontend chưa có `socket.io-client`. `WhiteboardCanvas` chưa giữ `excalidrawAPI` / `onChange` — thêm khi làm đồng bộ.
+
+## 2026-10-22 — Frontend dùng chung `backend/src/shared` qua alias `@shared/*` (ADR-024)
+
+- **Vì sao:** user tạo `infrastructure/share` để làm chỗ code dùng chung, hỏi nên để gì trong đó. Thư mục ngoài `backend/` không vào được container backend (build `context: ./backend`, chỉ mount `./backend/src`) → user chọn hướng giữ nguồn ở `backend/src/shared`, frontend import qua alias. Giải quyết mâu thuẫn số 2 ghi ở mục trên (phần "dùng chung được không"; việc `lww-merge` để bước đồng bộ).
+- **Đã xong:** `frontend/tsconfig.json` thêm `"@shared/*": ["../backend/src/shared/*"]`; `frontend/next.config.ts` thêm `webpack` → `resolve.extensionAlias` `.js → [.ts, .js]`. Xoá `infrastructure/share` (rỗng). ADR-024. Backend, Docker không đổi.
+- **Nên đưa vào shared (trả lời user, chưa làm):** enum (`RoomRole`, `RoomStatus`, `MeetingStatus`, `EndReason`…), bảng quyền `ROOM_PERMISSIONS` + `can()` (đã có); tên event + envelope realtime §9, luật LWW chỉ đọc `id / version / versionNonce / isDeleted`, hằng giới hạn (5.000 element, cỡ payload…) — thêm khi làm đồng bộ. Không đưa schema Mongoose, DTO class-validator, code NestJS / React.
+- **Kiểm tra (chạy thật, trang đồ bỏ `src/app/shared-check/page.tsx` import `@shared/enums` + `@shared/permissions`, đã xoá):**
+  - Chỉ thêm alias tsconfig: `tsc --noEmit` hiểu (vẫn đúng 3 lỗi có sẵn) nhưng `next build --no-lint` **fail** `../backend/src/shared/permissions.ts — Module not found: Can't resolve './enums.js'` → webpack không tự đổi `.js` sang `.ts`.
+  - Thêm `extensionAlias`: `next build --no-lint` → `Compiled successfully in 92s`, rồi dừng ở bước kiểm type vì lỗi có sẵn `EndMeetingModal.tsx:14`. `next dev`: `GET /shared-check 200`, HTML có `{"host":true,"member":false}` — khớp bảng quyền backend. Chạy lại script Chrome headless trên `/meeting`: Excalidraw vẽ / ẩn khi ghim / giữ nét / theme tối như trước, console chỉ favicon 404 + `/auth/refresh` (backend tắt).
+- **Chưa làm (cần user quyết riêng):** chuyển frontend sang dùng `@shared` — `types/backend.ts` đang viết lại `RoomRole`, ~15 chỗ gõ chuỗi `"HOST"` / `"ACTIVE"` / `AUTO_EMPTY`. Lưu ý (đã thử bằng `tsc --strict`): so sánh `role === "HOST"` với `role: RoomRole` vẫn hợp lệ; nhưng **gán** chuỗi vào kiểu enum lỗi `TS2322: Type '"HOST"' is not assignable to type 'RoomRole'` → chỗ nào tạo giá trị (mock data, khai báo kiểu response) phải dùng `RoomRole.HOST`.
+- **Lệch khỏi tài liệu:** PROJECT_CONTEXT §19.2 ghi `shared/` (không nói vị trí) — vị trí thật `backend/src/shared` theo ADR-024.
+- **Commit:** chưa — chờ user.

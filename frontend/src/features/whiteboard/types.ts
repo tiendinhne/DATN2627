@@ -1,13 +1,3 @@
-export type WhiteboardTool =
-  | "select"
-  | "hand"
-  | "shape"
-  | "circle"
-  | "pen"
-  | "text"
-  | "image"
-  | "eraser";
-
 export interface WhiteboardElement {
   id: string;
   type: string;
