@@ -915,3 +915,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Chưa làm (cần user quyết riêng):** chuyển frontend sang dùng `@shared` — `types/backend.ts` đang viết lại `RoomRole`, ~15 chỗ gõ chuỗi `"HOST"` / `"ACTIVE"` / `AUTO_EMPTY`. Lưu ý (đã thử bằng `tsc --strict`): so sánh `role === "HOST"` với `role: RoomRole` vẫn hợp lệ; nhưng **gán** chuỗi vào kiểu enum lỗi `TS2322: Type '"HOST"' is not assignable to type 'RoomRole'` → chỗ nào tạo giá trị (mock data, khai báo kiểu response) phải dùng `RoomRole.HOST`.
 - **Lệch khỏi tài liệu:** PROJECT_CONTEXT §19.2 ghi `shared/` (không nói vị trí) — vị trí thật `backend/src/shared` theo ADR-024.
 - **Commit:** chưa — chờ user.
+
+## 2026-10-25 — Bỏ lockfile thừa (chỉ dùng npm, ADR-021)
+
+- **Đã xong:** xoá `package-lock.json` ở gốc repo (sinh do `npm install` chạy nhầm ở gốc trong commit `e8d84c8`; `package.json` gốc không có dependency, gốc không có `node_modules`) và `frontend/pnpm-lock.yaml`; bỏ dòng `"npm:pnpm"` trong `frontend/.mise.toml` để không sinh lại lock pnpm.
+- **Kiểm tra (chạy thật):** `npm run build` (frontend) không còn cảnh báo "multiple lockfiles / inferred your workspace root"; build vẫn dừng ở lỗi có sẵn `RoomOverviewTab.tsx:102` (chưa sửa, chờ user duyệt). Không thứ gì đọc 2 file đã xoá: CI chỉ `echo`/`ls`, Docker chỉ build `backend/`.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
