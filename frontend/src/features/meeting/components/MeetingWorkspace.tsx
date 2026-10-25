@@ -257,9 +257,9 @@ function LiveMeetingContent({
                 </button>
               </span>
             </div>
-          ) : (
-            <WhiteboardCanvas />
-          )}
+          ) : null}
+          {/* Luôn render, chỉ ẩn khi ghim camera / màn hình — để không mất nét vẽ */}
+          <WhiteboardCanvas dark={isDark} hidden={pinnedContent?.type === "track"} />
         </main>
 
         {panelOpen && (
@@ -637,9 +637,9 @@ export function MeetingWorkspace({
                 <Pin size={13} /> {pinnedContent.label} · chỉ hiển thị với bạn
               </span>
             </div>
-          ) : (
-            <WhiteboardCanvas />
-          )}
+          ) : null}
+          {/* Luôn render, chỉ ẩn khi ghim người tham gia — để không mất nét vẽ */}
+          <WhiteboardCanvas dark={isDark} hidden={pinnedContent?.type === "participant"} />
         </main>
 
         {panelOpen && (
