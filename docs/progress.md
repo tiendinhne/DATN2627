@@ -922,3 +922,17 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra (chạy thật):** `npm run build` (frontend) không còn cảnh báo "multiple lockfiles / inferred your workspace root"; build vẫn dừng ở lỗi có sẵn `RoomOverviewTab.tsx:102` (chưa sửa, chờ user duyệt). Không thứ gì đọc 2 file đã xoá: CI chỉ `echo`/`ls`, Docker chỉ build `backend/`.
 - **Lệch khỏi tài liệu:** không.
 - **Commit:** chưa — chờ user.
+
+## 2026-10-25 — Sửa lỗi build frontend
+
+- **Đã xong:** `EndMeetingModal` khai báo prop `meetingTitle?: string` (component đã dùng, `MeetingWorkspace` đã truyền, chỉ thiếu trong interface); xoá `src/lib/utils.ts` (import package `cn` đã gỡ, không file nào dùng); `RoomOverviewTab.tsx:102` bỏ dấu `"` chưa escape (user sửa).
+- **Kiểm tra (chạy thật):** `tsc --noEmit` 0 lỗi; `npm run build` exit 0, 14 trang.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-25 — Test `searchUsers` khớp cách tìm theo tiền tố
+
+- **Đã xong:** 2 test `searchUsers` trong `rooms.service.spec.ts` (thêm ở `afdbd2e`) mong đợi regex "chứa chuỗi" (`/dent@exam/i`, `/s\.t/i`), trong khi code và `docs/api/endpoint.md` tìm theo tiền tố (`^`). User chốt **tiền tố** → sửa test: input `stud` → `/^stud/i`, `s.t` → `/^s\.t/i`, đổi tên test "khi tìm giữa chuỗi" → "khi tìm theo tiền tố". Không đổi code service.
+- **Kiểm tra (chạy thật):** tạm bỏ `^` trong service → 2 test fail đúng chỗ regex (chứng minh test bắt được nếu ai đổi về "chứa chuỗi"); khôi phục → backend `vitest run` 8 file, 143/143 pass.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.

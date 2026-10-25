@@ -6,6 +6,7 @@ import { Modal } from "@/components/common/Modal";
 interface EndMeetingModalProps {
   onClose: () => void;
   onConfirm: () => void;
+  meetingTitle?: string; // tên buổi học hiện trong câu xác nhận
 }
 
 export function EndMeetingModal({

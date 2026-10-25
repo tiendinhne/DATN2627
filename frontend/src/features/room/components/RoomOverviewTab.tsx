@@ -99,7 +99,7 @@ export function RoomOverviewTab({
                 <Radio size={13} /> PHÒNG TRỰC TUYẾN
               </div>
               <h2>Chưa có cuộc họp nào đang diễn ra</h2>
-              <p>Chủ phòng có thể bấm "Bắt đầu cuộc họp" để tạo phiên học mới.</p>
+              <p>Chủ phòng có thể bấm Bắt đầu cuộc họp để tạo phiên học mới.</p>
             </div>
             <div className="live-actions">
               {role === "owner" && (
