@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService, REFRESH_TOKEN_TTL_MS } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { GoogleAuthGuard } from './guards/google-auth.guard.js';
@@ -91,6 +92,13 @@ export class AuthController {
   @Get('me')
   async getProfile(@Req() req: any) {
     return req.user;
+  }
+
+  // PATCH /auth/me -> cập nhật tên hiển thị user hiện tại
+  @UseGuards(JwtAuthGuard)
+  @Patch('me')
+  async updateProfile(@Req() req: any, @Body() dto: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.id, dto.displayName);
   }
 
   // sameSite lax: frontend và backend cùng site (localhost:3000/3001 khi dev, app./api.<domain> khi deploy)

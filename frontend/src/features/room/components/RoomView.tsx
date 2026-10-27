@@ -82,6 +82,13 @@ export function RoomView({
       router.push("/dashboard");
     }
   };
+  const navigateToRooms = () => {
+    if (onNavigate) {
+      onNavigate("rooms");
+    } else {
+      router.push("/rooms");
+    }
+  };
 
   // Fetch dữ liệu phòng, thành viên, và cuộc họp từ backend
   useEffect(() => {
@@ -277,7 +284,7 @@ export function RoomView({
         onSettings={() => setDialog("settings")}
         onDelete={() => setDialog("delete")}
         onLeave={() => setDialog("leave")}
-        onBack={handleBackToDashboard}
+        onBack={navigateToRooms}
       />
 
       <nav className="tabs">

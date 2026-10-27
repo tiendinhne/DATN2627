@@ -344,7 +344,6 @@ Cập nhật lại các role * đọc file rule/role.md
   - Schema mới (chat, meeting, whiteboard, AI đã có sẵn schema đã sửa) — field tham chiếu viết `type: SchemaTypes.ObjectId`, không `Types.ObjectId`. Unit test mock model không bắt được lỗi này; chỉ app thật / đọc `schema.path(x).instance` mới thấy.
   - Lệnh xoá dữ liệu dev cho user (PowerShell, gốc repo): `docker exec mongo-dev mongosh online-group-learning --quiet --eval "printjson({ rooms: db.rooms.deleteMany({}).deletedCount, room_members: db.room_members.deleteMany({}).deletedCount, refresh_tokens: db.refresh_tokens.deleteMany({}).deletedCount })"`
 
-
 ## 2026-10-01 — Module room: Task 10 (làm lại sau Task 10a) — xong
 
 - **Kiểm Task 10a đầu phiên:** không còn `type: Types.ObjectId` trong `backend/src`; script đồ bỏ đọc `schema.paths` trên `dist/` vừa build → field có `ref`: `{ ObjectId: 23 }`. `npm test` **62/62**, `npm run build` exit 0. Dữ liệu dev cũ **chưa xoá** (còn `rooms.ownerId` string 1, `room_members.userId` string 2, `refresh_tokens.userId` string 3) → xoá theo quyết định user 2026-10-01: `{ rooms: 3, room_members: 4, refresh_tokens: 7 }`; `users` giữ nguyên.
@@ -875,4 +874,26 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra:** ESLint cho `MeetingWorkspace.tsx` và `VideoRail.tsx` pass; `git diff --check` pass. `npm run build` bị chặn bởi lỗi lint có sẵn tại `RoomOverviewTab.tsx:102` (dấu ngoặc kép JSX chưa escape). `tsc --noEmit` không báo lỗi mới ở code ghim; còn các lỗi sẵn có trong LiveKit dependencies, `EndMeetingModal` và `src/lib/utils.ts`.
 - **Quyết định:** một nội dung được ghim tại một thời điểm; ghim local-only theo yêu cầu.
 - **Lệch khỏi tài liệu:** không thay đổi backend/realtime contract.
+- **Commit:** chưa commit.
+
+
+## 2026-10-23 — Empty state danh sách phòng
+- **Đã làm:** thay dòng thông báo khi chưa tham gia phòng bằng empty state có biểu tượng, hướng dẫn ngắn và nút tạo/tham gia phòng; modal tạo/tham gia mở ngay tại trang danh sách phòng; hỗ trợ giao diện sáng/tối.
+- **Quyết định:** giữ người dùng ở RoomListView; modal gọi trực tiếp các API tạo/tham gia hiện có. Đã bỏ query param mở modal trên dashboard.
+- **Kiểm tra:** lint riêng `RoomListView.tsx` và `DashboardView.tsx` pass; `git diff --check` pass; không còn `roomAction` trong frontend.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa commit.
+
+## 2026-10-23 — Nút thao tác ở heading danh sách phòng
+- **Đã làm:** thay nút “Quay lại tổng quan” bằng nút “Tham gia phòng” và “Tạo phòng mới”; chỉ hiện khi danh sách đã tải xong và có ít nhất một phòng. Empty state tiếp tục dùng các nút thao tác riêng.
+- **Quyết định:** mở modal hiện có tại RoomListView, không điều hướng qua dashboard.
+- **Kiểm tra:** lint riêng `RoomListView.tsx` pass; `git diff --check` pass.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa commit.
+
+## 2026-10-23 — Lưu tên hiển thị hồ sơ
+- **Đã làm:** form hồ sơ gọi `PATCH /auth/me` để lưu `displayName`; API xác thực user hiện tại, validate và trả thông tin public đã cập nhật. AuthContext cập nhật state để tên mới hiện ngay.
+- **Quyết định:** giới hạn tên hiển thị 1–20 ký tự, trim ở DTO, không cho cập nhật email/username.
+- **Kiểm tra:** backend tests liên quan 21/21 pass; backend lint và build pass; frontend lint hai file sửa đổi pass. `npx tsc --noEmit` còn lỗi có sẵn trong LiveKit dependencies, `EndMeetingModal` và `src/lib/utils.ts`; không có lỗi ở các file auth/profile sửa đổi. Backend cũ chưa đăng ký route; sau `docker compose up -d --build backend`, log có `Mapped {/auth/me, PATCH}` và probe không token trả `401` (route/guard nhận request).
+- **Lệch khỏi tài liệu:** không.
 - **Commit:** chưa commit.

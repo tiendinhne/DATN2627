@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -63,6 +68,21 @@ export class AuthService {
 
   async login(user: UserDocument) {
     return this.buildAuthResponse(user);
+  }
+
+  async updateProfile(userId: string, displayName: string) {
+    const user = await this.usersService.updateDisplayName(userId, displayName);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+
+    return {
+      id: this.getUserId(user),
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+    };
   }
 
   // Được GoogleStrategy gọi sau khi Google xác thực thành công

@@ -228,15 +228,14 @@ export function DashboardView({
               return (
                 <article className="room-card" key={room.id}>
                   <div className="room-banner" style={{ backgroundColor: color }}>
-                    <span>{room.myRole === "HOST" ? "HOST" : "THÀNH VIÊN"}</span>
+                    <h3>{room.name}</h3>
                     {room.status === "ACTIVE" && (
                       <div className="live-pill">
                         <Radio size={12} /> SẴN SÀNG
                       </div>
                     )}
                   </div>
-                  <div className="room-body">
-                    <h3>{room.name}</h3>
+                  <div className="room-body" onClick={() => navigateToRoom(room.id)}>
                     <p>{room.description || "Phòng học nhóm cộng tác trực tuyến."}</p>
                     <div className="room-meta">
                       <span>
@@ -246,7 +245,6 @@ export function DashboardView({
                     </div>
                     <button
                       className="open-room"
-                      onClick={() => navigateToRoom(room.id)}
                       type="button"
                     >
                       Mở phòng <ArrowRight size={16} />
@@ -258,8 +256,12 @@ export function DashboardView({
           ) : isFetchingRooms ? (
             <div className="p-8 text-center text-slate-500">Đang tải danh sách phòng...</div>
           ) : (
-            <div className="p-8 text-center text-slate-500">
-              Bạn chưa tham gia phòng nào. Hãy bấm <strong>Tạo phòng mới</strong> hoặc <strong>Tham gia phòng</strong> để bắt đầu!
+            <div className="col-span-full flex items-center justify-center p-8 text-center text-slate-500">
+              <p>
+                Bạn chưa tham gia phòng nào. Hãy bấm{" "}
+                <strong>Tạo phòng mới</strong> hoặc{" "}
+                <strong>Tham gia phòng</strong> để bắt đầu!
+              </p>
             </div>
           )}
         </div>

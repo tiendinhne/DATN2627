@@ -43,11 +43,13 @@ export function RoomHero({
   return (
     <>
       <button className="back-link" onClick={onBack} type="button">
-        <ArrowLeft size={16} /> Quay lại tổng quan
+        <ArrowLeft size={16} /> Quay lại
       </button>
 
       <section className="room-hero">
-        <div className="room-symbol">SE</div>
+        <div className="room-symbol">
+          {roomName?.trim()?.charAt(0).toUpperCase() || "R"}
+        </div>
         <div className="min-w-0">
           <div className="room-role-line">
             <p className="eyebrow">

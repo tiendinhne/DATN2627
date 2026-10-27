@@ -38,6 +38,11 @@ Không body; đọc cookie `refresh_token`.
 ### GET /auth/me
 Header `Authorization: Bearer <accessToken>` → `200` thông tin user; `401` token sai / hết hạn.
 
+### PATCH /auth/me
+Header `Authorization: Bearer <accessToken>`. Body: `{ displayName }` — trim khoảng trắng, 1–20 ký tự.
+- `200`: `{ id, email, username, displayName, avatarUrl }` đã cập nhật.
+- `400`: tên hiển thị rỗng, quá dài hoặc sai kiểu. `401`: token sai / hết hạn. `404`: tài khoản không còn tồn tại.
+
 ### GET /auth/google, GET /auth/google/callback
 Chỉ hoạt động khi có `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Callback đặt cookie `refresh_token` rồi chuyển về `<FRONTEND_URL>/auth/callback` **không kèm token trên query** (PROJECT_CONTEXT §16); frontend lấy access token bằng `POST /auth/refresh`.
 

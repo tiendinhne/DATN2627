@@ -14,6 +14,7 @@ export interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  updateDisplayName: (displayName: string) => Promise<void>;
   login: (identifier: string, password: string) => Promise<void>;
   register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -66,6 +67,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('accessToken');
     }
   }, []);
+
+  const updateDisplayName = async (displayName: string) => {
+    if (!token) {
+      throw new Error('Phiên đăng nhập không hợp lệ');
+    }
+
+    const response = await fetch(`${API_URL}/auth/me`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      body: JSON.stringify({ displayName }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const message = Array.isArray(error.message) ? error.message.join(', ') : error.message;
+      throw new Error(message || 'Không thể cập nhật tên hiển thị');
+    }
+
+    const updatedUser: User = await response.json();
+    setUser(updatedUser);
+  };
 
   // Mỗi lần tải trang (kể cả F5) lấy access token từ cookie refresh
   useEffect(() => {
@@ -166,7 +192,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, loginWithGoogle }}>
+    <AuthContext.Provider
+      value={{ user, token, isLoading, updateDisplayName, login, register, logout, loginWithGoogle }}
+    >
       {children}
     </AuthContext.Provider>
   );

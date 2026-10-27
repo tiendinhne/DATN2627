@@ -484,6 +484,13 @@ button.brand {
   margin-bottom: 17px;
 }
 
+.room-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 17px;
+}
+
 .section-heading h2 {
   margin: 0;
   color: #1f283b;
@@ -531,22 +538,21 @@ button.brand {
 
 .room-banner {
   position: relative;
-  height: 83px;
+  height: 53px;
   padding: 17px;
   background-image: radial-gradient(circle at 88% 15%, rgba(255, 255, 255, .2), transparent 30%), linear-gradient(120deg, rgba(255, 255, 255, .05), transparent);
 }
 
-.room-banner>span {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, .25);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .18);
+.room-banner>h3 {
+  display: block;
+  max-width: calc(100% - 96px);
+  overflow: hidden;
+  padding: 0 6px;
   color: white;
   font-size: 13px;
   font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .live-pill {
@@ -566,7 +572,8 @@ button.brand {
 }
 
 .room-body {
-  padding: 17px;
+  padding: 10px 17px;
+  cursor: pointer;
 }
 
 .room-body h3 {
@@ -3804,7 +3811,6 @@ button.brand {
 .settings-stack {
   display: grid;
   gap: 15px;
-  max-width: 850px;
   margin-top: 25px
 }
 

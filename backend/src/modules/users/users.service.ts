@@ -34,6 +34,16 @@ export class UsersService {
     return this.userModel.findById(id).exec();
   }
 
+  async updateDisplayName(id: string, displayName: string) {
+    return this.userModel
+      .findByIdAndUpdate(
+        id,
+        { $set: { displayName } },
+        { returnDocument: 'after', runValidators: true },
+      )
+      .exec();
+  }
+
   async createLocalUser(data: { email: string; username: string; displayName: string; password: string }) {
     const user = new this.userModel({
       email: data.email.toLowerCase(),

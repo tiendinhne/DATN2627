@@ -2,18 +2,39 @@
 
 import { Camera, Check, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/context/auth.context";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 export function ProfileView() {
   const [saved, setSaved] = useState(false);
-  const { user } = useAuth();
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const { user, updateDisplayName } = useAuth();
   const [displayName, setDisplayName] = useState("");
 
   useEffect(() => {
-  if (user) {
-    setDisplayName(user.displayName || user.username || "");
-  }
-}, [user]);
+    if (user) {
+      setDisplayName(user.displayName || user.username || "");
+    }
+  }, [user]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaved(false);
+    setSaveError("");
+    setIsSaving(true);
+
+    try {
+      const normalizedName = displayName.trim();
+      await updateDisplayName(normalizedName);
+      setDisplayName(normalizedName);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Không thể lưu thay đổi");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="content-wrap account-page">
@@ -65,19 +86,23 @@ export function ProfileView() {
           </div>
           <form
             className="profile-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setSaved(true);
-              window.setTimeout(() => setSaved(false), 2500);
-            }}
+            onSubmit={handleSubmit}
           >
+            {saveError && (
+              <p className="text-sm text-red-600" role="alert">
+                {saveError}
+              </p>
+            )}
             <label>
               <span>
                 <UserRound size={15} /> Tên người dùng
               </span>
               <input
+                required
+                maxLength={20}
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
+                disabled={isSaving}
               />
             </label>
             <label>
@@ -105,8 +130,8 @@ export function ProfileView() {
                   <Check size={15} /> Đã lưu thay đổi
                 </span>
               )}
-              <button className="button primary" type="submit">
-                Lưu thay đổi
+              <button className="button primary" type="submit" disabled={isSaving}>
+                {isSaving ? "Đang lưu..." : "Lưu thay đổi"}
               </button>
             </div>
           </form>
