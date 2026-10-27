@@ -31,21 +31,25 @@ Media: LiveKit (SFU) · Whiteboard: Excalidraw · AI: Generative AI API qua modu
 ## Lệnh
 
 ```powershell
-docker compose up -d --build        # chạy backend — cách duy nhất khi dev (ADR-016)
+docker compose up -d --build        # chạy cả hệ thống (backend :3001 + frontend :3000) — cách duy nhất khi dev (ADR-016)
 docker compose logs -f backend
+docker compose logs -f frontend
 
-Set-Location frontend
+# Chỉ khi chạy test / debug ngoài Docker (tắt container tương ứng trước)
+Set-Location backend
 npm install
+npx vitest run                      # test backend
+npm run start:dev                   # cổng 3001
+
+Set-Location ../frontend
+npm install
+npm run build                       # kiểm type + lint
 npm run dev                         # cổng 3000
-
-Set-Location ../backend
-npm install
-npm start:dev                       
 ```
 
 **Lệnh `npm` bắt buộc chạy bằng PowerShell, không chạy bằng Bash
 
-**ADR-016:** backend chạy qua Docker Compose, lấy config từ `env_file: ./backend/.env`. `npm run start:dev` native chỉ dùng khi cần breakpoint trong IDE, và **không được chạy đồng thời** với container backend
+**ADR-016:** backend và frontend chạy qua Docker Compose (backend lấy config từ `env_file: ./backend/.env`). `npm run start:dev` / `npm run dev` native chỉ dùng khi cần breakpoint trong IDE, và **không được chạy đồng thời** với container tương ứng (trùng cổng 3001 / 3000)
 
 ## 10 ràng buộc cứng
 

@@ -952,3 +952,17 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Chưa kiểm:** đăng nhập Google (cần credential thật).
 - **Lệch khỏi tài liệu:** không — code quay về đúng ADR-023.
 - **Commit:** chưa — chờ user.
+
+## 2026-10-27 — Frontend chạy trong Docker Compose (branch `chore/fe-docker`, ADR-016 mở rộng)
+
+- **Vì sao:** trước phải chạy 2 thao tác (Docker cho backend, `npm run dev` cho frontend). Đề cương §5.10, §7: Frontend cũng được đóng gói, quản lý bằng Docker. User chọn chế độ dev (hot reload); bản production để task deploy.
+- **Đã xong:** `frontend/Dockerfile` (`node:22-alpine`, `npm ci`, `npm run dev`), `frontend/.dockerignore` (`node_modules`, `.next`, `.git`, `*.log`); service `frontend` trong `docker-compose.yml` (user thêm): cổng 3000, `WATCHPACK_POLLING=true`, mount `./frontend/src` và `./backend/src/shared:ro` (alias `@shared`, ADR-024), `depends_on: backend`. ADR-016 viết đủ nội dung (trước chỉ có tiêu đề) + mở rộng sang frontend. README rút còn 2 bước.
+- **Kiểm tra (chạy thật):**
+  - `docker compose up -d --build` → 5 container Up; frontend `Ready in 10.3s`; backend `Found 0 errors`, started.
+  - Lần đầu: mongo bị đánh `unhealthy` (healthcheck `mongosh` quá 5 s) khi máy đang build 2 image — mongo vẫn chạy (log slow query), đợi hết tải thì `healthy`, `up` lại được. Chưa đổi healthcheck.
+  - CPU lúc khởi động: backend 340–488 %, frontend 160 % (compile); chạy ổn: ~6 % mỗi container. VM Docker có 3,3 GB RAM.
+  - `/`, `/login`, `/dashboard`, `/rooms` → 200 (lần đầu 5–27 s); `/meetings/[id]` → 200, lần đầu 139 s (compile 118 s, 5.574 module), lần 2 → 4 s.
+  - Script Chrome headless ADR-023 trên frontend trong container: 5/5 PASS (đăng nhập, không token trong `localStorage`, F5 còn đăng nhập, đăng xuất + F5 → `/login`) → trình duyệt gọi được backend, cookie refresh chạy.
+  - Hot reload: sửa `<h1>` trong `LoginForm.tsx` → trang `/login` có nội dung mới sau ~25 s (compile 19,4 s); đã hoàn tác.
+- **Lệch khỏi tài liệu:** không. `CLAUDE.md` (mục Lệnh + ghi chú ADR-016) đã cập nhật theo yêu cầu user: một lệnh compose cho cả hệ thống; lệnh native chỉ cho test / debug.
+- **Commit:** chưa — chờ user.

@@ -66,6 +66,17 @@ services:
     volumes:
       - ./backend/src:/app/src
 
+  frontend:
+    build: { context: ./frontend }
+    container_name: frontend-dev
+    ports: ["3000:3000"]
+    environment:
+      WATCHPACK_POLLING: "true"   # Windows: mount không báo file đổi → dò định kỳ để hot reload chạy
+    depends_on: [backend]
+    volumes:
+      - ./frontend/src:/app/src                      # sửa code → tự reload, như backend mount ./backend/src
+      - ./backend/src/shared:/backend/src/shared:ro  # alias @shared (ADR-024) trỏ ../backend/src/shared
+
 volumes:
   mongo-data:
   redis-data:
