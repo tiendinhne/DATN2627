@@ -109,14 +109,15 @@ describe('searchUsers', () => {
     memberModel.find.mockReturnValue(existingMembers);
     userModel.find.mockReturnValue(searchResults);
 
-    const result = await service.searchUsers(userId, roomId, 'dent@exam');
+    const result = await service.searchUsers(userId, roomId, 'stud');
 
     expect(access.assertRoomPermission).toHaveBeenCalledWith(userId, roomId, 'ADD_MEMBER');
     expect(memberModel.find).toHaveBeenCalledWith({ roomId });
     expect(existingMembers.select).toHaveBeenCalledWith('userId');
+    // Tìm theo tiền tố (endpoint.md): regex neo đầu chuỗi bằng ^
     expect(userModel.find).toHaveBeenCalledWith({
       $and: [
-        { $or: [{ email: /dent@exam/i }, { username: /dent@exam/i }] },
+        { $or: [{ email: /^stud/i }, { username: /^stud/i }] },
         { _id: { $nin: [existingUserId] } },
       ],
     });
@@ -134,7 +135,7 @@ describe('searchUsers', () => {
     ]);
   });
 
-  it('coi ký tự regex nhập vào là ký tự thường khi tìm giữa chuỗi', async () => {
+  it('coi ký tự regex nhập vào là ký tự thường khi tìm theo tiền tố', async () => {
     const { service, userModel } = build();
     const searchResults = query([]);
     userModel.find.mockReturnValue(searchResults);
@@ -143,7 +144,7 @@ describe('searchUsers', () => {
 
     expect(userModel.find).toHaveBeenCalledWith({
       $and: [
-        { $or: [{ email: /s\.t/i }, { username: /s\.t/i }] },
+        { $or: [{ email: /^s\.t/i }, { username: /^s\.t/i }] },
         { _id: { $nin: [] } },
       ],
     });
