@@ -936,3 +936,19 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra (chạy thật):** tạm bỏ `^` trong service → 2 test fail đúng chỗ regex (chứng minh test bắt được nếu ai đổi về "chứa chuỗi"); khôi phục → backend `vitest run` 8 file, 143/143 pass.
 - **Lệch khỏi tài liệu:** không.
 - **Commit:** chưa — chờ user.
+
+## 2026-10-27 — Khôi phục ADR-023: access token chỉ giữ trong memory (branch `fix/localstorage`)
+
+- **Vì sao:** commit `afdbd2e` (merge giao diện mới) đưa access token trở lại `localStorage` — trái ADR-023 / PROJECT_CONTEXT §5. Thêm nhánh dự phòng: `/auth/refresh` thất bại → lấy token cũ trong `localStorage` gọi `/auth/me` → **đăng xuất rồi F5 vẫn còn đăng nhập** (token đã thu hồi refresh vẫn dùng tới khi hết hạn 15 phút).
+- **Đã xong:**
+  - `context/auth.context.tsx`: bỏ mọi đọc / ghi `localStorage` và nhánh dự phòng `/auth/me`; tải trang chỉ gọi `/auth/refresh` như ADR-023. Giữ cải tiến của `afdbd2e`: `export` kiểu, gộp message lỗi dạng mảng, `if (!expiresAt) return`. Đưa lại comment giải thích ADR.
+  - `app/auth/callback/page.tsx`: bỏ đoạn đọc `?token=` (backend không còn gửi token lên query từ ADR-023).
+  - `features/room|meeting/services/*.service.ts`: xoá `getToken()` đọc `localStorage` và object `roomService` / `meetingService` (không component nào gọi), giữ hàm đổi dữ liệu (`mapBackendMember`, `mapBackendRoom`, `mapBackendMeeting`, `getInitials`…). Xoá `features/dashboard/services/dashboard.service.ts` (chỉ có object không ai dùng) + dòng export trong `index.ts`. Component lấy token từ `useAuth()` như trước.
+  - `localStorage` còn lại duy nhất: theme sáng / tối (`ThemeContext`), không phải dữ liệu đăng nhập.
+- **Kiểm tra (chạy thật):** script Chrome headless + DevTools Protocol (đồ bỏ ở scratchpad, không vào repo), backend Docker thật, đăng nhập qua form:
+  - Trước khi sửa: 3 FAIL — có `accessToken` trong `localStorage` sau đăng nhập và sau F5; đăng xuất (`POST /auth/logout`) rồi F5 vẫn ở `/dashboard`.
+  - Sau khi sửa: 5/5 PASS — đăng nhập vào `/dashboard`, `localStorage` không có token (cả sau F5), F5 vẫn đăng nhập, đăng xuất rồi F5 → `/login`.
+  - `tsc --noEmit` 0 lỗi; `npm run build` exit 0, 14 trang.
+- **Chưa kiểm:** đăng nhập Google (cần credential thật).
+- **Lệch khỏi tài liệu:** không — code quay về đúng ADR-023.
+- **Commit:** chưa — chờ user.

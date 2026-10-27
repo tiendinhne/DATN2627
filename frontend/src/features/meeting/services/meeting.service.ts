@@ -1,14 +1,8 @@
-import * as backendMeetingApi from "@/services/meeting.service";
 import type { Meeting as BackendMeeting } from "@/types/backend";
-import { participants } from "@/data/mockData";
-import type { Meeting, Participant } from "../types";
+import type { Meeting } from "../types";
 
-function getToken(): string {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("accessToken") || "";
-  }
-  return "";
-}
+// Chỉ còn hàm hiển thị / đổi dữ liệu backend sang dạng giao diện.
+// Gọi API dùng @/services/meeting.service với token lấy từ useAuth() (ADR-023: token chỉ ở memory).
 
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
@@ -66,36 +60,3 @@ export function mapBackendMeeting(m: BackendMeeting): Meeting {
     durationSeconds: m.durationSeconds,
   };
 }
-
-export const meetingService = {
-  async listMeetings(roomId: string, token?: string): Promise<BackendMeeting[]> {
-    const authToken = token || getToken();
-    const res = await backendMeetingApi.listMeetings(authToken, roomId);
-    return res.items;
-  },
-
-  async startMeeting(roomId: string, title: string, token?: string): Promise<BackendMeeting> {
-    const authToken = token || getToken();
-    return backendMeetingApi.startMeeting(authToken, roomId, title);
-  },
-
-  async joinMeeting(meetingId: string, token?: string) {
-    const authToken = token || getToken();
-    return backendMeetingApi.joinMeeting(authToken, meetingId);
-  },
-
-  async endMeeting(meetingId: string, token?: string): Promise<{ success: boolean; message: string }> {
-    const authToken = token || getToken();
-    await backendMeetingApi.endMeeting(authToken, meetingId);
-    return {
-      success: true,
-      message: "Cuộc họp đã kết thúc. Bảng vẽ đã được lưu.",
-    };
-  },
-
-  async getParticipants(meetingId: string): Promise<Participant[]> {
-    return participants;
-  },
-};
-
-export default meetingService;

@@ -8,10 +8,6 @@ export default function AuthCallbackPage() {
     // Backend đã đặt cookie refresh rồi chuyển về đây — không còn token trên query (PROJECT_CONTEXT §16).
     // returnUrl do trang login cất trước khi chuyển sang Google.
     // Không removeItem: dev Strict Mode chạy effect 2 lần, lần 2 đọc null sẽ ghi đè bằng /dashboard.
-    const token = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('token') : null;
-    if (token) {
-      localStorage.setItem('accessToken', token);
-    }
     const returnUrl = safeReturnUrl(sessionStorage.getItem('returnUrl'));
     // Tải lại cả trang tới returnUrl → AuthProvider gọi /auth/refresh lấy access token từ cookie.
     window.location.replace(returnUrl);
