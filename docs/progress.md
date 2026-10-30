@@ -987,88 +987,34 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra:** `docker compose config --quiet` và `git diff --check` pass. Đã recreate `backend`; kiểm tra chỉ sự hiện diện (không đọc/in giá trị) xác nhận access key, secret key, region và bucket đã vào container; `Nest application successfully started`, Redis kết nối.
 - **Commit:** chưa — chờ user.
 
-## 2026-10-30 — Chỉ upload file khi bấm Gửi
 
-- **Đã sửa:** chọn file chỉ giữ một file chờ trong khung soạn thảo, hiện tên/dung lượng và nút bỏ file. Bấm Gửi mới upload; nếu có nội dung text thì gửi text và file trong cùng tin nhắn. Chọn file mới hợp lệ sẽ thay file đang chờ.
-- **Kiểm tra:** `npm run lint` pass, không warning/error ESLint; `git diff --check` pass. `tsc --noEmit` vẫn fail ở dependency LiveKit đã có; không có diagnostic trong file chat hoặc integration vừa sửa. Chưa thực hiện upload thật trên S3.
+
+## 2026-10-27 — Khôi phục ADR-023: access token chỉ giữ trong memory (branch `fix/localstorage`)
+
+- **Vì sao:** commit `afdbd2e` (merge giao diện mới) đưa access token trở lại `localStorage` — trái ADR-023 / PROJECT_CONTEXT §5. Thêm nhánh dự phòng: `/auth/refresh` thất bại → lấy token cũ trong `localStorage` gọi `/auth/me` → **đăng xuất rồi F5 vẫn còn đăng nhập** (token đã thu hồi refresh vẫn dùng tới khi hết hạn 15 phút).
+- **Đã xong:**
+  - `context/auth.context.tsx`: bỏ mọi đọc / ghi `localStorage` và nhánh dự phòng `/auth/me`; tải trang chỉ gọi `/auth/refresh` như ADR-023. Giữ cải tiến của `afdbd2e`: `export` kiểu, gộp message lỗi dạng mảng, `if (!expiresAt) return`. Đưa lại comment giải thích ADR.
+  - `app/auth/callback/page.tsx`: bỏ đoạn đọc `?token=` (backend không còn gửi token lên query từ ADR-023).
+  - `features/room|meeting/services/*.service.ts`: xoá `getToken()` đọc `localStorage` và object `roomService` / `meetingService` (không component nào gọi), giữ hàm đổi dữ liệu (`mapBackendMember`, `mapBackendRoom`, `mapBackendMeeting`, `getInitials`…). Xoá `features/dashboard/services/dashboard.service.ts` (chỉ có object không ai dùng) + dòng export trong `index.ts`. Component lấy token từ `useAuth()` như trước.
+  - `localStorage` còn lại duy nhất: theme sáng / tối (`ThemeContext`), không phải dữ liệu đăng nhập.
+- **Kiểm tra (chạy thật):** script Chrome headless + DevTools Protocol (đồ bỏ ở scratchpad, không vào repo), backend Docker thật, đăng nhập qua form:
+  - Trước khi sửa: 3 FAIL — có `accessToken` trong `localStorage` sau đăng nhập và sau F5; đăng xuất (`POST /auth/logout`) rồi F5 vẫn ở `/dashboard`.
+  - Sau khi sửa: 5/5 PASS — đăng nhập vào `/dashboard`, `localStorage` không có token (cả sau F5), F5 vẫn đăng nhập, đăng xuất rồi F5 → `/login`.
+  - `tsc --noEmit` 0 lỗi; `npm run build` exit 0, 14 trang.
+- **Chưa kiểm:** đăng nhập Google (cần credential thật).
+- **Lệch khỏi tài liệu:** không — code quay về đúng ADR-023.
 - **Commit:** chưa — chờ user.
 
-## 2026-10-30 — Căn tin nhắn của người gửi sang phải trong Room Chat
+## 2026-10-27 — Frontend chạy trong Docker Compose (branch `chore/fe-docker`, ADR-016 mở rộng)
 
-- **Đã làm:** dùng `message.isOwn` để gắn trạng thái `own` cho tin của người gửi; căn avatar, tên, tin nhắn, nhãn cuộc họp và file/ảnh về bên phải. Tin từ thành viên khác giữ nguyên căn trái.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** không phát sinh.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Ẩn avatar và tên ở tin nhắn liên tiếp
-
-- **Đã làm:** trong Room Chat và Meeting Chat, nếu tin nhắn đứng ngay sau tin cùng người gửi thì ẩn avatar và tên; vẫn giữ giờ gửi, nội dung, ảnh và file. Tin đầu chuỗi hoặc tin sau của người gửi khác hiển thị avatar/tên.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** áp dụng cùng hành vi cho cả hai khung chat để hiển thị nhất quán.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Căn đều tin nhắn liên tiếp
-
-- **Đã làm:** bỏ phần đệm trái làm tin nhắn nối tiếp bị thụt vào; giảm khoảng cách dọc giữa các tin trong Room Chat và Meeting Chat để nhóm tin gọn, đều hơn.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** không phát sinh.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Căn thẳng mép phải các tin nhắn của mình
-
-- **Đã sửa:** ở Meeting Chat, cho khung nội dung tin nhắn của mình cùng chiếm chiều rộng khả dụng và đẩy bong bóng/tệp về cùng mép phải; giữ kích thước bong bóng theo nội dung.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** không phát sinh.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Gộp thời gian và thu gọn tin nhắn liên tiếp
-
-- **Đã sửa:** trong Room Chat và Meeting Chat, tin cùng người gửi cách tin trước tối đa 2 phút không lặp tên, avatar và thời gian; các tin nối tiếp được giảm khoảng cách dọc. Khi đổi người gửi hoặc cách quá 2 phút, nhóm mới hiển thị lại.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** khoảng cách 2 phút tính giữa hai tin liền kề trong danh sách.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Chỉ hiện mốc giờ theo khoảng trò chuyện
-
-- **Đã sửa:** trong Room Chat và Meeting Chat, hiện giờ ở tin đầu ngày, khi tin nhắn cách tin liền trước hơn 1 tiếng, và luôn hiện giờ ở tin mới nhất. Mốc giờ không lặp nếu trùng cùng tin.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** ngày được xác định theo múi giờ cục bộ của trình duyệt; ngưỡng gián đoạn là lớn hơn 1 tiếng.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Hiển thị ngày trên thanh chat-day
-
-- **Đã sửa:** thay nhãn tĩnh “Gần đây” bằng ngày cụ thể trên thanh `chat-day`, tạo thanh phân cách mỗi khi tin nhắn sang ngày mới ở Room Chat và Meeting Chat. Giờ vẫn hiện cạnh tin theo các mốc đã chốt.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** dùng định dạng ngày tiếng Việt theo múi giờ cục bộ của trình duyệt.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Hiển thị giờ trong từng bong bóng tin nhắn
-
-- **Đã sửa:** Room Chat và Meeting Chat hiển thị giờ ở trong bong bóng của mọi tin nhắn, kể cả tin chỉ có file/ảnh; bỏ các điều kiện chỉ hiện giờ theo mốc. Giữ thanh phân cách ngày và bố cục trái/phải hiện có.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** không phát sinh.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Làm mới giao diện file đính kèm trong chat
-
-- **Đã sửa:** tệp đính kèm hiển thị thành thẻ xanh nhạt với biểu tượng file, tên, dung lượng, trạng thái tải lên, nút mở và tải xuống; tin chỉ có file bỏ nền bong bóng ngoài để gần mẫu; giữ nguyên preview ảnh.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** dùng lại download URL đã có; không đổi API/backend.
-- **Lệch khỏi tài liệu:** không.
-- **Commit:** chưa — chờ user.
-
-## 2026-10-30 — Bỏ nền xanh ngoài cho tin chỉ có file
-
-- **Đã sửa:** bong bóng tin nhắn `file-only` trong Room Chat và Meeting Chat có nền trong suốt, tránh nền xanh bọc ngoài thẻ file; màu riêng của thẻ file giữ nguyên.
-- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
-- **Quyết định:** không phát sinh.
-- **Lệch khỏi tài liệu:** không.
+- **Vì sao:** trước phải chạy 2 thao tác (Docker cho backend, `npm run dev` cho frontend). Đề cương §5.10, §7: Frontend cũng được đóng gói, quản lý bằng Docker. User chọn chế độ dev (hot reload); bản production để task deploy.
+- **Đã xong:** `frontend/Dockerfile` (`node:22-alpine`, `npm ci`, `npm run dev`), `frontend/.dockerignore` (`node_modules`, `.next`, `.git`, `*.log`); service `frontend` trong `docker-compose.yml` (user thêm): cổng 3000, `WATCHPACK_POLLING=true`, mount `./frontend/src` và `./backend/src/shared:ro` (alias `@shared`, ADR-024), `depends_on: backend`. ADR-016 viết đủ nội dung (trước chỉ có tiêu đề) + mở rộng sang frontend. README rút còn 2 bước.
+- **Kiểm tra (chạy thật):**
+  - `docker compose up -d --build` → 5 container Up; frontend `Ready in 10.3s`; backend `Found 0 errors`, started.
+  - Lần đầu: mongo bị đánh `unhealthy` (healthcheck `mongosh` quá 5 s) khi máy đang build 2 image — mongo vẫn chạy (log slow query), đợi hết tải thì `healthy`, `up` lại được. Chưa đổi healthcheck.
+  - CPU lúc khởi động: backend 340–488 %, frontend 160 % (compile); chạy ổn: ~6 % mỗi container. VM Docker có 3,3 GB RAM.
+  - `/`, `/login`, `/dashboard`, `/rooms` → 200 (lần đầu 5–27 s); `/meetings/[id]` → 200, lần đầu 139 s (compile 118 s, 5.574 module), lần 2 → 4 s.
+  - Script Chrome headless ADR-023 trên frontend trong container: 5/5 PASS (đăng nhập, không token trong `localStorage`, F5 còn đăng nhập, đăng xuất + F5 → `/login`) → trình duyệt gọi được backend, cookie refresh chạy.
+  - Hot reload: sửa `<h1>` trong `LoginForm.tsx` → trang `/login` có nội dung mới sau ~25 s (compile 19,4 s); đã hoàn tác.
+- **Lệch khỏi tài liệu:** không. `CLAUDE.md` (mục Lệnh + ghi chú ADR-016) đã cập nhật theo yêu cầu user: một lệnh compose cho cả hệ thống; lệnh native chỉ cho test / debug.
 - **Commit:** chưa — chờ user.

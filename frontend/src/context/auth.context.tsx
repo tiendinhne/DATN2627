@@ -50,6 +50,8 @@ async function requestRefresh(): Promise<Session | null> {
   }
 }
 
+// Access token (15 phút) chỉ giữ trong memory (ADR-023, PROJECT_CONTEXT §5), không localStorage.
+// Refresh token nằm trong cookie httpOnly do backend đặt → mọi request auth phải gửi kèm cookie.
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -57,15 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Áp kết quả làm mới vào state; null → coi như chưa đăng nhập
   const applySession = useCallback((session: Session | null) => {
-    const accessToken = session?.accessToken ?? null;
-    const currentUser = session?.user ?? null;
-    setToken(accessToken);
-    setUser(currentUser);
-    if (accessToken) {
-      localStorage.setItem('accessToken', accessToken);
-    } else {
-      localStorage.removeItem('accessToken');
-    }
+    setToken(session?.accessToken ?? null);
+    setUser(session?.user ?? null);
   }, []);
 
   const updateDisplayName = async (displayName: string) => {
@@ -93,37 +88,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updatedUser);
   };
 
-  // Mỗi lần tải trang (kể cả F5) lấy access token từ cookie refresh
+  const updateDisplayName = async (displayName: string) => {
+    if (!token) {
+      throw new Error('Phiên đăng nhập không hợp lệ');
+    }
+
+    const response = await fetch(`${API_URL}/auth/me`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      body: JSON.stringify({ displayName }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const message = Array.isArray(error.message) ? error.message.join(', ') : error.message;
+      throw new Error(message || 'Không thể cập nhật tên hiển thị');
+    }
+
+    const updatedUser: User = await response.json();
+    setUser(updatedUser);
+  };
+
+  // Mỗi lần tải trang (kể cả F5) lấy access token từ cookie refresh.
+  // Dev Strict Mode gọi 2 lần cùng một cookie → backend cho lần sau đi qua nhờ ân hạn 10 giây.
   useEffect(() => {
     requestRefresh()
-      .then((session) => {
-        if (session) {
-          applySession(session);
-        } else {
-          // Thử khôi phục từ localStorage nếu có
-          const savedToken = localStorage.getItem('accessToken');
-          if (savedToken) {
-            setToken(savedToken);
-            fetch(`${API_URL}/auth/me`, {
-              headers: { Authorization: `Bearer ${savedToken}` },
-              credentials: 'include',
-            })
-              .then((res) => (res.ok ? res.json() : null))
-              .then((userData) => {
-                if (userData) {
-                  setUser(userData);
-                } else {
-                  localStorage.removeItem('accessToken');
-                  setToken(null);
-                }
-              })
-              .catch(() => {
-                localStorage.removeItem('accessToken');
-                setToken(null);
-              });
-          }
-        }
-      })
+      .then(applySession)
       .finally(() => setIsLoading(false));
   }, [applySession]);
 
@@ -159,7 +153,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { accessToken, user } = await res.json();
     setToken(accessToken);
     setUser(user);
-    localStorage.setItem('accessToken', accessToken);
   };
 
   const register = async (email: string, username: string, displayName: string, password: string) => {
@@ -177,14 +170,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { accessToken, user } = await res.json();
     setToken(accessToken);
     setUser(user);
-    localStorage.setItem('accessToken', accessToken);
   };
 
+  // Backend thu hồi refresh token + xoá cookie (JS không xoá được cookie httpOnly).
+  // Lỗi mạng vẫn đăng xuất phía trình duyệt.
   const logout = async () => {
-    await fetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => { });
+    await fetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
     setToken(null);
     setUser(null);
-    localStorage.removeItem('accessToken');
   };
 
   const loginWithGoogle = () => {
