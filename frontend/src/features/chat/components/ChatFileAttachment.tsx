@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import {
-  CheckCircle2,
   Download,
   FileText,
-  FolderOpen,
   Image as ImageIcon,
 } from "lucide-react";
 import Image from "next/image";
@@ -25,8 +23,14 @@ export function ChatFileAttachment({
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!isImage || !token) return;
+    if (!isImage) return;
+    if (!token) {
+      setError("Phiên đăng nhập không hợp lệ.");
+      return;
+    }
+
     let cancelled = false;
+    setError("");
     chatService
       .getDownloadUrl(token, roomId, file.id)
       .then((downloadUrl) => {
@@ -108,29 +112,52 @@ export function ChatFileAttachment({
 
   return (
     <section className="chat-file-attachment">
-      {isImage && url ? (
-        <button
-          className="chat-image-preview"
-          type="button"
-          onClick={openFile}
-          aria-label={`Mở ảnh ${file.originalName}`}
-        >
-          <Image
-            src={url}
-            alt={file.originalName}
-            width={240}
-            height={180}
-            unoptimized
-            onError={() => {
-              setUrl("");
-              setError("Không tải được ảnh xem trước. Hãy bấm để mở lại.");
-            }}
-          />
-        </button>
+      {isImage ? (
+        <div className="chat-image-file">
+          <button
+            className="chat-image-preview"
+            type="button"
+            onClick={openFile}
+            aria-label={`Mở ảnh ${file.originalName}`}
+          >
+            {url ? (
+              <Image
+                src={url}
+                alt={file.originalName}
+                width={320}
+                height={220}
+                unoptimized
+                onError={() => {
+                  setUrl("");
+                  setError("Không tải được ảnh xem trước. Bấm để mở lại.");
+                }}
+              />
+            ) : (
+              <span role={error ? "alert" : "status"}>
+                <ImageIcon size={20} />
+                {error || "Đang tải ảnh xem trước..."}
+              </span>
+            )}
+          </button>
+          <div className="chat-image-file-info">
+            <div>
+              <strong title={file.originalName}>{file.originalName}</strong>
+              <span>{(file.sizeBytes / 1024 / 1024).toFixed(2)} MB</span>
+            </div>
+            <button
+              type="button"
+              onClick={downloadFile}
+              aria-label={`Tải xuống ${file.originalName}`}
+              title="Tải xuống"
+            >
+              <Download size={17} />
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="chat-file-card">
           <div className="chat-file-card-icon">
-            {isImage ? <ImageIcon size={22} /> : <FileText size={22} />}
+            <FileText size={22} />
           </div>
           <div className="chat-file-card-info">
             <strong title={file.originalName}>{file.originalName}</strong>
@@ -150,7 +177,6 @@ export function ChatFileAttachment({
           </div>
         </div>
       )}
-      {error && <span className="chat-file-error" role="alert">{error}</span>}
     </section>
   );
 }

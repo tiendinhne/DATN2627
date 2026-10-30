@@ -1018,3 +1018,19 @@ Cập nhật lại các role * đọc file rule/role.md
   - Hot reload: sửa `<h1>` trong `LoginForm.tsx` → trang `/login` có nội dung mới sau ~25 s (compile 19,4 s); đã hoàn tác.
 - **Lệch khỏi tài liệu:** không. `CLAUDE.md` (mục Lệnh + ghi chú ADR-016) đã cập nhật theo yêu cầu user: một lệnh compose cho cả hệ thống; lệnh native chỉ cho test / debug.
 - **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Hiển thị xem trước ảnh đính kèm
+
+- **Đã sửa:** ảnh có thẻ xem trước inline với trạng thái đang tải/lỗi, tên và dung lượng; bấm ảnh để mở, nút tải riêng. Các file khác giữ thẻ file hiện có.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** dùng presigned download URL hiện có; không thêm API/dependency.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Xem trước ảnh trước khi gửi chat
+
+- **Đã sửa:** sau khi chọn ảnh, khung soạn thảo hiển thị thumbnail cùng tên/dung lượng trước khi upload; bỏ/chọn ảnh khác sẽ giải phóng URL preview cũ. File thường tiếp tục hiển thị dạng tên/dung lượng.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** preview dùng object URL cục bộ; không upload ảnh cho tới khi bấm Gửi.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.

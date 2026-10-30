@@ -1606,6 +1606,8 @@ button.brand {
 }
 
 .chat-messages {
+  min-height: 0;
+  max-height: 60vh;
   flex: 1;
   overflow: auto;
   padding: 8px 13px
@@ -1732,6 +1734,7 @@ button.brand {
   min-width: 0;
   display: flex;
   flex: 1;
+  flex-wrap: wrap;
   align-items: center;
   border: 1px solid #373e4b;
   border-radius: 9px;
@@ -2648,7 +2651,9 @@ button.brand {
 }
 
 .room-chat-list {
-  min-height: 400px;
+  min-height: 280px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
   padding: 18px 24px
 }
 
@@ -2809,6 +2814,30 @@ button.brand {
 
 .room-chat-input input:focus {
   border-color: #6976e8
+}
+
+.room-chat-compose {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  border: 1px solid #e1e4ec;
+  border-radius: 10px;
+  background: #f8f9fb
+}
+
+.room-chat-compose:focus-within {
+  border-color: #6976e8
+}
+
+.room-chat-compose input {
+  border: 0;
+  background: transparent
+}
+
+.room-chat-compose input:focus {
+  border-color: transparent
 }
 
 .room-chat-input .button {
@@ -4429,6 +4458,29 @@ button.brand {
   opacity: .5
 }
 
+.chat-pending-file.image {
+  align-items: center;
+  padding: 8px
+}
+
+.chat-pending-file.in-input {
+  flex: 1 0 100%;
+  order: -1;
+  border: 0;
+  border-bottom: 1px solid #dfe3eb;
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 9px
+}
+
+.chat-pending-image-preview {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover
+}
+
 .room-chat-input,
 .chat-input {
   flex-wrap: wrap
@@ -4463,8 +4515,7 @@ button.brand {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 8px;
-  background: #3184f4;
-  color: white
+  color: gray;
 }
 
 .chat-file-card-info {
@@ -4533,6 +4584,83 @@ button.brand {
   cursor: pointer
 }
 
+.chat-image-file {
+  width: min(320px, 100%);
+  overflow: hidden;
+  border: 1px solid #d5e5fb;
+  border-radius: 10px;
+  background: #e7f1ff
+}
+
+.chat-image-file .chat-image-preview {
+  width: 100%;
+  max-width: none;
+  max-height: 220px;
+  display: grid;
+  place-items: center;
+  background: #dceaff
+}
+
+.chat-image-file .chat-image-preview img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain
+}
+
+.chat-image-file .chat-image-preview > span {
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px;
+  color: #536780;
+  font-size: 10px
+}
+
+.chat-image-file-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: #23344c;
+  text-align: left
+}
+
+.chat-image-file-info > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px
+}
+
+.chat-image-file-info strong {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.chat-image-file-info span {
+  color: #68778c;
+  font-size: 9px
+}
+
+.chat-image-file-info button {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #d8e0eb;
+  border-radius: 5px;
+  background: #fff;
+  color: #3e4d63;
+  cursor: pointer
+}
+
 .chat-image-preview img {
   max-width: 240px;
   max-height: 180px;
@@ -4556,6 +4684,27 @@ button.brand {
   color: #e3ebf7
 }
 
+.dark-app .chat-image-file,
+.meeting-workspace.dark .chat-image-file {
+  border-color: #35485f;
+  background: #263649
+}
+
+.dark-app .chat-image-file .chat-image-preview,
+.meeting-workspace.dark .chat-image-file .chat-image-preview {
+  background: #1f2c3b
+}
+
+.dark-app .chat-image-file-info,
+.meeting-workspace.dark .chat-image-file-info {
+  color: #e3ebf7
+}
+
+.dark-app .chat-image-file-info span,
+.meeting-workspace.dark .chat-image-file-info span {
+  color: #aab8ca
+}
+
 .dark-app .chat-file-card-info > span,
 .meeting-workspace.dark .chat-file-card-info > span {
   color: #aab8ca
@@ -4563,6 +4712,13 @@ button.brand {
 
 .dark-app .chat-file-card-actions button,
 .meeting-workspace.dark .chat-file-card-actions button {
+  border-color: #526174;
+  background: #344357;
+  color: #e3ebf7
+}
+
+.dark-app .chat-image-file-info button,
+.meeting-workspace.dark .chat-image-file-info button {
   border-color: #526174;
   background: #344357;
   color: #e3ebf7
@@ -4578,4 +4734,10 @@ button.brand {
   border-color: #3a414d;
   background: #292f39;
   color: #cdd3de
+}
+
+.dark-app .chat-pending-file.in-input,
+.meeting-workspace.dark .chat-pending-file.in-input {
+  border-bottom-color: #3a414d;
+  background: transparent
 }

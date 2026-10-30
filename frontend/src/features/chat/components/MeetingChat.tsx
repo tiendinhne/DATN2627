@@ -1,13 +1,14 @@
 "use client";
 
-import { Fragment, useRef, useState, type FormEvent } from "react";
-import { FileText, MessageSquare, Paperclip, Send, Smile, X } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
+import { MessageSquare, Paperclip, Send, Smile } from "lucide-react";
 import { useRoomChat } from "../hooks/useRoomChat";
 import {
   CHAT_FILE_ACCEPT,
   validateChatFile,
 } from "../services/chat.service";
 import { ChatFileAttachment } from "./ChatFileAttachment";
+import { ChatPendingAttachment } from "./ChatPendingAttachment";
 
 interface MeetingChatProps {
   roomId?: string;
@@ -26,6 +27,7 @@ export function MeetingChat({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const {
     messages,
     error,
@@ -39,6 +41,11 @@ export function MeetingChat({
     token,
     currentUserId,
   });
+
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (messageList) messageList.scrollTop = messageList.scrollHeight;
+  }, [messages]);
 
   const handleSend = async (event: FormEvent) => {
     event.preventDefault();
@@ -74,7 +81,7 @@ export function MeetingChat({
           {fileError || error}
         </p>
       )}
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messageListRef}>
         {messages.length === 0 ? (
           <p className="py-6 text-center text-xs text-slate-400">
             Chưa có tin nhắn trong cuộc họp.
@@ -120,7 +127,7 @@ export function MeetingChat({
                     </span>
                   )}
                   <div>
-                    {!isFollowUp && (
+                    {!message.isOwn && !isFollowUp && (
                       <p>
                         <strong>{message.name}</strong>
                       </p>
@@ -191,22 +198,14 @@ export function MeetingChat({
           <button type="button" aria-label="Emoji">
             <Smile size={17} />
           </button>
-        </div>
-        {selectedFile && (
-          <div className="chat-pending-file">
-            <FileText size={16} />
-            <span>{selectedFile.name}</span>
-            <small>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</small>
-            <button
-              type="button"
-              aria-label="Bỏ file đang chọn"
-              onClick={() => setSelectedFile(null)}
+          {selectedFile && (
+            <ChatPendingAttachment
+              file={selectedFile}
               disabled={isUploading}
-            >
-              <X size={15} />
-            </button>
-          </div>
-        )}
+              onRemove={() => setSelectedFile(null)}
+            />
+          )}
+        </div>
         {isUploading && <span className="chat-upload-status">Đang tải file...</span>}
         <button
           className="send"

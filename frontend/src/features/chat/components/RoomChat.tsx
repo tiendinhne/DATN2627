@@ -1,13 +1,14 @@
 "use client";
 
-import { Fragment, useRef, useState, type FormEvent } from "react";
-import { FileText, Paperclip, Search, Send, Video, X } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
+import { Paperclip, Search, Send, Video } from "lucide-react";
 import { useRoomChat } from "../hooks/useRoomChat";
 import {
   CHAT_FILE_ACCEPT,
   validateChatFile,
 } from "../services/chat.service";
 import { ChatFileAttachment } from "./ChatFileAttachment";
+import { ChatPendingAttachment } from "./ChatPendingAttachment";
 
 interface RoomChatProps {
   roomId: string;
@@ -20,6 +21,7 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const {
     messages,
     error,
@@ -32,6 +34,11 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
     token,
     currentUserId,
   });
+
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (messageList) messageList.scrollTop = messageList.scrollHeight;
+  }, [messages]);
 
   const handleSendMessage = async (event: FormEvent) => {
     event.preventDefault();
@@ -69,7 +76,7 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
           {fileError || error}
         </p>
       )}
-      <div className="room-chat-list">
+      <div className="room-chat-list" ref={messageListRef}>
         {messages.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-400">
             Chưa có tin nhắn trong phòng.
@@ -109,13 +116,13 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
                 <article
                   className={`room-message${message.isOwn ? " own" : ""}${isFollowUp ? " follow-up" : ""}`}
                 >
-                  {!isFollowUp && (
+                  {!message.isOwn && !isFollowUp && (
                     <span className={`room-message-avatar ${message.color}`}>
                       {message.initials}
                     </span>
                   )}
                   <div>
-                    {!isFollowUp && (
+                    {!message.isOwn && !isFollowUp && (
                       <p>
                         <strong>{message.name}</strong>
                       </p>
@@ -180,29 +187,25 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
         >
           <Paperclip size={17} />
         </button>
-        <input
-          placeholder="Nhập tin nhắn cho phòng..."
-          aria-label="Tin nhắn"
-          value={inputText}
-          onChange={(event) => setInputText(event.target.value)}
-          disabled={connectionState !== "connected"}
-          maxLength={2000}
-        />
-        {selectedFile && (
-          <div className="chat-pending-file">
-            <FileText size={16} />
-            <span>{selectedFile.name}</span>
-            <small>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</small>
-            <button
-              type="button"
-              aria-label="Bỏ file đang chọn"
-              onClick={() => setSelectedFile(null)}
+        <div
+          className={`room-chat-compose${selectedFile ? " has-pending-file" : ""}`}
+        >
+          {selectedFile && (
+            <ChatPendingAttachment
+              file={selectedFile}
               disabled={isUploading}
-            >
-              <X size={15} />
-            </button>
-          </div>
-        )}
+              onRemove={() => setSelectedFile(null)}
+            />
+          )}
+          <input
+            placeholder="Nhập tin nhắn cho phòng..."
+            aria-label="Tin nhắn"
+            value={inputText}
+            onChange={(event) => setInputText(event.target.value)}
+            disabled={connectionState !== "connected"}
+            maxLength={2000}
+          />
+        </div>
         {isUploading && <span className="chat-upload-status">Đang tải file...</span>}
         <button
           className="button primary"
