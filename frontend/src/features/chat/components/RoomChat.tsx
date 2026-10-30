@@ -1,52 +1,50 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Send, Video } from "lucide-react";
-import type { ChatMessage } from "../types";
+import { Fragment, useRef, useState, type FormEvent } from "react";
+import { FileText, Paperclip, Search, Send, Video, X } from "lucide-react";
+import { useRoomChat } from "../hooks/useRoomChat";
+import {
+  CHAT_FILE_ACCEPT,
+  validateChatFile,
+} from "../services/chat.service";
+import { ChatFileAttachment } from "./ChatFileAttachment";
 
-export const initialRoomMessages: ChatMessage[] = [
-  {
-    name: "Minh Anh",
-    initials: "MA",
-    time: "14:23",
-    text: "Mọi người xem giúp mình phần flow đăng nhập nhé.",
-    color: "orange",
-  },
-  {
-    name: "Quang Huy",
-    initials: "QH",
-    time: "14:25",
-    text: "Mình đã hoàn thành phần API cho module phòng học.",
-    color: "green",
-    meeting: "Họp tiến độ tuần 5",
-  },
-  {
-    name: "An Nguyễn",
-    initials: "AN",
-    time: "14:27",
-    text: "Tuyệt vời, chiều nay mình cùng review trong cuộc họp.",
-    color: "blue",
-  },
-];
+interface RoomChatProps {
+  roomId: string;
+  token: string | null;
+  currentUserId?: string;
+}
 
-export function RoomChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>(initialRoomMessages);
+export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
   const [inputText, setInputText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    messages,
+    error,
+    connectionState,
+    isUploading,
+    sendMessage,
+    sendFile,
+  } = useRoomChat({
+    roomId,
+    token,
+    currentUserId,
+  });
 
-  const handleSendMessage = (event: React.FormEvent) => {
+  const handleSendMessage = async (event: FormEvent) => {
     event.preventDefault();
-    if (!inputText.trim()) return;
-
-    const newMessage: ChatMessage = {
-      name: "An Nguyễn",
-      initials: "AN",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      text: inputText.trim(),
-      color: "blue",
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
-    setInputText("");
+    const text = inputText.trim();
+    if (selectedFile) {
+      if (await sendFile(selectedFile, text)) {
+        setSelectedFile(null);
+        setInputText("");
+        setFileError("");
+      }
+      return;
+    }
+    if (text && sendMessage(text)) setInputText("");
   };
 
   return (
@@ -54,48 +52,168 @@ export function RoomChat() {
       <div className="room-chat-header">
         <div>
           <h2>Trò chuyện trong phòng</h2>
-          <p>8 thành viên · Tin nhắn được lưu lại sau cuộc họp</p>
+          <p>
+            {connectionState === "connected"
+              ? "Đã kết nối · Tin nhắn được lưu lại sau cuộc họp"
+              : connectionState === "connecting"
+                ? "Đang kết nối..."
+                : "Chưa kết nối chat"}
+          </p>
         </div>
         <button className="icon-button" aria-label="Tìm tin nhắn" type="button">
           <Search size={17} />
         </button>
       </div>
+      {(error || fileError) && (
+        <p className="px-4 text-sm text-red-400" role="alert">
+          {fileError || error}
+        </p>
+      )}
       <div className="room-chat-list">
-        <div className="chat-day">
-          <span>Hôm nay</span>
-        </div>
-        {messages.map((message) => (
-          <article
-            className="room-message"
-            key={`${message.name}-${message.time}-${message.text.substring(0, 10)}`}
-          >
-            <span className={`room-message-avatar ${message.color || "blue"}`}>
-              {message.initials}
-            </span>
-            <div>
-              <p>
-                <strong>{message.name}</strong>
-                <time>{message.time}</time>
-              </p>
-              {message.meeting && (
-                <span className="meeting-message-badge">
-                  <Video size={12} /> Trong cuộc họp: {message.meeting}
-                </span>
-              )}
-              <div className="room-message-bubble">{message.text}</div>
-            </div>
-          </article>
-        ))}
+        {messages.length === 0 ? (
+          <p className="py-6 text-center text-sm text-slate-400">
+            Chưa có tin nhắn trong phòng.
+          </p>
+        ) : (
+          messages.map((message, index) => {
+            const previousMessage = messages[index - 1];
+            const timeSincePrevious = previousMessage
+              ? new Date(message.createdAt).getTime() -
+                new Date(previousMessage.createdAt).getTime()
+              : Infinity;
+            const startsNewDay =
+              !previousMessage ||
+              new Date(message.createdAt).toDateString() !==
+                new Date(previousMessage.createdAt).toDateString();
+            const isFollowUp =
+              previousMessage?.senderId === message.senderId &&
+              timeSincePrevious >= 0 &&
+              timeSincePrevious <= 2 * 60 * 1000;
+
+            return (
+              <Fragment key={message.id}>
+                {startsNewDay && (
+                  <div className="chat-day">
+                    <span>
+                      {new Date(message.createdAt).toLocaleDateString(
+                        "vi-VN",
+                        {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        }
+                      )}
+                    </span>
+                  </div>
+                )}
+                <article
+                  className={`room-message${message.isOwn ? " own" : ""}${isFollowUp ? " follow-up" : ""}`}
+                >
+                  {!isFollowUp && (
+                    <span className={`room-message-avatar ${message.color}`}>
+                      {message.initials}
+                    </span>
+                  )}
+                  <div>
+                    {!isFollowUp && (
+                      <p>
+                        <strong>{message.name}</strong>
+                      </p>
+                    )}
+                    {message.meeting && (
+                      <span className="meeting-message-badge">
+                        <Video size={12} /> Trong cuộc họp: {message.meeting}
+                      </span>
+                    )}
+                    <div
+                      className={`room-message-bubble${message.file && !message.text ? " file-only" : ""}`}
+                    >
+                      {message.text && (
+                        <span className="chat-message-text">{message.text}</span>
+                      )}
+                      {message.file && (
+                        <ChatFileAttachment
+                          token={token}
+                          roomId={roomId}
+                          file={message.file}
+                        />
+                      )}
+                      <time className="chat-message-time">{message.time}</time>
+                    </div>
+                  </div>
+                </article>
+              </Fragment>
+            );
+          })
+        )}
       </div>
       <form className="room-chat-input" onSubmit={handleSendMessage}>
-        <span className="mini-avatar">AN</span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={CHAT_FILE_ACCEPT}
+          hidden
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (!file) return;
+            try {
+              validateChatFile(file);
+              setSelectedFile(file);
+              setFileError("");
+            } catch (validationError) {
+              setFileError(
+                validationError instanceof Error
+                  ? validationError.message
+                  : "File không hợp lệ."
+              );
+            }
+          }}
+        />
+        <button
+          className="chat-attach-button"
+          type="button"
+          aria-label="Đính kèm file hoặc hình ảnh"
+          title="Đính kèm file hoặc hình ảnh (tối đa 20 MiB)"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={connectionState !== "connected" || isUploading}
+        >
+          <Paperclip size={17} />
+        </button>
         <input
           placeholder="Nhập tin nhắn cho phòng..."
           aria-label="Tin nhắn"
           value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
+          onChange={(event) => setInputText(event.target.value)}
+          disabled={connectionState !== "connected"}
+          maxLength={2000}
         />
-        <button className="button primary" aria-label="Gửi tin nhắn" type="submit">
+        {selectedFile && (
+          <div className="chat-pending-file">
+            <FileText size={16} />
+            <span>{selectedFile.name}</span>
+            <small>{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</small>
+            <button
+              type="button"
+              aria-label="Bỏ file đang chọn"
+              onClick={() => setSelectedFile(null)}
+              disabled={isUploading}
+            >
+              <X size={15} />
+            </button>
+          </div>
+        )}
+        {isUploading && <span className="chat-upload-status">Đang tải file...</span>}
+        <button
+          className="button primary"
+          aria-label="Gửi tin nhắn"
+          type="submit"
+          disabled={
+            connectionState !== "connected" ||
+            isUploading ||
+            (!inputText.trim() && !selectedFile)
+          }
+        >
           <Send size={17} />
         </button>
       </form>

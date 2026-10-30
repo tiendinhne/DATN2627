@@ -175,15 +175,6 @@ button.brand {
   color: #25304a;
 }
 
-.search-box kbd {
-  border: 1px solid #dfe2eb;
-  border-radius: 5px;
-  background: white;
-  padding: 2px 6px;
-  font-size: 10px;
-  color: #8b93a5;
-}
-
 .icon-button {
   height: 38px;
   width: 38px;
@@ -1623,7 +1614,7 @@ button.brand {
 .message {
   display: flex;
   gap: 8px;
-  margin: 10px 0
+  margin: 6px 0
 }
 
 .message-avatar {
@@ -1654,7 +1645,13 @@ button.brand {
   font-size: 7px
 }
 
-.message div div {
+.message .chat-message-bubble {
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   border-radius: 3px 9px 9px 9px;
   background: #2a303b;
   padding: 8px 9px;
@@ -1663,16 +1660,65 @@ button.brand {
   line-height: 1.5
 }
 
+.chat-message-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere
+}
+
+.chat-message-time {
+  align-self: flex-end;
+  color: #9aa1af;
+  font-size: 8px;
+  line-height: 1
+}
+
 .message.own {
   justify-content: flex-end;
   text-align: right
 }
 
-.message.own div div {
+.message.own > div {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column
+}
+
+.message.own .chat-message-bubble {
+  align-self: flex-end
+}
+
+.message.own .chat-file-attachment {
+  align-items: flex-end
+}
+
+.message.follow-up p,
+.room-message.follow-up p {
+  margin-bottom: 0
+}
+
+.message.follow-up,
+.room-message.follow-up {
+  margin-top: 2px;
+  margin-bottom: 2px
+}
+
+.message.own .chat-message-bubble {
   background: #4d5bc4;
   color: #eef0ff;
   border-radius: 9px 3px 9px 9px;
   text-align: left
+}
+
+.message .chat-message-bubble.file-only {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  border-radius: 0
+}
+
+.chat-message-bubble.file-only .chat-message-time {
+  color: #788296
 }
 
 .chat-input {
@@ -1706,14 +1752,17 @@ button.brand {
 .chat-input button {
   border: 0;
   background: none;
-  color: #7e8796
+  color: #7e8796;
 }
 
 .chat-input .send {
   width: 34px;
   border-radius: 9px;
   background: #5969df;
-  color: white
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ai-panel {
@@ -2623,7 +2672,17 @@ button.brand {
 .room-message {
   display: flex;
   gap: 11px;
-  margin: 17px 0
+  margin: 8px 0
+}
+
+.room-message > div {
+  min-width: 0;
+  flex: 1
+}
+
+.room-message.own {
+  flex-direction: row-reverse;
+  text-align: right
 }
 
 .room-message-avatar {
@@ -2664,12 +2723,54 @@ button.brand {
 .room-message-bubble {
   width: max-content;
   max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   border-radius: 4px 11px 11px 11px;
   background: #f4f5f8;
   padding: 10px 12px;
   color: #505a6e;
   font-size: 10px;
   line-height: 1.5
+}
+
+.room-message.own .room-message-bubble {
+  align-items: flex-start;
+  margin-left: auto;
+  border-radius: 11px 4px 11px 11px;
+  background: #4d5bc4;
+  color: #eef0ff
+}
+
+.room-message .room-message-bubble.file-only {
+  width: min(0, 80%);
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  border-radius: 0
+}
+
+.room-message.own .room-message-bubble.file-only {
+  margin-left: auto
+}
+
+.room-message.own .meeting-message-badge {
+  margin-left: auto
+}
+
+.room-message.own .chat-file-attachment {
+  align-items: flex-end
+}
+
+.room-message.own .chat-message-time,
+.message.own .chat-message-time {
+  color: #d7ddff
+}
+
+.room-message.own .room-message-bubble.file-only .chat-message-time,
+.message.own .chat-message-bubble.file-only .chat-message-time {
+  color: #788296
 }
 
 .meeting-message-badge {
@@ -3386,7 +3487,7 @@ button.brand {
 .members-card {
   margin-top: 22px;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .room-meetings-card .section-heading,
@@ -4257,4 +4358,224 @@ button.brand {
   .auth-form-wrap {
     padding: 88px 24px 35px
   }
+}
+
+.chat-attach-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px;
+  color: #788296;
+  cursor: pointer
+}
+
+.chat-attach-button:disabled {
+  cursor: not-allowed;
+  opacity: .5
+}
+
+.chat-upload-status {
+  color: #788296;
+  font-size: 9px;
+  white-space: nowrap
+}
+
+.chat-pending-file {
+  min-width: 0;
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  border: 1px solid #dfe3eb;
+  border-radius: 8px;
+  background: #f8f9fb;
+  padding: 7px 9px;
+  color: #505a6e;
+  font-size: 10px
+}
+
+.chat-pending-file span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.chat-pending-file small {
+  flex: 0 0 auto;
+  color: #788296
+}
+
+.chat-pending-file button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  color: #788296;
+  cursor: pointer
+}
+
+.chat-pending-file button:disabled {
+  cursor: not-allowed;
+  opacity: .5
+}
+
+.room-chat-input,
+.chat-input {
+  flex-wrap: wrap
+}
+
+.chat-file-attachment {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  margin-top: 7px
+}
+
+.chat-file-card {
+  width: min(0, 80%);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d5e5fb;
+  border-radius: 10px;
+  background: #e7f1ff;
+  padding: 10px;
+  color: #23344c;
+  text-align: left
+}
+
+.chat-file-card-icon {
+  width: 40px;
+  height: 44px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: #3184f4;
+  color: white
+}
+
+.chat-file-card-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px
+}
+
+.chat-file-card-info strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.chat-file-card-info > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: #68778c;
+  font-size: 9px
+}
+
+.chat-file-uploaded {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #2f9b58
+}
+
+.chat-file-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px
+}
+
+.chat-file-card-actions button {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d8e0eb;
+  border-radius: 5px;
+  background: #fff;
+  color: #3e4d63;
+  cursor: pointer
+}
+
+.chat-file-card-actions button:hover {
+  background: #f3f7fc
+}
+
+.chat-image-preview {
+  max-width: 240px;
+  max-height: 180px;
+  display: block;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0;
+  cursor: pointer
+}
+
+.chat-image-preview img {
+  max-width: 240px;
+  max-height: 180px;
+  display: block;
+  object-fit: contain
+}
+
+.chat-file-error {
+  color: #788296;
+  font-size: 9px
+}
+
+.chat-file-error {
+  color: #dc3545
+}
+
+.dark-app .chat-file-card,
+.meeting-workspace.dark .chat-file-card {
+  border-color: #35485f;
+  background: #263649;
+  color: #e3ebf7
+}
+
+.dark-app .chat-file-card-info > span,
+.meeting-workspace.dark .chat-file-card-info > span {
+  color: #aab8ca
+}
+
+.dark-app .chat-file-card-actions button,
+.meeting-workspace.dark .chat-file-card-actions button {
+  border-color: #526174;
+  background: #344357;
+  color: #e3ebf7
+}
+
+.dark-app .chat-attach-button,
+.meeting-workspace.dark .chat-attach-button {
+  color: #aeb8ca
+}
+
+.dark-app .chat-pending-file,
+.meeting-workspace.dark .chat-pending-file {
+  border-color: #3a414d;
+  background: #292f39;
+  color: #cdd3de
 }

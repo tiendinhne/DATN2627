@@ -43,6 +43,6 @@ import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema
     // chưa được cấu hình. Xem docs/DOCKER_NOTES.md.
     ...(isGoogleOAuthConfigured() ? [GoogleStrategy] : []),
   ],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

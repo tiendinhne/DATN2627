@@ -64,7 +64,7 @@ backend/src/
     ├── whiteboard/      [hexagonal]  + domain/lww-merge, ports/state, adapters/redis
     ├── chat/            [layered]    dto, schemas
     ├── ai-assistant/    [hexagonal]  + domain/dsl, ports/ai-provider, adapters/{gemini,elk}
-    ├── files/           [hexagonal]  + ports/object-storage, adapters/{minio,r2}
+    ├── files/           [hexagonal]  + ports/object-storage, adapters/{s3}
     ├── realtime/        gateways, adapters (Redis IO adapter), dto
     └── health/          liveness + readiness cho LB/ASG
 

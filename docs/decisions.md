@@ -145,3 +145,20 @@ Phần này không nằm trong scope hiện tại
 **Rejected because:** thư mục ngoài `backend/` phải sửa `docker-compose.yml` (context + volume), Dockerfile, `rootDir` tsconfig backend và 13 dòng import; `infrastructure/` là chỗ cấu hình deploy, không phải code; workspace trái ADR-021; chép tay trái §19.2 — và frontend hiện đã lệch theo kiểu đó (`types/backend.ts` viết lại `RoomRole`, ~15 chỗ gõ chuỗi `"HOST"` / `"ACTIVE"`).
 **Giới hạn biết trước:** (1) `extensionAlias` là cấu hình webpack — `next dev` / `next build` hiện dùng webpack; nếu chuyển sang Turbopack phải kiểm lại. (2) Khi build frontend trong Docker lúc deploy, build context phải chứa cả `backend/src/shared` (vd context là gốc repo).
 **Status:** CONFIRMED — user chốt 2026-10-22.
+
+## ADR-025 — Upload Chat trực tiếp lên S3-compatible Object Storage `[phát sinh kỹ thuật]`
+**Status:** SUPERSEDED by ADR-026.
+**Decision:** File Chat dùng presigned PUT/GET qua adapter `object-storage`; Backend chỉ lưu metadata, trạng thái upload và object key trong Mongo. MinIO dùng khi dev, S3-compatible (ví dụ R2) dùng khi deploy; bucket private. Upload được xác nhận bằng `HeadObject` trước khi tin nhắn có thể tham chiếu file. Giới hạn 20 MiB và chỉ nhận MIME/đuôi file nằm trong allowlist. Socket.IO Redis adapter gỡ các socket khỏi kênh Room khi user rời/bị kick hoặc Room giải tán.
+**Reason:** Đáp ứng yêu cầu stateless §7.1, file không đi qua RAM/ổ đĩa Backend, đồng thời quyền Room được kiểm tra cả khi cấp URL upload, xác nhận và cấp URL tải xuống.
+**Truy vết:** đề cương §6.3 yêu cầu đính kèm nội dung trong Chat Room; yêu cầu lưu file bên ngoài/kiểm quyền chi tiết là `[phát sinh kỹ thuật]` theo PROJECT_CONTEXT §7.1 và yêu cầu triển khai Chat.
+**Alternatives:** gửi file qua Socket.IO hoặc Backend; bucket public.
+**Rejected because:** gửi qua Backend tạo tải và rủi ro lưu file ở instance; bucket public bỏ qua quyền Room.
+**Status:** CONFIRMED — user duyệt thiết kế 2026-10-27.
+
+## ADR-026 — Dùng Amazon S3 cho file Chat
+**Decision:** Thay MinIO/R2 bằng Amazon S3; adapter hiện có dùng AWS SDK for JavaScript v3 để ký PUT/GET và xác minh upload qua `HeadObject`. Backend chỉ lưu metadata và object key trong MongoDB; presigned URL chỉ được cấp theo yêu cầu sau khi kiểm tra quyền Room. Adapter dùng credential provider chain mặc định của SDK, ưu tiên IAM Role/Task Role trên AWS. Bucket private, region và tên bucket được cấu hình ngoài source.
+**Reason:** Image MinIO Community đã dùng trong Compose không còn được pull; mục tiêu hiện tại yêu cầu Amazon S3. Dùng S3 trực tiếp cũng bỏ service lưu trữ cục bộ và credentials tĩnh khỏi cấu hình Compose.
+**Truy vết:** Luồng upload file Chat gắn với yêu cầu đính kèm trong đề cương §6.3; lựa chọn Amazon S3 và IAM Role là quyết định triển khai `[phát sinh kỹ thuật]`, không ghi nhận là yêu cầu của đề cương.
+**Alternatives:** tiếp tục MinIO, tự build MinIO Community, hoặc dùng S3-compatible provider.
+**Rejected because:** yêu cầu task hiện tại là Amazon S3 và image MinIO không pull được ở môi trường phát triển.
+**Status:** CONFIRMED — user yêu cầu chuyển sang Amazon S3 2026-10-27.

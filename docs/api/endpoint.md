@@ -194,16 +194,98 @@ Webhook của LiveKit (không dành cho client). Không dùng JWT — xác thự
 
 Event xử lý: `participant_joined` (ghi session theo `sid`, presence, `$max` peak; không còn là thành viên / meeting đã kết thúc → `removeParticipant`), `participant_left` + `participant_connection_aborted` (đóng session theo `sid`), `room_finished` (chốt meeting `AUTO_EMPTY` / `ROOM_DISSOLVED` — ADR-022).
 
-## Chat (thiết kế — chưa code)
+## Chat
 
 ### GET /rooms/:roomId/messages
 Lấy lịch sử chat của room, mới nhất trước.
+
+Header: `Authorization: Bearer <accessToken>`.
 
 | Query | Kiểu | Mặc định | Ghi chú |
 |---|---|---|---|
 | before | messageId | — | cursor: lấy tin cũ hơn tin này |
 | limit | number | 50 | tối đa 100 |
-| meetingId | ObjectId | — | có thì chỉ lấy tin của meeting đó |
+| meetingId | ObjectId | — | có thì chỉ lấy tin của meeting đó; Meeting phải thuộc room |
 
 Quyền: thành viên room.
-Response: `{ items: [{ id, roomId, meetingId, meetingTitle?, senderId, senderName, type, content, fileId, createdAt }], nextCursor }`
+Response: `{ items: [{ id, roomId, meetingId, meetingTitle?, senderId, senderName, type, content, fileId, file, createdAt }], nextCursor }`. `file` là metadata `{ id, originalName, mimeType, sizeBytes }` hoặc `null`; response không chứa object key hay URL tải xuống.
+
+### POST /rooms/:roomId/uploads
+Cấp quyền PUT file trực tiếp lên Object Storage; không gửi nội dung file qua Backend.
+
+Header: `Authorization: Bearer <accessToken>`.
+
+```json
+{
+  "originalName": "lecture.pdf",
+  "mimeType": "application/pdf",
+  "sizeBytes": 123456,
+  "meetingId": "665e..."
+}
+```
+
+`meetingId` tuỳ chọn; nếu gửi, Backend kiểm tra Meeting đang ACTIVE, thuộc room và user đang có mặt trong Meeting. MIME và phần mở rộng phải khớp danh sách hỗ trợ: JPEG, PNG, WebP, GIF, PDF, TXT, CSV, DOC/DOCX, XLS/XLSX, PPT/PPTX. Dung lượng 1 byte–20 MiB.
+
+Response `201`:
+
+```json
+{
+  "file": { "id": "665f...", "originalName": "lecture.pdf", "mimeType": "application/pdf", "sizeBytes": 123456, "status": "PENDING" },
+  "upload": { "method": "PUT", "url": "https://storage.example/...", "headers": { "Content-Type": "application/pdf" }, "expiresInSeconds": 300 }
+}
+```
+
+Frontend dùng `fetch(upload.url, { method: "PUT", headers: upload.headers, body: file })`. Không tự đặt `Content-Length`; trình duyệt lấy kích thước từ `File`. URL chỉ dùng được với đúng MIME/size đã ký. Bucket cần CORS cho origin Frontend và method `PUT`.
+
+### POST /rooms/:roomId/uploads/:fileId/complete
+Gọi sau khi PUT thành công. Backend dùng `HeadObject` kiểm tra object tồn tại, dung lượng/MIME khớp rồi chuyển metadata từ `PENDING` sang `READY`. Chỉ file `READY` mới được đính kèm hoặc tải xuống. Retry endpoint này là idempotent.
+
+Response `200`: `{ id, originalName, mimeType, sizeBytes, status: "READY" }`.
+
+### GET /rooms/:roomId/files/:fileId/download-url
+Kiểm tra thành viên Room và cấp presigned GET URL sống 15 phút cho file `READY`.
+
+Response `200`: `{ url, expiresInSeconds: 900 }`. URL được ký để ảnh hiển thị inline; loại file khác tải xuống dạng attachment. Bucket luôn private.
+
+### Socket.IO chat
+Kết nối namespace `/meeting` với `transports: ["websocket"]` và JWT trong `auth.token` (không truyền token trong query). Gửi `room:subscribe { roomId }` trước khi nhận chat; Backend chỉ join socket sau khi xác thực JWT và kiểm tra thành viên Room.
+
+`chat:send` nhận `{ roomId, clientMsgId, content?, fileId?, meetingId? }`. Phải có `content` hoặc `fileId`; `clientMsgId` là UUID để chống tạo trùng khi reconnect. Khi gửi file, upload và gọi `complete` trước; tin nhắn có `type: "FILE"`, ảnh nhận biết bằng `file.mimeType`. Backend kiểm lại quyền Room, quyền Meeting, quyền sở hữu file và trạng thái `READY` trước khi ghi Mongo.
+
+Sau khi lưu thành công, server phát đúng một `chat:new` vào `room:{roomId}`:
+
+```json
+{
+  "v": 1, "seq": 12, "ts": "2026-10-27T07:00:00.000Z",
+  "actorId": "665f...", "roomId": "665d...", "meetingId": null,
+  "data": { "message": { "id": "665f...", "type": "FILE", "fileId": "665a...", "file": { "id": "665a...", "originalName": "lecture.pdf", "mimeType": "application/pdf", "sizeBytes": 123456 } } }
+}
+```
+
+`meetingId` được Backend kiểm tra rồi mới lưu; tin nhắn vẫn thuộc luồng Room. Client lọc theo `meetingId` để hiển thị khung chat Meeting. Sự kiện chỉ mang nội dung tin nhắn và metadata, không mang bytes hay URL tải file. Lỗi quyền/validate phát qua event `error` `{ statusCode, error, message }`.
+
+Khi thành viên rời/bị kick hoặc Room giải tán, server phát `room:access_revoked` (envelope chuẩn, `data.reason` là `LEFT`, `KICKED` hoặc `DISSOLVED`) rồi buộc các socket trên mọi Backend instance rời `room:{roomId}` qua Redis Adapter.
+
+### Cấu hình Object Storage
+Tạo bucket Amazon S3 riêng và đặt `AWS_REGION` cùng `S3_BUCKET` trong `backend/.env` (giá trị thật phụ thuộc AWS account; không dùng các placeholder trong `.env.example`). Bucket phải private. Adapter dùng AWS SDK for JavaScript v3 với credential provider chain mặc định; không cấu hình endpoint hay key/secret trong source.
+
+- **Development:** khi chạy bằng Compose, đặt `AWS_ACCESS_KEY_ID` và `AWS_SECRET_ACCESS_KEY` (cùng `AWS_SESSION_TOKEN` nếu là credentials tạm thời) trong file `.env` ở root repo; Compose chỉ chuyển chúng vào container Backend, không chuyển sang LiveKit. File `.env` bị gitignore, không commit. Chỉ dùng credentials giới hạn quyền trong bucket test.
+- **Production trên AWS:** ưu tiên IAM Role/Task Role gắn với workload, không truyền access key tĩnh. Cấp tối thiểu `s3:PutObject` và `s3:GetObject` trên `arn:aws:s3:::<bucket>/chat/*`; không cấp quyền public hoặc `ListBucket` nếu không cần.
+- Cấu hình CORS của bucket cho đúng Frontend origin, methods `PUT` và `GET`, allowed header `Content-Type`. Ví dụ development dùng `http://localhost:3000`; production thay bằng origin HTTPS thực tế. Không bật public access.
+
+Docker Compose không khởi chạy dịch vụ lưu trữ local; Backend gọi Amazon S3 trực tiếp. File đã upload vào MinIO trước đây không tự được sao chép sang S3, và dữ liệu/bucket cũ không bị xóa bởi thay đổi này. Nếu có file cần giữ, phải lập kế hoạch copy sang bucket S3 và cập nhật metadata trước khi ngừng nguồn cũ.
+
+### Tích hợp Frontend nhanh
+Frontend hiện cần `socket.io-client` để kết nối (chưa thêm dependency ở task Backend này). Dùng access token đang giữ trong memory:
+
+```ts
+const socket = io(`${API_URL}/meeting`, {
+  transports: ['websocket'],
+  auth: { token: accessToken },
+});
+socket.emit('room:subscribe', { roomId });
+socket.on('chat:new', ({ data }) => addMessage(data.message));
+socket.on('room:access_revoked', () => leaveRoomView());
+```
+
+Khi gửi file: gọi API tạo upload → PUT `File` vào `upload.url` với `upload.headers` → gọi API `complete` → gửi `chat:send` kèm `fileId` và `clientMsgId: crypto.randomUUID()`. Khi render ảnh/tải file, gọi `download-url` theo `fileId` rồi dùng `url` trả về; URL hết hạn sau 15 phút nên chỉ yêu cầu khi cần hiển thị/tải.

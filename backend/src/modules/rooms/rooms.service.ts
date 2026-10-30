@@ -24,6 +24,7 @@ import { RoomRole, RoomStatus } from '../../shared/enums.js';
 import { RoomAction } from '../../shared/permissions.js';
 import { CreateRoomDto } from './dto/create-room.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
+import { RealtimePublisher } from '../realtime/realtime-publisher.service.js';
 
 // Mã tham gia: 8 ký tự base32, ngẫu nhiên, không tuần tự (§16)
 const JOIN_CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -95,6 +96,7 @@ export class RoomsService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     // Kick / rời / giải tán ảnh hưởng meeting đang diễn ra (spec meeting §8)
     private meetings: MeetingsService,
+    private realtime: RealtimePublisher,
   ) {}
 
   // POST /rooms — người tạo thành HOST
@@ -299,7 +301,7 @@ export class RoomsService {
     }
     // Đưa ra khỏi cuộc gọi đang diễn ra — hàm không ném lỗi, kick vẫn 204
     await this.meetings.removeFromActiveMeeting(roomId, targetUserId);
-    // TODO(chat gateway): thu hồi socket của người bị kick khỏi kênh room:{roomId}
+    await this.realtime.revokeUser(roomId, targetUserId, hostId, 'KICKED');
   }
 
   // DELETE /rooms/:roomId/members/me — MEMBER tự rời. HOST không rời được, chỉ giải tán (ADR-020)
@@ -312,7 +314,7 @@ export class RoomsService {
     await this.removeMember(roomId, userId);
     // Rời phòng thì rời luôn cuộc gọi đang diễn ra
     await this.meetings.removeFromActiveMeeting(roomId, userId);
-    // TODO(chat gateway): thu hồi socket của người vừa rời khỏi kênh room:{roomId}
+    await this.realtime.revokeUser(roomId, userId, userId, 'LEFT');
   }
 
   // POST /rooms/:roomId/dissolve — chỉ HOST. Giữ room_members làm lịch sử.
@@ -328,6 +330,7 @@ export class RoomsService {
       .exec();
     // Kết thúc meeting đang diễn ra (ROOM_DISSOLVED) + đóng room LiveKit — hàm không ném lỗi
     await this.meetings.endActiveMeetingOfRoom(roomId);
+    await this.realtime.revokeRoom(roomId, hostId);
   }
 
   // Xoá thành viên; chỉ giảm memberCount khi thật sự xoá được → 2 request cùng lúc không trừ 2 lần

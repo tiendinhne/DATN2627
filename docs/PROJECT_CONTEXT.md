@@ -106,7 +106,7 @@ GVHD nêu rõ: nhân bản server mà code không hỗ trợ distributed thì **
 | Ring buffer op | array trong RAM | **Redis List** (LPUSH + LTRIM) |
 | Presence | `Set<userId>` | **Redis Set** + TTL |
 | Rate limit | counter in-memory | **Redis** (`INCR` + `EXPIRE`) |
-| File upload | ghi `/tmp` local | **Object Storage** |
+| File upload | ghi `/tmp` local | **Amazon S3 qua presigned URL** |
 | Cron job | `@Cron` chạy mọi replica | **Distributed lock** |
 
 **Quy tắc kiểm tra khi code:** *"Nếu request tiếp theo của user này rơi vào instance khác, có còn đúng không?"* Nếu không → state đang sai chỗ.
@@ -144,7 +144,7 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 
 **Namespace** `/meeting` · **Room** `user:${userId}` · `room:${roomId}` · `meeting:${meetingId}` · **Transport** `['websocket']` only
 
-**Auth:** JWT qua `socket.handshake.auth.token`, **không qua query string** (query bị log ở proxy). Verify trong guard → resolve `userId` → `room:subscribe` gọi `assertRoomAccess` (thành viên, room ACTIVE) → mới cho vào kênh `room:{roomId}`; `meeting:join` kiểm thêm meeting ACTIVE.
+**Auth:** JWT qua `socket.handshake.auth.token`, **không qua query string** (query bị log ở proxy). Verify khi handshake → resolve `userId` → `room:subscribe` gọi `assertRoomAccess` (thành viên, room ACTIVE) → mới cho vào kênh `room:{roomId}`; `meeting:join` kiểm thêm meeting ACTIVE.
 
 **Envelope chuẩn cho mọi event server → client:**
 
@@ -180,7 +180,8 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `meeting:snapshot` | `{ elements[], seq, members[], recentMessages[] }` |
 | `meeting:member_changed` | `{ userId, action, role }` |
 | `meeting:ended` | `{ reason }` |
-| `chat:new` | `{ message }` — emit tới `room:{roomId}`; client lọc theo `meetingId` cho khung chat meeting |
+| `chat:new` | envelope chuẩn, `data: { message }` — emit tới `room:{roomId}`; client lọc theo `meetingId` cho khung chat meeting |
+| `room:access_revoked` | envelope chuẩn, `data: { reason: 'LEFT' \| 'KICKED' \| 'DISSOLVED' }`; server phát trước khi ép socket rời kênh Room |
 | `wb:ops` | `{ elements[], byUserId }` |
 | `wb:pointer` | `{ userId, x, y }` |
 | `ai:status` / `ai:result` | `{ requestId, ... }` |

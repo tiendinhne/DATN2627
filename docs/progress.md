@@ -849,6 +849,7 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Lệch khỏi tài liệu:** `SameSite=Lax; Path=/auth` không `Domain` thay `SameSite=None; Domain=.<domain>` của §5 `[phát sinh kỹ thuật]` (ADR-023).
 - **Giới hạn biết trước:** đăng xuất ở một tab → tab khác vẫn dùng access token đang có tới khi hết hạn (≤ 15 phút), lần làm mới tiếp theo bị 401 → về `/login`. Token bị xoay vòng còn dùng được trong 10 s (chỉ để lấy access token).
 - **Commit:** chưa — chờ user.
+
 - **Task sau cần biết:** gateway Socket.IO lấy `token` từ `useAuth()` (memory) khi kết nối; token đổi mỗi ~14 phút — socket đang mở không cần kết nối lại, chỉ lần kết nối lại sau đó dùng token mới. Effect nào phụ thuộc `token` mà gọi API có side effect (như vào meeting) thì làm như trang cuộc gọi (`hasToken` + ref).
 
 ## 2026-10-17 — Xem tất cả phòng đã tham gia
@@ -933,5 +934,141 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Đã xong:** 2 test `searchUsers` trong `rooms.service.spec.ts` (thêm ở `afdbd2e`) mong đợi regex "chứa chuỗi" (`/dent@exam/i`, `/s\.t/i`), trong khi code và `docs/api/endpoint.md` tìm theo tiền tố (`^`). User chốt **tiền tố** → sửa test: input `stud` → `/^stud/i`, `s.t` → `/^s\.t/i`, đổi tên test "khi tìm giữa chuỗi" → "khi tìm theo tiền tố". Không đổi code service.
 - **Kiểm tra (chạy thật):** tạm bỏ `^` trong service → 2 test fail đúng chỗ regex (chứng minh test bắt được nếu ai đổi về "chứa chuỗi"); khôi phục → backend `vitest run` 8 file, 143/143 pass.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-27 — Backend Chat text, ảnh và file đính kèm
+
+- **Đã xong:** Chat có lịch sử REST theo cursor; gửi text/file qua `chat:send`; upload/download trực tiếp qua presigned URL S3-compatible. Backend kiểm tra JWT, quyền Room/Meeting, MIME + phần mở rộng + dung lượng (tối đa 20 MiB), xác nhận upload bằng `HeadObject`, và chỉ trả metadata qua Socket.IO. Metadata `File` có trạng thái `PENDING`/`READY`; file chưa `READY` không thể gửi hoặc tải.
+- **Realtime/stateless:** namespace `/meeting` xác thực JWT ngay tại handshake; `room:subscribe` kiểm membership. Event dùng Redis `INCR` và Redis Adapter; publisher tập trung phát envelope. Khi rời/kick/giải tán Room, các socket được thu hồi trên mọi instance.
+- **Object Storage (cấu hình tại thời điểm hoàn thành task; đã thay bằng Amazon S3 ở entry kế tiếp):** thêm adapter S3-compatible, MinIO cho dev (Compose, cổng 9000/9001) và hỗ trợ cấu hình R2/S3. Bucket private; URL PUT 5 phút, GET 15 phút; nội dung file không đi qua RAM/ổ đĩa Backend. Không lưu credentials trong source; cấu hình trong `.env`.
+- **Tài liệu:** cập nhật endpoint Chat, schema File, PROJECT_CONTEXT, ADR-025 và hướng dẫn MinIO/R2 ở `docs/api/endpoint.md`.
+- **Kiểm tra (chạy thật):** `npm run build` pass; `npm run lint` pass; `npm test` pass 13 file / 171 test; `docker compose config --quiet` pass với env test tạm (đã xoá). `npm audit --omit=dev` còn báo 5 high ở các dependency sẵn có `body-parser`, `multer`/Nest và `zod`; không nâng phiên bản ngoài scope.
+- **Cấu hình lúc đó (đã hết hiệu lực sau ADR-026):** tạo `infrastructure/.env.minio` từ file `.example`, đặt credentials trùng với `backend/.env`, tạo bucket private và bật CORS cho origin Frontend.
+- **Lệch khỏi tài liệu:** thêm giới hạn 20 MiB/allowlist MIME và trạng thái `READY` là quyết định kỹ thuật phát sinh, ghi tại ADR-025.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-27 — Chuyển Chat file storage sang Amazon S3
+
+- **Đã xong:** Adapter dùng AWS SDK v3 với `AWS_REGION`, `S3_BUCKET` và credential provider chain mặc định; tiếp tục hỗ trợ presigned PUT/GET và kiểm tra upload bằng `HeadObject`. MongoDB chỉ lưu metadata/object key, không lưu URL.
+- **Đã bỏ:** service/image/volume MinIO trong Docker Compose, endpoint nội bộ và cấu hình credentials MinIO; xóa file cấu hình MinIO mẫu. Không xóa bucket hoặc object storage data.
+- **Cấu hình còn thiếu theo AWS account:** tên bucket và region thật chưa được cung cấp, nên vẫn là placeholder trong `.env.example`. Production nên cấp IAM Role/Task Role; Compose local truyền credentials từ root `.env` chỉ vào Backend.
+- **Tài liệu:** cập nhật hướng dẫn AWS S3, IAM least privilege, bucket CORS và lưu ý object cũ trong MinIO không tự migrate; ADR-026 supersedes ADR-025.
+- **Kiểm tra:** `npm run build`, `npm run lint`, `npm test` (13 file/171 test), `docker compose config --quiet` và `git diff --check` đều pass.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Kết nối Chat hiện có vào Frontend
+
+- **Đã làm:** Thay dữ liệu giả ở Room Chat và Meeting Chat bằng lịch sử qua `GET /rooms/:roomId/messages` và luồng Socket.IO `/meeting` (`room:subscribe`, `chat:send`, `chat:new`). Chat họp chỉ hiển thị tin của meeting hiện tại; tin vẫn lưu theo Room. Thêm trạng thái kết nối/lỗi và chặn gửi khi socket chưa kết nối.
+- **Dependency:** thêm `socket.io-client` vào frontend (đã được user duyệt).
+- **Tài liệu:** endpoint đã có trong `docs/api/endpoint.md`; không đổi API/backend contract.
+- **Kiểm tra:** ESLint các file frontend sửa đổi pass; `git diff --check` pass. `npm run build` biên dịch JS thành công nhưng dừng ở type-check của dependency có sẵn `@livekit/components-core/src/components/chat.ts:141` (`Uint8Array<ArrayBufferLike>` không tương thích `BlobPart`); `tsc --noEmit` cũng báo thêm lỗi trong các file nguồn LiveKit khác, không báo lỗi từ file chat vừa sửa. Chưa xác minh gửi/nhận trên trình duyệt với backend chạy thật.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Sửa Socket.IO trả 404 ở frontend
+
+- **Nguyên nhân:** `RedisIoAdapter` được khởi tạo không truyền Nest app. `IoAdapter` không có HTTP server để gắn Socket.IO vào; gateway đã đăng ký nhưng `/socket.io` trên cổng 3001 trả `404`.
+- **Đã sửa:** khởi tạo `new RedisIoAdapter(app)` để Socket.IO dùng HTTP server của Nest.
+- **Kiểm tra:** `docker compose up -d --build backend` dựng lại và khởi động container; Socket.IO client dùng WebSocket tới `/meeting` nhận lỗi `Thiếu access token` từ middleware xác thực (chứng minh kết nối đã tới namespace, không còn lỗi handshake/404); `npm run build` backend pass; gateway tests 4/4 pass.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Thêm gửi file và hình ảnh trong Chat
+
+- **Đã làm:** thêm nút đính kèm ở Room Chat và Meeting Chat; frontend xác thực MIME/dung lượng tối đa 20 MiB, xin presigned URL, PUT trực tiếp lên S3, gọi complete rồi gửi `fileId` qua `chat:send`. Tệp trong cuộc họp mang `meetingId`; chat hiển thị thumbnail ảnh và nút mở/tải file qua download URL có kiểm tra quyền.
+- **Tài liệu:** dùng lại upload/download API và giới hạn đã ghi trong `docs/api/endpoint.md`; không đổi backend.
+- **Kiểm tra:** `npm run lint` pass, không warning/error ESLint; `git diff --check` pass. `npm run build` biên dịch thành công nhưng dừng ở lỗi type-check có sẵn trong `@livekit/components-core/src/components/chat.ts:141` (`Uint8Array<ArrayBufferLike>` không tương thích `BlobPart`); không có chẩn đoán từ file chat vừa sửa. Chưa kiểm thử upload thực trên trình duyệt/S3.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Dùng backend/.env cho AWS credentials trong Compose
+
+- **Đã sửa:** xoá các biến AWS được nội suy từ `.env` gốc ở `docker-compose.yml`. Backend dùng `env_file: ./backend/.env` thống nhất cho AWS credentials, region và bucket; không còn giá trị rỗng từ Compose override credentials.
+- **Kiểm tra:** `docker compose config --quiet` và `git diff --check` pass. Đã recreate `backend`; kiểm tra chỉ sự hiện diện (không đọc/in giá trị) xác nhận access key, secret key, region và bucket đã vào container; `Nest application successfully started`, Redis kết nối.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Chỉ upload file khi bấm Gửi
+
+- **Đã sửa:** chọn file chỉ giữ một file chờ trong khung soạn thảo, hiện tên/dung lượng và nút bỏ file. Bấm Gửi mới upload; nếu có nội dung text thì gửi text và file trong cùng tin nhắn. Chọn file mới hợp lệ sẽ thay file đang chờ.
+- **Kiểm tra:** `npm run lint` pass, không warning/error ESLint; `git diff --check` pass. `tsc --noEmit` vẫn fail ở dependency LiveKit đã có; không có diagnostic trong file chat hoặc integration vừa sửa. Chưa thực hiện upload thật trên S3.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Căn tin nhắn của người gửi sang phải trong Room Chat
+
+- **Đã làm:** dùng `message.isOwn` để gắn trạng thái `own` cho tin của người gửi; căn avatar, tên, tin nhắn, nhãn cuộc họp và file/ảnh về bên phải. Tin từ thành viên khác giữ nguyên căn trái.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** không phát sinh.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Ẩn avatar và tên ở tin nhắn liên tiếp
+
+- **Đã làm:** trong Room Chat và Meeting Chat, nếu tin nhắn đứng ngay sau tin cùng người gửi thì ẩn avatar và tên; vẫn giữ giờ gửi, nội dung, ảnh và file. Tin đầu chuỗi hoặc tin sau của người gửi khác hiển thị avatar/tên.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** áp dụng cùng hành vi cho cả hai khung chat để hiển thị nhất quán.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Căn đều tin nhắn liên tiếp
+
+- **Đã làm:** bỏ phần đệm trái làm tin nhắn nối tiếp bị thụt vào; giảm khoảng cách dọc giữa các tin trong Room Chat và Meeting Chat để nhóm tin gọn, đều hơn.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** không phát sinh.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Căn thẳng mép phải các tin nhắn của mình
+
+- **Đã sửa:** ở Meeting Chat, cho khung nội dung tin nhắn của mình cùng chiếm chiều rộng khả dụng và đẩy bong bóng/tệp về cùng mép phải; giữ kích thước bong bóng theo nội dung.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** không phát sinh.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Gộp thời gian và thu gọn tin nhắn liên tiếp
+
+- **Đã sửa:** trong Room Chat và Meeting Chat, tin cùng người gửi cách tin trước tối đa 2 phút không lặp tên, avatar và thời gian; các tin nối tiếp được giảm khoảng cách dọc. Khi đổi người gửi hoặc cách quá 2 phút, nhóm mới hiển thị lại.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** khoảng cách 2 phút tính giữa hai tin liền kề trong danh sách.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Chỉ hiện mốc giờ theo khoảng trò chuyện
+
+- **Đã sửa:** trong Room Chat và Meeting Chat, hiện giờ ở tin đầu ngày, khi tin nhắn cách tin liền trước hơn 1 tiếng, và luôn hiện giờ ở tin mới nhất. Mốc giờ không lặp nếu trùng cùng tin.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** ngày được xác định theo múi giờ cục bộ của trình duyệt; ngưỡng gián đoạn là lớn hơn 1 tiếng.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Hiển thị ngày trên thanh chat-day
+
+- **Đã sửa:** thay nhãn tĩnh “Gần đây” bằng ngày cụ thể trên thanh `chat-day`, tạo thanh phân cách mỗi khi tin nhắn sang ngày mới ở Room Chat và Meeting Chat. Giờ vẫn hiện cạnh tin theo các mốc đã chốt.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** dùng định dạng ngày tiếng Việt theo múi giờ cục bộ của trình duyệt.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Hiển thị giờ trong từng bong bóng tin nhắn
+
+- **Đã sửa:** Room Chat và Meeting Chat hiển thị giờ ở trong bong bóng của mọi tin nhắn, kể cả tin chỉ có file/ảnh; bỏ các điều kiện chỉ hiện giờ theo mốc. Giữ thanh phân cách ngày và bố cục trái/phải hiện có.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** không phát sinh.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Làm mới giao diện file đính kèm trong chat
+
+- **Đã sửa:** tệp đính kèm hiển thị thành thẻ xanh nhạt với biểu tượng file, tên, dung lượng, trạng thái tải lên, nút mở và tải xuống; tin chỉ có file bỏ nền bong bóng ngoài để gần mẫu; giữ nguyên preview ảnh.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** dùng lại download URL đã có; không đổi API/backend.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Bỏ nền xanh ngoài cho tin chỉ có file
+
+- **Đã sửa:** bong bóng tin nhắn `file-only` trong Room Chat và Meeting Chat có nền trong suốt, tránh nền xanh bọc ngoài thẻ file; màu riêng của thẻ file giữ nguyên.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** không phát sinh.
 - **Lệch khỏi tài liệu:** không.
 - **Commit:** chưa — chờ user.

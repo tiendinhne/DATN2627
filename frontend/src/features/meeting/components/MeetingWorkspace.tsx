@@ -86,6 +86,8 @@ function LiveMeetingContent({
   isDark,
   deviceWarning,
   onClearDeviceWarning,
+  accessToken,
+  currentUserId,
   onBack,
   onEndMeeting,
   pinnedContent,
@@ -96,6 +98,8 @@ function LiveMeetingContent({
   isDark: boolean;
   deviceWarning?: string;
   onClearDeviceWarning?: () => void;
+  accessToken: string | null;
+  currentUserId?: string;
   onBack: () => void;
   onEndMeeting: () => void;
   pinnedContent: MeetingPin;
@@ -299,7 +303,12 @@ function LiveMeetingContent({
             </div>
 
             {sideTab === "chat" ? (
-              <MeetingChat />
+              <MeetingChat
+                roomId={meetingData.meeting.roomId}
+                meetingId={meetingData.meeting.id}
+                token={accessToken}
+                currentUserId={currentUserId}
+              />
             ) : sideTab === "ai" ? (
               <AIPanel />
             ) : (
@@ -342,7 +351,7 @@ export function MeetingWorkspace({
   onBack,
 }: MeetingWorkspaceProps) {
   const router = useRouter();
-  const { token, isLoading: isAuthLoading } = useAuth();
+  const { token, user, isLoading: isAuthLoading } = useAuth();
   const { dark: contextDark } = useTheme();
   const isDark = propDark !== undefined ? propDark : contextDark;
   const hasValidMeetingId = /^[a-f\d]{24}$/i.test(meetingId);
@@ -550,6 +559,8 @@ export function MeetingWorkspace({
           isDark={isDark}
           deviceWarning={deviceWarning}
           onClearDeviceWarning={() => setDeviceWarning("")}
+          accessToken={token}
+          currentUserId={user?.id}
           onBack={handleBack}
           onEndMeeting={handleEndMeeting}
           pinnedContent={pinnedContent}
@@ -679,7 +690,11 @@ export function MeetingWorkspace({
             </div>
 
             {sideTab === "chat" ? (
-              <MeetingChat />
+              <MeetingChat
+                roomId={initialRoomId}
+                token={token}
+                currentUserId={user?.id}
+              />
             ) : sideTab === "ai" ? (
               <AIPanel />
             ) : (

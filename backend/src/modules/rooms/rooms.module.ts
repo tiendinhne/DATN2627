@@ -9,6 +9,7 @@ import { MeetingsModule } from '../meetings/meetings.module.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
 import { RoomsController } from './rooms.controller.js';
 import { RoomsService } from './rooms.service.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RoomsService } from './rooms.service.js';
     RoomMembersModule,
     // MeetingsService: kick / rời / giải tán ảnh hưởng meeting đang diễn ra
     MeetingsModule,
+    RealtimeModule,
     // JwtAuthGuard cần AuthModuleOptions trong module dùng nó: Nest 12 không kế thừa @Optional()
     // của AuthGuard('jwt') sang lớp con → thiếu dòng này app không khởi động được
     PassportModule.register({ session: false }),
