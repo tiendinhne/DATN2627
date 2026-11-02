@@ -36,10 +36,41 @@ Không body; đọc cookie `refresh_token`.
 - `204`: thu hồi refresh token (nếu có) + xoá cookie. Gọi lại / không có cookie vẫn `204`. Access token đã cấp vẫn dùng được tới khi hết hạn (≤ 15 phút).
 
 ### GET /auth/me
-Header `Authorization: Bearer <accessToken>` → `200` thông tin user; `401` token sai / hết hạn.
+Header `Authorization: Bearer <accessToken>` → `200` **Profile** (giống `GET /users/me`, xem mục Users); `401` token sai / hết hạn.
+
+### POST /auth/password
+Đổi mật khẩu, hoặc đặt mật khẩu lần đầu cho tài khoản chỉ dùng Google (ADR-025). Header `Authorization: Bearer <accessToken>`; trình duyệt tự gửi kèm cookie `refresh_token` (endpoint nằm dưới `/auth` vì thế).
+
+| Body | Kiểu | Ràng buộc |
+|---|---|---|
+| currentPassword | string | Bắt buộc khi tài khoản đã có mật khẩu; bỏ trống khi tài khoản chỉ dùng Google |
+| newPassword | string | ≥ 6 ký tự (giống đăng ký) |
+
+- `204`: đã đổi. Mọi refresh token khác của user bị thu hồi (thiết bị khác bị đăng xuất trong ≤ 15 phút); phiên có cookie gửi kèm được giữ. Không có cookie → thu hồi hết. Tài khoản Google đặt lần đầu → `providers` có thêm `local`, đăng nhập được bằng mật khẩu.
+- `400`: thiếu / sai mật khẩu hiện tại (`Cần nhập mật khẩu hiện tại`, `Mật khẩu hiện tại không đúng`), `newPassword` không hợp lệ. Dùng 400 chứ không 401 — frontend coi 401 là hết phiên.
+- `401`: thiếu / sai access token.
 
 ### GET /auth/google, GET /auth/google/callback
 Chỉ hoạt động khi có `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Callback đặt cookie `refresh_token` rồi chuyển về `<FRONTEND_URL>/auth/callback` **không kèm token trên query** (PROJECT_CONTEXT §16); frontend lấy access token bằng `POST /auth/refresh`.
+
+## Users
+
+Tài khoản của chính người đang đăng nhập. Cần header `Authorization: Bearer <accessToken>`, thiếu / sai → `401`.
+
+**Profile response:** `{ id, email, username, displayName, avatarUrl, providers, hasPassword, createdAt }` — `providers` ⊂ `['local', 'google']`; `hasPassword = providers` có `local` (`false` = tài khoản chỉ dùng Google, chưa đặt mật khẩu).
+
+### GET /users/me
+- `200`: Profile.
+
+### PATCH /users/me
+| Body | Kiểu | Ràng buộc |
+|---|---|---|
+| displayName | string | trim, 1–20 ký tự (giống đăng ký) |
+
+- `200`: Profile sau khi đổi.
+- `400`: `displayName` rỗng sau trim / quá 20 ký tự.
+
+Đổi mật khẩu: `POST /auth/password` (mục Auth).
 
 ## Rooms
 

@@ -18,6 +18,8 @@ export interface AuthContextType {
   register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   loginWithGoogle: () => void;
+  // Cập nhật user trong memory sau khi đổi thông tin (PATCH /users/me) → menu / header đổi theo ngay
+  updateUser: (changes: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -129,12 +131,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  const updateUser = (changes: Partial<User>) => {
+    setUser((current) => (current ? { ...current, ...changes } : current));
+  };
+
   const loginWithGoogle = () => {
     window.location.href = `${API_URL}/auth/google`;
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, loginWithGoogle }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, loginWithGoogle, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

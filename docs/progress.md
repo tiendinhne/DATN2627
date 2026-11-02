@@ -985,4 +985,25 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Gặp khi chạy:** container `frontend-dev` dừng 2 lần trong lúc làm (1 lần mã 255 sau khi Docker Desktop khởi động lại, kèm `EIO` đọc thư mục mount; 1 lần mã 0 giữa lúc compile). Service `frontend` thiếu `restart: unless-stopped` (4 service khác có) → không tự lên lại. Chưa sửa, chờ user.
 - **Chưa làm (để phần sau):** chat giả (module chat); `account.service` mock + form đổi tên không gọi API (B); `src/imports/pasted_text/*.md`, `src/index.css` thừa; component preview không còn dùng (`MeetingControls`, `MeetingHeader`, `ParticipantPanel`, `VideoRail` bản không-live) vẫn export trong `features/meeting/index.ts`.
 - **Lệch khỏi tài liệu:** không.
+- **Commit:** `b12366a`.
+
+## 2026-11-02 — small_task #1 phần B: thông tin tài khoản, đổi tên, đổi mật khẩu (branch `feature/user-api-real-data`, ADR-025)
+
+- **Quyết định (user chốt):** tài khoản chỉ dùng Google được đặt mật khẩu lần đầu không cần mật khẩu cũ (thêm `local` vào `providers`); đổi mật khẩu thì thu hồi mọi phiên khác, giữ phiên hiện tại → endpoint ở `POST /auth/password` (cookie `Path=/auth`). ADR-025.
+- **Backend:**
+  - `UsersController` mới: `GET /users/me`, `PATCH /users/me { displayName }` (`UpdateProfileDto`: trim, 1–20 ký tự như đăng ký). `UsersModule` import `PassportModule` (như `RoomsModule`).
+  - `UsersService`: `toProfile` (map `_id → id`, `hasPassword`, `createdAt`), `updateDisplayName`, `findByIdWithPassword`, `setPassword` (`$set password` + `$addToSet providers: local`).
+  - `AuthService.changePassword` + `ChangePasswordDto`; `POST /auth/password` → `204`; sai / thiếu mật khẩu hiện tại → `400`.
+  - **Sửa lỗi có sẵn:** `GET /auth/me` trả nguyên document Mongo (`_id`, `__v`, `updatedAt`, `lastLoginAt`) — vi phạm ràng buộc 2 → giờ trả `toProfile`.
+- **Frontend:** `src/services/user.service.ts` (`getMyProfile`, `updateMyProfile`, `changePassword` — dùng `request` có `credentials: 'include'`); type `MyProfile`; `AuthContext.updateUser` (đổi tên xong menu đổi ngay); Profile: ngày tham gia thật, form đổi tên gọi API + báo lỗi; Settings: mục "Đổi mật khẩu" / "Đặt mật khẩu" (ẩn ô mật khẩu cũ khi `hasPassword = false`), bỏ nhãn giả "Đã xác minh" (phần A sót vì script tìm chữ thường), nút "Chỉnh sửa" mở `/profile`. Xoá `features/account/services/account.service.ts` (mock "An Nguyễn") và `features/account/types.ts` (không ai dùng).
+- **Kiểm tra (chạy thật):**
+  - TDD: viết 11 test trước (`auth.service.spec.ts` 6 test `changePassword`, `users.service.spec.ts` mới 5 test) → 11 FAIL (`is not a function`) → code → backend `vitest run` 9 file, **154/154** pass; `nest build` exit 0.
+  - curl, 2 phiên (2 cookie) cùng user: `/users/me` + `/auth/me` có `id`, không `_id`; PATCH tên toàn dấu cách / 21 ký tự → 400; đổi MK thiếu / sai MK cũ / MK mới 3 ký tự → 400; không token → 401; đúng → 204; refresh phiên kia → **401**, phiên hiện tại → 200; login MK cũ → 401, MK mới → 201.
+  - Node (UTF-8): tên "  Tên mới  " lưu "Tên mới". Tài khoản Google (dùng `mongosh` bỏ `password`, `providers: ['google']`): `hasPassword=false`, login bằng mật khẩu → 401; đặt MK không gửi MK cũ → 204, `providers=['google','local']`, login MK mới được; đổi lần 2 không gửi MK cũ → 400.
+  - Chrome headless (đồ bỏ ở scratchpad), frontend trong container: 11/11 PASS — ngày tham gia đúng ngày tạo, lưu tên → "Đã lưu thay đổi", tên hiện ngay ở menu, F5 giữ tên mới; Settings không còn "Đã xác minh"; nhập lại không khớp / sai MK hiện tại báo lỗi; đổi đúng → "Đã cập nhật mật khẩu"; F5 vẫn đăng nhập; đăng nhập lại bằng MK mới được. (Lần chạy đầu 1 FAIL ở bước "không khớp" — script bấm quá sớm; chạy riêng bước đó và chạy lại toàn bộ với user mới đều PASS.)
+  - Frontend `tsc` 0 lỗi, `next lint` sạch, `npm run build` exit 0.
+- **Gặp khi chạy (chưa sửa, chờ user):**
+  1. **Container frontend chết vì hết RAM:** `dmesg` VM Docker: `Out of memory: Killed process … (next-server (v1)) anon-rss:2012596kB` — Next dev ~2 GB khi compile trang meeting (5.500+ module), VM Docker chỉ 3,3 GB. Container thoát mã 0, thiếu `restart: unless-stopped` nên không tự lên.
+  2. **Backend không hot reload trong Docker trên Windows:** sửa `backend/src` → container có file mới nhưng `nest start --watch` không biết (bind mount không báo sự kiện) → phải `docker compose restart backend`. README / ADR-016 đang ghi "tự reload" — sai với backend.
+- **Lệch khỏi tài liệu:** không (endpoint.md + ADR-025 đã cập nhật).
 - **Commit:** chưa — chờ user.

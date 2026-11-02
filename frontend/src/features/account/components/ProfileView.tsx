@@ -3,14 +3,45 @@
 import { Camera, Check, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/context/auth.context";
 import { listMyRooms } from "@/services/room.service";
+import { getMyProfile, updateMyProfile } from "@/services/user.service";
 import { useEffect, useState } from "react";
 
 export function ProfileView() {
   const [saved, setSaved] = useState(false);
-  const { user, token } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const { user, token, updateUser } = useAuth();
   const [displayName, setDisplayName] = useState("");
   // Số phòng thật từ GET /rooms; "—" khi chưa tải được
   const [roomCount, setRoomCount] = useState("—");
+  // Ngày tạo tài khoản từ GET /users/me
+  const [joinedDate, setJoinedDate] = useState("Chưa có dữ liệu");
+
+  useEffect(() => {
+    if (!token) return;
+    getMyProfile(token)
+      .then((profile) => setJoinedDate(new Date(profile.createdAt).toLocaleDateString("vi-VN")))
+      .catch(() => setJoinedDate("Chưa có dữ liệu"));
+  }, [token]);
+
+  // Lưu tên hiển thị: PATCH /users/me, rồi cập nhật user trong context để menu đổi theo
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!token) return;
+    setError("");
+    setSaving(true);
+    try {
+      const profile = await updateMyProfile(token, displayName);
+      updateUser({ displayName: profile.displayName });
+      setDisplayName(profile.displayName);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không lưu được thay đổi");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
   if (user) {
@@ -74,14 +105,7 @@ export function ProfileView() {
               <p>Cập nhật tên và thông tin liên hệ của bạn</p>
             </div>
           </div>
-          <form
-            className="profile-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setSaved(true);
-              window.setTimeout(() => setSaved(false), 2500);
-            }}
-          >
+          <form className="profile-form" onSubmit={handleSave}>
             <label>
               <span>
                 <UserRound size={15} /> Tên người dùng
@@ -106,18 +130,18 @@ export function ProfileView() {
                 <ShieldCheck size={17} />
               </span>
               <p>
-                {/* User trả về chưa có createdAt (small_task #1, phần B) */}
                 <strong>Ngày tham gia</strong>
-                <small>Chưa có dữ liệu</small>
+                <small>{joinedDate}</small>
               </p>
             </div>
             <div className="form-footer">
+              {error && <span className="text-sm text-red-600">{error}</span>}
               {saved && (
                 <span className="saved-message">
                   <Check size={15} /> Đã lưu thay đổi
                 </span>
               )}
-              <button className="button primary" type="submit">
+              <button className="button primary" type="submit" disabled={saving}>
                 Lưu thay đổi
               </button>
             </div>

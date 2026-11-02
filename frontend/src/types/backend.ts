@@ -67,3 +67,15 @@ export interface JoinMeetingResponse {
   myRole: RoomRole;
   meeting: Meeting;
 }
+
+// GET /users/me, PATCH /users/me (docs/api/endpoint.md)
+export interface MyProfile {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  providers: ('local' | 'google')[];
+  hasPassword: boolean; // false = tài khoản chỉ dùng Google, chưa đặt mật khẩu
+  createdAt: string;
+}

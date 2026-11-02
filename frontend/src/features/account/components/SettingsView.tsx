@@ -1,9 +1,11 @@
 "use client";
 
-import { Bell, Camera, Mic, Monitor, Moon, Sun, UserRound } from "lucide-react";
-import { useState } from "react";
+import { Bell, Camera, Check, KeyRound, Mic, Monitor, Moon, Sun, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/auth.context";
+import { changePassword, getMyProfile } from "@/services/user.service";
 
 interface SettingsViewProps {
   dark?: boolean;
@@ -15,7 +17,8 @@ export function SettingsView({
   onThemeChange: propOnThemeChange,
 }: SettingsViewProps) {
   const { dark: contextDark, setDark: contextSetDark } = useTheme();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
+  const router = useRouter();
 
   const isDark = propDark !== undefined ? propDark : contextDark;
   const handleThemeChange = propOnThemeChange || contextSetDark;
@@ -23,6 +26,46 @@ export function SettingsView({
   const [notifications, setNotifications] = useState(true);
   const [camera, setCamera] = useState(true);
   const [microphone, setMicrophone] = useState(false);
+
+  // Đổi mật khẩu (ADR-025). hasPassword = false: tài khoản chỉ dùng Google → "Đặt mật khẩu", không hỏi mật khẩu cũ
+  const [hasPassword, setHasPassword] = useState(true);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordDone, setPasswordDone] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    getMyProfile(token)
+      .then((profile) => setHasPassword(profile.hasPassword))
+      .catch(() => {});
+  }, [token]);
+
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!token) return;
+    setPasswordError("");
+    setPasswordDone(false);
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Mật khẩu nhập lại không khớp");
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      await changePassword(token, { currentPassword: hasPassword ? currentPassword : undefined, newPassword });
+      setHasPassword(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordDone(true);
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : "Không đổi được mật khẩu");
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
 
   return (
     <div className="content-wrap settings-page">
@@ -42,7 +85,7 @@ export function SettingsView({
               <strong>Tên người dùng</strong>
               <small>{user?.displayName || user?.username || "Chưa cập nhật"}</small>
             </div>
-            <button className="button secondary small" type="button">
+            <button className="button secondary small" type="button" onClick={() => router.push("/profile")}>
               Chỉnh sửa
             </button>
           </div>
@@ -51,8 +94,64 @@ export function SettingsView({
               <strong>Email</strong>
               <small>{user?.email || "Chưa cập nhật"}</small>
             </div>
-            <span className="verified-pill">Đã xác minh</span>
           </div>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={KeyRound}
+          title={hasPassword ? "Đổi mật khẩu" : "Đặt mật khẩu"}
+          description={
+            hasPassword
+              ? "Đổi xong, các thiết bị khác sẽ bị đăng xuất"
+              : "Tài khoản đăng nhập bằng Google — đặt mật khẩu để đăng nhập thêm bằng mật khẩu"
+          }
+        >
+          <form className="profile-form" onSubmit={handleChangePassword}>
+            {hasPassword && (
+              <label>
+                <span>Mật khẩu hiện tại</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  required
+                />
+              </label>
+            )}
+            <label>
+              <span>Mật khẩu mới</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                minLength={6}
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span>Nhập lại mật khẩu mới</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+              />
+            </label>
+            <div className="form-footer">
+              {passwordError && <span className="text-sm text-red-600">{passwordError}</span>}
+              {passwordDone && (
+                <span className="saved-message">
+                  <Check size={15} /> Đã cập nhật mật khẩu
+                </span>
+              )}
+              <button className="button primary" type="submit" disabled={passwordBusy}>
+                {hasPassword ? "Đổi mật khẩu" : "Đặt mật khẩu"}
+              </button>
+            </div>
+          </form>
         </SettingsSection>
 
         <SettingsSection

@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, AuthProvider } from './schemas/user.schema.js';
@@ -32,6 +32,44 @@ export class UsersService {
 
   async findById(id: string) {
     return this.userModel.findById(id).exec();
+  }
+
+  // Kèm hash mật khẩu (mặc định select: false) — chỉ dùng khi đổi mật khẩu
+  async findByIdWithPassword(id: string) {
+    return this.userModel.findById(id).select('+password').exec();
+  }
+
+  // Thông tin user trả cho frontend: id thay _id (ràng buộc 2), không lộ password / __v
+  toProfile(user: UserDocument) {
+    return {
+      id: String(user._id),
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl ?? null,
+      providers: user.providers,
+      // Có provider local = có mật khẩu (tài khoản chỉ dùng Google thì chưa có)
+      hasPassword: user.providers.includes(AuthProvider.LOCAL),
+      createdAt: (user as any).createdAt,
+    };
+  }
+
+  // PATCH /users/me — đổi tên hiển thị
+  async updateDisplayName(userId: string, displayName: string) {
+    const updated = await this.userModel
+      .findByIdAndUpdate(userId, { $set: { displayName: displayName.trim() } }, { new: true, runValidators: true })
+      .exec();
+    if (!updated) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+    return this.toProfile(updated);
+  }
+
+  // Lưu hash mật khẩu mới; thêm provider local để tài khoản Google đặt mật khẩu lần đầu đăng nhập được bằng mật khẩu
+  async setPassword(userId: string, passwordHash: string) {
+    await this.userModel
+      .findByIdAndUpdate(userId, { $set: { password: passwordHash }, $addToSet: { providers: AuthProvider.LOCAL } })
+      .exec();
   }
 
   async createLocalUser(data: { email: string; username: string; displayName: string; password: string }) {
