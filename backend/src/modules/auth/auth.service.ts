@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -64,6 +69,21 @@ export class AuthService {
 
   async login(user: UserDocument) {
     return this.buildAuthResponse(user);
+  }
+
+  async updateProfile(userId: string, displayName: string) {
+    const user = await this.usersService.updateDisplayName(userId, displayName);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+
+    return {
+      id: this.getUserId(user),
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+    };
   }
 
   // Được GoogleStrategy gọi sau khi Google xác thực thành công
@@ -167,7 +187,7 @@ export class AuthService {
       .exec();
   }
 
-  // POST /auth/password — đổi mật khẩu (ADR-025). Tài khoản đã có mật khẩu phải nhập đúng mật khẩu hiện tại;
+  // POST /auth/password — đổi mật khẩu (ADR-027). Tài khoản đã có mật khẩu phải nhập đúng mật khẩu hiện tại;
   // tài khoản chỉ dùng Google được đặt mật khẩu lần đầu. Xong thì thu hồi mọi phiên khác, giữ phiên hiện tại
   // (rawToken = cookie refresh của request này). Lỗi mật khẩu trả 400, không 401 — 401 frontend hiểu là hết phiên.
   async changePassword(userId: string, dto: ChangePasswordDto, rawToken: string | undefined) {

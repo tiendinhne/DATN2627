@@ -14,12 +14,11 @@ export interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  updateDisplayName: (displayName: string) => Promise<void>;
   login: (identifier: string, password: string) => Promise<void>;
   register: (email: string, username: string, displayName: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   loginWithGoogle: () => void;
-  // Cập nhật user trong memory sau khi đổi thông tin (PATCH /users/me) → menu / header đổi theo ngay
-  updateUser: (changes: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -63,6 +62,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(session?.accessToken ?? null);
     setUser(session?.user ?? null);
   }, []);
+
+  const updateDisplayName = async (displayName: string) => {
+    if (!token) {
+      throw new Error('Phiên đăng nhập không hợp lệ');
+    }
+
+    const response = await fetch(`${API_URL}/auth/me`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      body: JSON.stringify({ displayName }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const message = Array.isArray(error.message) ? error.message.join(', ') : error.message;
+      throw new Error(message || 'Không thể cập nhật tên hiển thị');
+    }
+
+    const updatedUser: User = await response.json();
+    setUser(updatedUser);
+  };
 
   // Mỗi lần tải trang (kể cả F5) lấy access token từ cookie refresh.
   // Dev Strict Mode gọi 2 lần cùng một cookie → backend cho lần sau đi qua nhờ ân hạn 10 giây.
@@ -131,16 +155,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
-  const updateUser = (changes: Partial<User>) => {
-    setUser((current) => (current ? { ...current, ...changes } : current));
-  };
-
   const loginWithGoogle = () => {
     window.location.href = `${API_URL}/auth/google`;
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, loginWithGoogle, updateUser }}>
+    <AuthContext.Provider
+      value={{ user, token, isLoading, updateDisplayName, login, register, logout, loginWithGoogle }}
+    >
       {children}
     </AuthContext.Provider>
   );

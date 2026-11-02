@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import * as crypto from 'crypto';
 import bcrypt from 'bcryptjs';
@@ -46,6 +46,7 @@ function build(doc: unknown = tokenDoc(), claimed: unknown = { _id: 'x' }) {
     findById: vi.fn().mockResolvedValue(user),
     findByIdWithPassword: vi.fn().mockResolvedValue(user),
     setPassword: vi.fn().mockResolvedValue(undefined),
+    updateDisplayName: vi.fn().mockResolvedValue({ ...user, displayName: 'Tên mới' }),
   };
   const jwtService = { sign: vi.fn(() => 'access.jwt') };
   const refreshTokenModel = {
@@ -59,6 +60,30 @@ function build(doc: unknown = tokenDoc(), claimed: unknown = { _id: 'x' }) {
   const service = new AuthService(usersService as any, jwtService as any, refreshTokenModel as any);
   return { service, usersService, jwtService, refreshTokenModel };
 }
+
+describe('AuthService.updateProfile', () => {
+  it('updates the authenticated user displayName and returns public user fields', async () => {
+    const { service, usersService } = build();
+
+    await expect(service.updateProfile(userId.toString(), 'Tên mới')).resolves.toEqual({
+      id: userId.toString(),
+      email: user.email,
+      username: user.username,
+      displayName: 'Tên mới',
+      avatarUrl: user.avatarUrl,
+    });
+    expect(usersService.updateDisplayName).toHaveBeenCalledWith(userId.toString(), 'Tên mới');
+  });
+
+  it('returns not found if the user no longer exists', async () => {
+    const { service, usersService } = build();
+    usersService.updateDisplayName.mockResolvedValue(null);
+
+    await expect(service.updateProfile(userId.toString(), 'Tên mới')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});
 
 describe('AuthService.refresh', () => {
   it('không có cookie → 401, không đọc DB', async () => {

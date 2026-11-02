@@ -3,7 +3,13 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, SchemaTypes, Types } from 'mongoose';
 import { FilePurpose } from '../../../shared/enums.js';
 
-export type FileDocument = File & Document;
+export type FileDocument = File &
+  Document & { createdAt: Date; updatedAt: Date };
+
+export enum FileStatus {
+  PENDING = 'PENDING',
+  READY = 'READY',
+}
 
 @Schema({ timestamps: true, collection: 'files' })
 export class File {
@@ -33,6 +39,9 @@ export class File {
 
   @Prop({ type: Date, required: false, default: null })
   deletedAt?: Date | null;
+
+  @Prop({ type: String, enum: FileStatus, default: FileStatus.PENDING })
+  status!: FileStatus;
 }
 
 export const FileSchema = SchemaFactory.createForClass(File);

@@ -155,7 +155,6 @@ export function AppShell({
           <div className="search-box">
             <Search size={18} />
             <input aria-label="Tìm kiếm" placeholder="Tìm phòng học, cuộc họp..." />
-            <kbd>⌘ K</kbd>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button className="icon-button" onClick={handleThemeChange} aria-label="Đổi giao diện">

@@ -1,11 +1,44 @@
-import { describe, it, expect, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { describe, expect, it, vi } from 'vitest';
 import { Types } from 'mongoose';
 import { UsersService } from './users.service.js';
 
-// Query Mongoose giả: exec() trả result
-const q = (result: unknown) => vi.fn((..._args: any[]) => ({ exec: vi.fn().mockResolvedValue(result) }));
+function query(result: unknown) {
+  return {
+    exec: vi.fn().mockResolvedValue(result),
+  };
+}
 
+describe('UsersService.updateDisplayName', () => {
+  it('updates only displayName and returns the updated user', async () => {
+    const updatedUser = { _id: 'user-id', displayName: 'Tên mới' };
+    const updateQuery = query(updatedUser);
+    const userModel = {
+      findByIdAndUpdate: vi.fn(() => updateQuery),
+    };
+    const service = new UsersService(userModel as any);
+
+    const result = await service.updateDisplayName('user-id', 'Tên mới');
+
+    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      'user-id',
+      { $set: { displayName: 'Tên mới' } },
+      { returnDocument: 'after', runValidators: true },
+    );
+    expect(updateQuery.exec).toHaveBeenCalledOnce();
+    expect(result).toBe(updatedUser);
+  });
+
+  it('returns null if the user does not exist', async () => {
+    const userModel = {
+      findByIdAndUpdate: vi.fn(() => query(null)),
+    };
+    const service = new UsersService(userModel as any);
+
+    await expect(service.updateDisplayName('missing-id', 'Tên mới')).resolves.toBeNull();
+  });
+});
+
+// GET /auth/me trả toProfile; đổi mật khẩu dùng setPassword (ADR-027)
 const userId = new Types.ObjectId();
 const createdAt = new Date('2026-10-01T00:00:00.000Z');
 const userDoc = (overrides: Record<string, unknown> = {}) => ({
@@ -20,17 +53,10 @@ const userDoc = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-function build(updated: unknown = userDoc()) {
-  const userModel = { findByIdAndUpdate: q(updated) };
-  const service = new UsersService(userModel as any);
-  return { service, userModel };
-}
-
 describe('UsersService.toProfile', () => {
   it('trả id (không _id, không __v), kèm createdAt và hasPassword', () => {
-    const { service } = build();
-    const profile = service.toProfile(userDoc() as any);
-    expect(profile).toEqual({
+    const service = new UsersService({} as any);
+    expect(service.toProfile(userDoc() as any)).toEqual({
       id: userId.toString(),
       email: 'a@test.com',
       username: 'a',
@@ -43,34 +69,15 @@ describe('UsersService.toProfile', () => {
   });
 
   it('tài khoản chỉ dùng Google → hasPassword false', () => {
-    const { service } = build();
+    const service = new UsersService({} as any);
     expect(service.toProfile(userDoc({ providers: ['google'] }) as any).hasPassword).toBe(false);
-  });
-});
-
-describe('UsersService.updateDisplayName', () => {
-  it('lưu tên đã trim, trả profile mới', async () => {
-    const { service, userModel } = build(userDoc({ displayName: 'Tên mới' }));
-
-    const profile = await service.updateDisplayName(userId.toString(), '  Tên mới  ');
-
-    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(
-      userId.toString(),
-      { $set: { displayName: 'Tên mới' } },
-      { new: true, runValidators: true },
-    );
-    expect(profile).toMatchObject({ id: userId.toString(), displayName: 'Tên mới' });
-  });
-
-  it('user không còn tồn tại → 404', async () => {
-    const { service } = build(null);
-    await expect(service.updateDisplayName(userId.toString(), 'X')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
 describe('UsersService.setPassword', () => {
   it('lưu hash và thêm provider local (tài khoản Google đặt mật khẩu lần đầu đăng nhập được bằng mật khẩu)', async () => {
-    const { service, userModel } = build();
+    const userModel = { findByIdAndUpdate: vi.fn(() => query(userDoc())) };
+    const service = new UsersService(userModel as any);
 
     await service.setPassword(userId.toString(), 'hash-moi');
 

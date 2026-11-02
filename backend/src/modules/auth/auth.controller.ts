@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService, REFRESH_TOKEN_TTL_MS } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { UpdateProfileDto } from './dto/update-profile.dto.js';
 import { UsersService } from '../users/users.service.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
@@ -93,17 +94,24 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async getProfile(@Req() req: any) {
-    // Trả profile đã map (id, không _id / __v) — giống GET /users/me
+    // Trả profile đã map (id, không _id / __v), kèm createdAt + hasPassword
     return this.usersService.toProfile(req.user);
   }
 
-  // POST /auth/password  { currentPassword?, newPassword } — ADR-025.
+  // POST /auth/password  { currentPassword?, newPassword } — ADR-027.
   // Nằm dưới /auth để trình duyệt gửi kèm cookie refresh → biết phiên hiện tại mà giữ lại.
   @UseGuards(JwtAuthGuard)
   @Post('password')
   @HttpCode(204)
   async changePassword(@Req() req: any, @Body() dto: ChangePasswordDto) {
     await this.authService.changePassword(req.user.id, dto, readCookie(req, REFRESH_COOKIE));
+  }
+
+  // PATCH /auth/me -> cập nhật tên hiển thị user hiện tại
+  @UseGuards(JwtAuthGuard)
+  @Patch('me')
+  async updateProfile(@Req() req: any, @Body() dto: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.id, dto.displayName);
   }
 
   // sameSite lax: frontend và backend cùng site (localhost:3000/3001 khi dev, app./api.<domain> khi deploy)

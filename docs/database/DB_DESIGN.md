@@ -161,6 +161,9 @@ export class Room {
 
   @Prop({ default: null })
   deletedAt: Date | null;
+
+  @Prop({ type: String, enum: ['PENDING', 'READY'], default: 'PENDING' })
+  status: string;                    // chỉ READY mới được gửi trong chat / tải xuống
 }
 ```
 
@@ -400,7 +403,7 @@ await this.model.updateOne(
 @Schema({ timestamps: true, collection: 'files' })
 export class File {
   @Prop({ required: true, unique: true })
-  storageKey: string;               // key trên MinIO/R2, vd: meetings/{meetingId}/{uuid}.pdf
+  storageKey: string;               // object key trên Amazon S3
 
   @Prop({ required: true, maxlength: 255 })
   originalName: string;

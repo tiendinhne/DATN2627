@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, AuthProvider } from './schemas/user.schema.js';
@@ -39,7 +39,7 @@ export class UsersService {
     return this.userModel.findById(id).select('+password').exec();
   }
 
-  // Thông tin user trả cho frontend: id thay _id (ràng buộc 2), không lộ password / __v
+  // Thông tin user trả cho frontend ở GET /auth/me: id thay _id (ràng buộc 2), không lộ password / __v
   toProfile(user: UserDocument) {
     return {
       id: String(user._id),
@@ -54,15 +54,15 @@ export class UsersService {
     };
   }
 
-  // PATCH /users/me — đổi tên hiển thị
-  async updateDisplayName(userId: string, displayName: string) {
-    const updated = await this.userModel
-      .findByIdAndUpdate(userId, { $set: { displayName: displayName.trim() } }, { new: true, runValidators: true })
+  // PATCH /auth/me — đổi tên hiển thị (AuthService.updateProfile gọi)
+  async updateDisplayName(id: string, displayName: string) {
+    return this.userModel
+      .findByIdAndUpdate(
+        id,
+        { $set: { displayName } },
+        { returnDocument: 'after', runValidators: true },
+      )
       .exec();
-    if (!updated) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
-    return this.toProfile(updated);
   }
 
   // Lưu hash mật khẩu mới; thêm provider local để tài khoản Google đặt mật khẩu lần đầu đăng nhập được bằng mật khẩu

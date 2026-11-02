@@ -27,7 +27,7 @@ export function SettingsView({
   const [camera, setCamera] = useState(true);
   const [microphone, setMicrophone] = useState(false);
 
-  // Đổi mật khẩu (ADR-025). hasPassword = false: tài khoản chỉ dùng Google → "Đặt mật khẩu", không hỏi mật khẩu cũ
+  // Đổi mật khẩu (ADR-027). hasPassword = false: tài khoản chỉ dùng Google → "Đặt mật khẩu", không hỏi mật khẩu cũ
   const [hasPassword, setHasPassword] = useState(true);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");

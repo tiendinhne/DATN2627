@@ -344,7 +344,6 @@ Cập nhật lại các role * đọc file rule/role.md
   - Schema mới (chat, meeting, whiteboard, AI đã có sẵn schema đã sửa) — field tham chiếu viết `type: SchemaTypes.ObjectId`, không `Types.ObjectId`. Unit test mock model không bắt được lỗi này; chỉ app thật / đọc `schema.path(x).instance` mới thấy.
   - Lệnh xoá dữ liệu dev cho user (PowerShell, gốc repo): `docker exec mongo-dev mongosh online-group-learning --quiet --eval "printjson({ rooms: db.rooms.deleteMany({}).deletedCount, room_members: db.room_members.deleteMany({}).deletedCount, refresh_tokens: db.refresh_tokens.deleteMany({}).deletedCount })"`
 
-
 ## 2026-10-01 — Module room: Task 10 (làm lại sau Task 10a) — xong
 
 - **Kiểm Task 10a đầu phiên:** không còn `type: Types.ObjectId` trong `backend/src`; script đồ bỏ đọc `schema.paths` trên `dist/` vừa build → field có `ref`: `{ ObjectId: 23 }`. `npm test` **62/62**, `npm run build` exit 0. Dữ liệu dev cũ **chưa xoá** (còn `rooms.ownerId` string 1, `room_members.userId` string 2, `refresh_tokens.userId` string 3) → xoá theo quyết định user 2026-10-01: `{ rooms: 3, room_members: 4, refresh_tokens: 7 }`; `users` giữ nguyên.
@@ -850,6 +849,7 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Lệch khỏi tài liệu:** `SameSite=Lax; Path=/auth` không `Domain` thay `SameSite=None; Domain=.<domain>` của §5 `[phát sinh kỹ thuật]` (ADR-023).
 - **Giới hạn biết trước:** đăng xuất ở một tab → tab khác vẫn dùng access token đang có tới khi hết hạn (≤ 15 phút), lần làm mới tiếp theo bị 401 → về `/login`. Token bị xoay vòng còn dùng được trong 10 s (chỉ để lấy access token).
 - **Commit:** chưa — chờ user.
+
 - **Task sau cần biết:** gateway Socket.IO lấy `token` từ `useAuth()` (memory) khi kết nối; token đổi mỗi ~14 phút — socket đang mở không cần kết nối lại, chỉ lần kết nối lại sau đó dùng token mới. Effect nào phụ thuộc `token` mà gọi API có side effect (như vào meeting) thì làm như trang cuộc gọi (`hasToken` + ref).
 
 ## 2026-10-17 — Xem tất cả phòng đã tham gia
@@ -937,6 +937,58 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Lệch khỏi tài liệu:** không.
 - **Commit:** chưa — chờ user.
 
+## 2026-10-27 — Backend Chat text, ảnh và file đính kèm
+
+- **Đã xong:** Chat có lịch sử REST theo cursor; gửi text/file qua `chat:send`; upload/download trực tiếp qua presigned URL S3-compatible. Backend kiểm tra JWT, quyền Room/Meeting, MIME + phần mở rộng + dung lượng (tối đa 20 MiB), xác nhận upload bằng `HeadObject`, và chỉ trả metadata qua Socket.IO. Metadata `File` có trạng thái `PENDING`/`READY`; file chưa `READY` không thể gửi hoặc tải.
+- **Realtime/stateless:** namespace `/meeting` xác thực JWT ngay tại handshake; `room:subscribe` kiểm membership. Event dùng Redis `INCR` và Redis Adapter; publisher tập trung phát envelope. Khi rời/kick/giải tán Room, các socket được thu hồi trên mọi instance.
+- **Object Storage (cấu hình tại thời điểm hoàn thành task; đã thay bằng Amazon S3 ở entry kế tiếp):** thêm adapter S3-compatible, MinIO cho dev (Compose, cổng 9000/9001) và hỗ trợ cấu hình R2/S3. Bucket private; URL PUT 5 phút, GET 15 phút; nội dung file không đi qua RAM/ổ đĩa Backend. Không lưu credentials trong source; cấu hình trong `.env`.
+- **Tài liệu:** cập nhật endpoint Chat, schema File, PROJECT_CONTEXT, ADR-025 và hướng dẫn MinIO/R2 ở `docs/api/endpoint.md`.
+- **Kiểm tra (chạy thật):** `npm run build` pass; `npm run lint` pass; `npm test` pass 13 file / 171 test; `docker compose config --quiet` pass với env test tạm (đã xoá). `npm audit --omit=dev` còn báo 5 high ở các dependency sẵn có `body-parser`, `multer`/Nest và `zod`; không nâng phiên bản ngoài scope.
+- **Cấu hình lúc đó (đã hết hiệu lực sau ADR-026):** tạo `infrastructure/.env.minio` từ file `.example`, đặt credentials trùng với `backend/.env`, tạo bucket private và bật CORS cho origin Frontend.
+- **Lệch khỏi tài liệu:** thêm giới hạn 20 MiB/allowlist MIME và trạng thái `READY` là quyết định kỹ thuật phát sinh, ghi tại ADR-025.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-27 — Chuyển Chat file storage sang Amazon S3
+
+- **Đã xong:** Adapter dùng AWS SDK v3 với `AWS_REGION`, `S3_BUCKET` và credential provider chain mặc định; tiếp tục hỗ trợ presigned PUT/GET và kiểm tra upload bằng `HeadObject`. MongoDB chỉ lưu metadata/object key, không lưu URL.
+- **Đã bỏ:** service/image/volume MinIO trong Docker Compose, endpoint nội bộ và cấu hình credentials MinIO; xóa file cấu hình MinIO mẫu. Không xóa bucket hoặc object storage data.
+- **Cấu hình còn thiếu theo AWS account:** tên bucket và region thật chưa được cung cấp, nên vẫn là placeholder trong `.env.example`. Production nên cấp IAM Role/Task Role; Compose local truyền credentials từ root `.env` chỉ vào Backend.
+- **Tài liệu:** cập nhật hướng dẫn AWS S3, IAM least privilege, bucket CORS và lưu ý object cũ trong MinIO không tự migrate; ADR-026 supersedes ADR-025.
+- **Kiểm tra:** `npm run build`, `npm run lint`, `npm test` (13 file/171 test), `docker compose config --quiet` và `git diff --check` đều pass.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Kết nối Chat hiện có vào Frontend
+
+- **Đã làm:** Thay dữ liệu giả ở Room Chat và Meeting Chat bằng lịch sử qua `GET /rooms/:roomId/messages` và luồng Socket.IO `/meeting` (`room:subscribe`, `chat:send`, `chat:new`). Chat họp chỉ hiển thị tin của meeting hiện tại; tin vẫn lưu theo Room. Thêm trạng thái kết nối/lỗi và chặn gửi khi socket chưa kết nối.
+- **Dependency:** thêm `socket.io-client` vào frontend (đã được user duyệt).
+- **Tài liệu:** endpoint đã có trong `docs/api/endpoint.md`; không đổi API/backend contract.
+- **Kiểm tra:** ESLint các file frontend sửa đổi pass; `git diff --check` pass. `npm run build` biên dịch JS thành công nhưng dừng ở type-check của dependency có sẵn `@livekit/components-core/src/components/chat.ts:141` (`Uint8Array<ArrayBufferLike>` không tương thích `BlobPart`); `tsc --noEmit` cũng báo thêm lỗi trong các file nguồn LiveKit khác, không báo lỗi từ file chat vừa sửa. Chưa xác minh gửi/nhận trên trình duyệt với backend chạy thật.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Sửa Socket.IO trả 404 ở frontend
+
+- **Nguyên nhân:** `RedisIoAdapter` được khởi tạo không truyền Nest app. `IoAdapter` không có HTTP server để gắn Socket.IO vào; gateway đã đăng ký nhưng `/socket.io` trên cổng 3001 trả `404`.
+- **Đã sửa:** khởi tạo `new RedisIoAdapter(app)` để Socket.IO dùng HTTP server của Nest.
+- **Kiểm tra:** `docker compose up -d --build backend` dựng lại và khởi động container; Socket.IO client dùng WebSocket tới `/meeting` nhận lỗi `Thiếu access token` từ middleware xác thực (chứng minh kết nối đã tới namespace, không còn lỗi handshake/404); `npm run build` backend pass; gateway tests 4/4 pass.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Thêm gửi file và hình ảnh trong Chat
+
+- **Đã làm:** thêm nút đính kèm ở Room Chat và Meeting Chat; frontend xác thực MIME/dung lượng tối đa 20 MiB, xin presigned URL, PUT trực tiếp lên S3, gọi complete rồi gửi `fileId` qua `chat:send`. Tệp trong cuộc họp mang `meetingId`; chat hiển thị thumbnail ảnh và nút mở/tải file qua download URL có kiểm tra quyền.
+- **Tài liệu:** dùng lại upload/download API và giới hạn đã ghi trong `docs/api/endpoint.md`; không đổi backend.
+- **Kiểm tra:** `npm run lint` pass, không warning/error ESLint; `git diff --check` pass. `npm run build` biên dịch thành công nhưng dừng ở lỗi type-check có sẵn trong `@livekit/components-core/src/components/chat.ts:141` (`Uint8Array<ArrayBufferLike>` không tương thích `BlobPart`); không có chẩn đoán từ file chat vừa sửa. Chưa kiểm thử upload thực trên trình duyệt/S3.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Dùng backend/.env cho AWS credentials trong Compose
+
+- **Đã sửa:** xoá các biến AWS được nội suy từ `.env` gốc ở `docker-compose.yml`. Backend dùng `env_file: ./backend/.env` thống nhất cho AWS credentials, region và bucket; không còn giá trị rỗng từ Compose override credentials.
+- **Kiểm tra:** `docker compose config --quiet` và `git diff --check` pass. Đã recreate `backend`; kiểm tra chỉ sự hiện diện (không đọc/in giá trị) xác nhận access key, secret key, region và bucket đã vào container; `Nest application successfully started`, Redis kết nối.
+- **Commit:** chưa — chờ user.
+
+
+
 ## 2026-10-27 — Khôi phục ADR-023: access token chỉ giữ trong memory (branch `fix/localstorage`)
 
 - **Vì sao:** commit `afdbd2e` (merge giao diện mới) đưa access token trở lại `localStorage` — trái ADR-023 / PROJECT_CONTEXT §5. Thêm nhánh dự phòng: `/auth/refresh` thất bại → lấy token cũ trong `localStorage` gọi `/auth/me` → **đăng xuất rồi F5 vẫn còn đăng nhập** (token đã thu hồi refresh vẫn dùng tới khi hết hạn 15 phút).
@@ -967,6 +1019,21 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Lệch khỏi tài liệu:** không. `CLAUDE.md` (mục Lệnh + ghi chú ADR-016) đã cập nhật theo yêu cầu user: một lệnh compose cho cả hệ thống; lệnh native chỉ cho test / debug.
 - **Commit:** chưa — chờ user.
 
+## 2026-10-30 — Hiển thị xem trước ảnh đính kèm
+
+- **Đã sửa:** ảnh có thẻ xem trước inline với trạng thái đang tải/lỗi, tên và dung lượng; bấm ảnh để mở, nút tải riêng. Các file khác giữ thẻ file hiện có.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** dùng presigned download URL hiện có; không thêm API/dependency.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.
+
+## 2026-10-30 — Xem trước ảnh trước khi gửi chat
+
+- **Đã sửa:** sau khi chọn ảnh, khung soạn thảo hiển thị thumbnail cùng tên/dung lượng trước khi upload; bỏ/chọn ảnh khác sẽ giải phóng URL preview cũ. File thường tiếp tục hiển thị dạng tên/dung lượng.
+- **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
+- **Quyết định:** preview dùng object URL cục bộ; không upload ảnh cho tới khi bấm Gửi.
+- **Lệch khỏi tài liệu:** không.
+
 ## 2026-11-02 — small_task #2 phần A: bỏ dữ liệu gắn cứng ở frontend (branch `feature/user-api-real-data`)
 
 - **Phạm vi:** `docs/task/small_task.md` (#1 API người dùng, #2 dữ liệu gắn cứng) tách 4 phần, user chốt làm A trước: A = bỏ dữ liệu giả ở chỗ backend đã có dữ liệu + route / file giả (chỉ frontend); B = `GET/PATCH /users/me` + đổi mật khẩu; C = API thống kê theo user, email + online của thành viên; D = quên mật khẩu + OTP email (architectural, cần dependency + SMTP, `[phát sinh kỹ thuật]`).
@@ -987,9 +1054,9 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Lệch khỏi tài liệu:** không.
 - **Commit:** `b12366a`.
 
-## 2026-11-02 — small_task #1 phần B: thông tin tài khoản, đổi tên, đổi mật khẩu (branch `feature/user-api-real-data`, ADR-025)
+## 2026-11-02 — small_task #1 phần B: thông tin tài khoản, đổi tên, đổi mật khẩu (branch `feature/user-api-real-data`, ADR-027)
 
-- **Quyết định (user chốt):** tài khoản chỉ dùng Google được đặt mật khẩu lần đầu không cần mật khẩu cũ (thêm `local` vào `providers`); đổi mật khẩu thì thu hồi mọi phiên khác, giữ phiên hiện tại → endpoint ở `POST /auth/password` (cookie `Path=/auth`). ADR-025.
+- **Quyết định (user chốt):** tài khoản chỉ dùng Google được đặt mật khẩu lần đầu không cần mật khẩu cũ (thêm `local` vào `providers`); đổi mật khẩu thì thu hồi mọi phiên khác, giữ phiên hiện tại → endpoint ở `POST /auth/password` (cookie `Path=/auth`). ADR-027 (lúc viết là ADR-025, đổi số khi merge vì main đã có ADR-025/026 của module chat).
 - **Backend:**
   - `UsersController` mới: `GET /users/me`, `PATCH /users/me { displayName }` (`UpdateProfileDto`: trim, 1–20 ký tự như đăng ký). `UsersModule` import `PassportModule` (như `RoomsModule`).
   - `UsersService`: `toProfile` (map `_id → id`, `hasPassword`, `createdAt`), `updateDisplayName`, `findByIdWithPassword`, `setPassword` (`$set password` + `$addToSet providers: local`).
@@ -1005,5 +1072,19 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Gặp khi chạy (chưa sửa, chờ user):**
   1. **Container frontend chết vì hết RAM:** `dmesg` VM Docker: `Out of memory: Killed process … (next-server (v1)) anon-rss:2012596kB` — Next dev ~2 GB khi compile trang meeting (5.500+ module), VM Docker chỉ 3,3 GB. Container thoát mã 0, thiếu `restart: unless-stopped` nên không tự lên.
   2. **Backend không hot reload trong Docker trên Windows:** sửa `backend/src` → container có file mới nhưng `nest start --watch` không biết (bind mount không báo sự kiện) → phải `docker compose restart backend`. README / ADR-016 đang ghi "tự reload" — sai với backend.
-- **Lệch khỏi tài liệu:** không (endpoint.md + ADR-025 đã cập nhật).
+- **Lệch khỏi tài liệu:** không (endpoint.md + ADR-027 đã cập nhật).
+- **Commit:** chưa — chờ user.
+
+## 2026-11-02 — Merge `origin/main` vào `feature/user-api-real-data` (9 file conflict)
+
+- **Bối cảnh:** main có 6 commit của An (27–30/10): module chat (REST + upload S3 + Socket.IO), `RealtimePublisher`, sửa UI, và **đổi tên hiển thị `PATCH /auth/me`** — trùng phần B (`PATCH /users/me`).
+- **Quyết định (user chốt):** phần trùng ưu tiên bản của An. Đã làm:
+  - Giữ `PATCH /auth/me`, `AuthService.updateProfile`, `UsersService.updateDisplayName` (trả document), `auth.context.updateDisplayName`, logic lưu tên trong `ProfileView` của An.
+  - Bỏ của phần B: `UsersController` (`GET` / `PATCH /users/me`), `users/dto/update-profile.dto.ts`, `AuthContext.updateUser`, `updateMyProfile`; `users.module.ts` về như cũ.
+  - Giữ của phần B (An không làm): `GET /auth/me` trả `toProfile` (sửa lỗi `_id` / `__v`), `POST /auth/password`, mục đổi mật khẩu trong Settings. `getMyProfile` (ngày tham gia, `hasPassword`) giờ gọi `GET /auth/me`.
+  - `ProfileView`: logic lưu của An + dữ liệu thật của phần A / B (số phòng, ngày tham gia, `@username`, "—"); bản của An còn `3` / `12` / `8.5h` / "Sinh viên · Đang hoạt động".
+  - `MeetingWorkspace`: giữ props chat của An ở bản live; bỏ màn preview (An có sửa props chat cho cả bản preview, nhưng phần A đã bỏ màn này).
+  - ADR của phần B đổi số **ADR-025 → ADR-027** (main đã có ADR-025, 026 cho S3); `endpoint.md` bỏ mục Users, mô tả Profile ở `GET /auth/me`.
+  - `users.service.spec.ts` (cả hai cùng tạo): giữ nguyên test `updateDisplayName` của An + test `toProfile`, `setPassword`; `auth.service.spec.ts`: gộp mock của hai bên.
+- **Gặp khi chạy:** `nest build` lỗi `Cannot find module '@aws-sdk/s3-request-presigner'` — `package.json` của main đã khai báo, chỉ `node_modules` máy chưa cài → `npm ci` theo lockfile, không thêm dependency. Image Docker backend cũng phải `--build` lại vì có dependency mới.
 - **Commit:** chưa — chờ user.

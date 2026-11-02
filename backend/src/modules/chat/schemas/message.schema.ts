@@ -3,7 +3,8 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, SchemaTypes, Types } from 'mongoose';
 import { MessageType } from '../../../shared/enums.js';
 
-export type MessageDocument = Message & Document;
+export type MessageDocument = Message &
+  Document & { createdAt: Date; updatedAt: Date };
 
 @Schema({ timestamps: true, collection: 'messages' })
 export class Message {

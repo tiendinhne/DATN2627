@@ -79,6 +79,10 @@ function build() {
     removeFromActiveMeeting: vi.fn().mockResolvedValue(undefined),
     endActiveMeetingOfRoom: vi.fn().mockResolvedValue(undefined),
   };
+  const realtime = {
+    revokeUser: vi.fn().mockResolvedValue(undefined),
+    revokeRoom: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new RoomsService(
     roomModel as any,
     memberModel as any,
@@ -86,8 +90,9 @@ function build() {
     redis as any,
     userModel as any,
     meetings as any,
+    realtime as any,
   );
-  return { service, roomModel, memberModel, access, redis, userModel, meetings };
+  return { service, roomModel, memberModel, access, redis, userModel, meetings, realtime };
 }
 
 // Lỗi trùng unique index của Mongo
@@ -564,13 +569,14 @@ describe('kickMember', () => {
   });
 
   it('kick thành công → xoá bản ghi, giảm memberCount 1', async () => {
-    const { service, memberModel, roomModel, access } = build();
+    const { service, memberModel, roomModel, access, realtime } = build();
 
     await service.kickMember(userId, roomId, targetId);
 
     expect(access.assertRoomPermission).toHaveBeenCalledWith(userId, roomId, 'KICK_MEMBER');
     expect(memberModel.deleteOne).toHaveBeenCalledWith({ roomId, userId: targetId });
     expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: roomId }, { $inc: { memberCount: -1 } });
+    expect(realtime.revokeUser).toHaveBeenCalledWith(roomId, targetId, userId, 'KICKED');
   });
 });
 
@@ -584,12 +590,13 @@ describe('leaveRoom', () => {
   });
 
   it('MEMBER → xoá bản ghi của mình, giảm memberCount 1', async () => {
-    const { service, memberModel, roomModel } = build();
+    const { service, memberModel, roomModel, realtime } = build();
 
     await service.leaveRoom(userId, roomId);
 
     expect(memberModel.deleteOne).toHaveBeenCalledWith({ roomId, userId });
     expect(roomModel.updateOne).toHaveBeenCalledWith({ _id: roomId }, { $inc: { memberCount: -1 } });
+    expect(realtime.revokeUser).toHaveBeenCalledWith(roomId, userId, userId, 'LEFT');
   });
 });
 
@@ -603,7 +610,7 @@ describe('dissolveRoom', () => {
   });
 
   it('HOST → status DISSOLVED + dissolvedAt, giữ nguyên room_members', async () => {
-    const { service, access, roomModel, memberModel } = build();
+    const { service, access, roomModel, memberModel, realtime } = build();
 
     await service.dissolveRoom(userId, roomId);
 
@@ -613,6 +620,7 @@ describe('dissolveRoom', () => {
       { $set: { status: RoomStatus.DISSOLVED, dissolvedAt: expect.any(Date) } },
     );
     expect(memberModel.deleteOne).not.toHaveBeenCalled();
+    expect(realtime.revokeRoom).toHaveBeenCalledWith(roomId, userId);
   });
 });
 

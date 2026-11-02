@@ -68,7 +68,7 @@ export interface JoinMeetingResponse {
   meeting: Meeting;
 }
 
-// GET /users/me, PATCH /users/me (docs/api/endpoint.md)
+// GET /auth/me (docs/api/endpoint.md)
 export interface MyProfile {
   id: string;
   email: string;

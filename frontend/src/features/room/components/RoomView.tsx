@@ -42,7 +42,7 @@ export function RoomView({
   onNavigate,
 }: RoomViewProps) {
   const router = useRouter();
-  const { token, isLoading: isAuthLoading } = useAuth();
+  const { token, user, isLoading: isAuthLoading } = useAuth();
 
   const [tab, setTab] = useState("Tổng quan");
   const [backendRoom, setBackendRoom] = useState<BackendRoom | null>(null);
@@ -80,6 +80,13 @@ export function RoomView({
       onNavigate("dashboard");
     } else {
       router.push("/dashboard");
+    }
+  };
+  const navigateToRooms = () => {
+    if (onNavigate) {
+      onNavigate("rooms");
+    } else {
+      router.push("/rooms");
     }
   };
 
@@ -274,7 +281,7 @@ export function RoomView({
         onSettings={() => setDialog("settings")}
         onDelete={() => setDialog("delete")}
         onLeave={() => setDialog("leave")}
-        onBack={handleBackToDashboard}
+        onBack={navigateToRooms}
       />
 
       <nav className="tabs">
@@ -314,7 +321,9 @@ export function RoomView({
         />
       )}
 
-      {tab === "Trò chuyện" && <RoomChat />}
+      {tab === "Trò chuyện" && (
+        <RoomChat roomId={roomId} token={token} currentUserId={user?.id} />
+      )}
 
       {tab === "Cuộc họp" && (
         <MeetingsTab

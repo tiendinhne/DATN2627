@@ -150,8 +150,25 @@ Phần này không nằm trong scope hiện tại
 **Giới hạn biết trước:** (1) `extensionAlias` là cấu hình webpack — `next dev` / `next build` hiện dùng webpack; nếu chuyển sang Turbopack phải kiểm lại. (2) Khi build frontend trong Docker lúc deploy, build context phải chứa cả `backend/src/shared` (vd context là gốc repo).
 **Status:** CONFIRMED — user chốt 2026-10-22.
 
-## ADR-025 — Đổi mật khẩu thu hồi các phiên khác; tài khoản Google được đặt mật khẩu lần đầu
-**Decision:** `POST /auth/password { currentPassword?, newPassword }`. Tài khoản đã có mật khẩu phải nhập đúng mật khẩu hiện tại (sai / thiếu → `400`, không `401` vì frontend coi 401 là hết phiên). Tài khoản chỉ dùng Google (không có mật khẩu) được đặt mật khẩu lần đầu không cần mật khẩu cũ; xong thêm `local` vào `providers` → đăng nhập được bằng cả Google lẫn mật khẩu. Đổi xong thu hồi mọi refresh token còn sống của user **trừ** token trong cookie của request đang đổi (`tokenHash: { $ne }`); không có cookie → thu hồi hết. Endpoint đặt dưới `/auth` vì cookie `refresh_token` có `Path=/auth` (ADR-023) — ở `/users/*` trình duyệt không gửi cookie, không biết phiên hiện tại. Đổi tên ở `PATCH /users/me`; `GET /users/me` và `GET /auth/me` trả cùng Profile (`toProfile`, `id` không `_id`).
+## ADR-025 — Upload Chat trực tiếp lên S3-compatible Object Storage `[phát sinh kỹ thuật]`
+**Status:** SUPERSEDED by ADR-026.
+**Decision:** File Chat dùng presigned PUT/GET qua adapter `object-storage`; Backend chỉ lưu metadata, trạng thái upload và object key trong Mongo. MinIO dùng khi dev, S3-compatible (ví dụ R2) dùng khi deploy; bucket private. Upload được xác nhận bằng `HeadObject` trước khi tin nhắn có thể tham chiếu file. Giới hạn 20 MiB và chỉ nhận MIME/đuôi file nằm trong allowlist. Socket.IO Redis adapter gỡ các socket khỏi kênh Room khi user rời/bị kick hoặc Room giải tán.
+**Reason:** Đáp ứng yêu cầu stateless §7.1, file không đi qua RAM/ổ đĩa Backend, đồng thời quyền Room được kiểm tra cả khi cấp URL upload, xác nhận và cấp URL tải xuống.
+**Truy vết:** đề cương §6.3 yêu cầu đính kèm nội dung trong Chat Room; yêu cầu lưu file bên ngoài/kiểm quyền chi tiết là `[phát sinh kỹ thuật]` theo PROJECT_CONTEXT §7.1 và yêu cầu triển khai Chat.
+**Alternatives:** gửi file qua Socket.IO hoặc Backend; bucket public.
+**Rejected because:** gửi qua Backend tạo tải và rủi ro lưu file ở instance; bucket public bỏ qua quyền Room.
+**Status:** CONFIRMED — user duyệt thiết kế 2026-10-27.
+
+## ADR-026 — Dùng Amazon S3 cho file Chat
+**Decision:** Thay MinIO/R2 bằng Amazon S3; adapter hiện có dùng AWS SDK for JavaScript v3 để ký PUT/GET và xác minh upload qua `HeadObject`. Backend chỉ lưu metadata và object key trong MongoDB; presigned URL chỉ được cấp theo yêu cầu sau khi kiểm tra quyền Room. Adapter dùng credential provider chain mặc định của SDK, ưu tiên IAM Role/Task Role trên AWS. Bucket private, region và tên bucket được cấu hình ngoài source.
+**Reason:** Image MinIO Community đã dùng trong Compose không còn được pull; mục tiêu hiện tại yêu cầu Amazon S3. Dùng S3 trực tiếp cũng bỏ service lưu trữ cục bộ và credentials tĩnh khỏi cấu hình Compose.
+**Truy vết:** Luồng upload file Chat gắn với yêu cầu đính kèm trong đề cương §6.3; lựa chọn Amazon S3 và IAM Role là quyết định triển khai `[phát sinh kỹ thuật]`, không ghi nhận là yêu cầu của đề cương.
+**Alternatives:** tiếp tục MinIO, tự build MinIO Community, hoặc dùng S3-compatible provider.
+**Rejected because:** yêu cầu task hiện tại là Amazon S3 và image MinIO không pull được ở môi trường phát triển.
+**Status:** CONFIRMED — user yêu cầu chuyển sang Amazon S3 2026-10-27.
+
+## ADR-027 — Đổi mật khẩu thu hồi các phiên khác; tài khoản Google được đặt mật khẩu lần đầu
+**Decision:** `POST /auth/password { currentPassword?, newPassword }`. Tài khoản đã có mật khẩu phải nhập đúng mật khẩu hiện tại (sai / thiếu → `400`, không `401` vì frontend coi 401 là hết phiên). Tài khoản chỉ dùng Google (không có mật khẩu) được đặt mật khẩu lần đầu không cần mật khẩu cũ; xong thêm `local` vào `providers` → đăng nhập được bằng cả Google lẫn mật khẩu. Đổi xong thu hồi mọi refresh token còn sống của user **trừ** token trong cookie của request đang đổi (`tokenHash: { $ne }`); không có cookie → thu hồi hết. Endpoint đặt dưới `/auth` vì cookie `refresh_token` có `Path=/auth` (ADR-023) — ở `/users/*` trình duyệt không gửi cookie, không biết phiên hiện tại. Đổi tên ở `PATCH /auth/me` (An làm, merge 2026-11-02); `GET /auth/me` trả Profile qua `toProfile` (`id` không `_id`, kèm `createdAt`, `hasPassword`) — trước đó trả nguyên document Mongo.
 **Reason:** Đổi mật khẩu thường vì nghi lộ → phiên của người giữ mật khẩu cũ phải chết; phiên đang thao tác thì giữ để người dùng không bị đá ra. User chốt 2026-11-02: (1) tài khoản Google được đặt mật khẩu lần đầu, (2) đăng xuất các phiên khác.
 **Truy vết:** đề cương §3.2 và §5.4 ("Xây dựng chức năng đăng ký, đăng nhập và **quản lý tài khoản người dùng**"). Đề cương không nói chi tiết đổi mật khẩu; thu hồi phiên, đặt mật khẩu cho tài khoản Google là `[phát sinh kỹ thuật]` — xuất phát từ `docs/task/small_task.md` #1.
 **Alternatives:** từ chối đổi mật khẩu với tài khoản Google; giữ nguyên mọi phiên sau khi đổi; đặt endpoint ở `/users/me/password`.
