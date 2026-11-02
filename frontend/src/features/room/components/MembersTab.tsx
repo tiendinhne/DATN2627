@@ -4,14 +4,6 @@ import { useState } from "react";
 import { MoreHorizontal, ShieldCheck, Trash2, UserRound, Users } from "lucide-react";
 import type { RoomMember } from "../types";
 
-const defaultMembers: RoomMember[] = [
-  { name: "An Nguyễn", email: "an.nguyen@example.com", initials: "AN", role: "Chủ phòng", online: true, color: "#6372e8" },
-  { name: "Minh Anh", email: "minhanh@example.com", initials: "MA", role: "Thành viên", online: true, color: "#df7d58" },
-  { name: "Quang Huy", email: "quanghuy@example.com", initials: "QH", role: "Thành viên", online: true, color: "#349775" },
-  { name: "Thu Hà", email: "thuha@example.com", initials: "TH", role: "Thành viên", online: false, color: "#9b65bd" },
-  { name: "Đức Minh", email: "ducminh@example.com", initials: "ĐM", role: "Thành viên", online: false, color: "#4b90bd" },
-];
-
 interface MembersTabProps {
   members?: RoomMember[];
   removedMembers: string[];
@@ -29,7 +21,7 @@ export function MembersTab({
 }: MembersTabProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
-  const sourceMembers = members && members.length > 0 ? members : defaultMembers;
+  const sourceMembers = members ?? [];
   const activeMembers = sourceMembers.filter(
     (member) => !removedMembers.includes(member.name) && (!member.userId || !removedMembers.includes(member.userId))
   );
@@ -40,7 +32,7 @@ export function MembersTab({
         <div>
           <h2>Thành viên phòng</h2>
           <p>
-            {activeMembers.length} thành viên · {activeMembers.filter(m => m.online).length} đang trực tuyến
+            {activeMembers.length} thành viên
           </p>
         </div>
         {canManage && (
@@ -71,12 +63,12 @@ export function MembersTab({
               {member.role === "Chủ phòng" && <ShieldCheck size={13} />}
               {member.role}
             </span>
+            {/* Chưa biết trạng thái online thì hiện "—", không đoán */}
             <span className={`presence ${member.online ? "online" : ""}`}>
-              <i />
-              {member.online ? "Trực tuyến" : "Ngoại tuyến"}
+              {member.online === undefined ? "—" : <><i />{member.online ? "Trực tuyến" : "Ngoại tuyến"}</>}
             </span>
             <span className="joined-date">
-              {member.joinedDate ? `Tham gia ${member.joinedDate}` : "Tham gia gần đây"}
+              {member.joinedDate ? `Tham gia ${member.joinedDate}` : "—"}
             </span>
             {canManage && member.role !== "Chủ phòng" ? (
               <div className="member-menu-wrap">

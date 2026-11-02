@@ -18,7 +18,6 @@ import { createRoom, joinRoom, listMyRooms } from "@/services/room.service";
 import type { Room as BackendRoom } from "@/types/backend";
 import { useNow } from "./hooks/useNow";
 import { getGreeting, formatEyebrow } from "./utils/greeting";
-import { meetings } from "@/data/mockData";
 
 const ROOM_COLORS = ["#5667e9", "#e0534b", "#10b981", "#8b5cf6", "#f59e0b"];
 
@@ -81,20 +80,11 @@ export function DashboardView({
 
   const displayName = user.displayName || user.username || "bạn";
 
-  const navigateToMeeting = () => {
-    if (onNavigate) {
-      onNavigate("meeting");
-    } else {
-      router.push("/meetings/sprint-review-05");
-    }
-  };
-
-  const navigateToRoom = (roomId?: string) => {
-    const targetId = roomId || (rooms.length > 0 ? rooms[0].id : "software-engineering");
+  const navigateToRoom = (roomId: string) => {
     if (onNavigate) {
       onNavigate("room");
     } else {
-      router.push(`/rooms/${targetId}`);
+      router.push(`/rooms/${roomId}`);
     }
   };
 
@@ -195,8 +185,9 @@ export function DashboardView({
           </span>
           <div>
             <p>Cuộc họp</p>
-            <strong>12</strong>
-            <small>4 giờ học tuần này</small>
+            {/* Chưa có API thống kê theo user (small_task #2, phần C) */}
+            <strong>—</strong>
+            <small>Chưa có dữ liệu</small>
           </div>
         </div>
         <div className="stat-card">
@@ -205,8 +196,8 @@ export function DashboardView({
           </span>
           <div>
             <p>Thời gian học</p>
-            <strong>8.5h</strong>
-            <small>+12% so với tuần trước</small>
+            <strong>—</strong>
+            <small>Chưa có dữ liệu</small>
           </div>
         </div>
       </section>
@@ -276,35 +267,8 @@ export function DashboardView({
           </button>
         </div>
         <div className="meeting-list">
-          {meetings.slice(0, 2).map((meeting) => (
-            <div className="meeting-row" key={meeting.id}>
-              <div className="date-tile">
-                <strong>{meeting.date === "Hôm nay" ? "22" : "18"}</strong>
-                <span>THÁNG 6</span>
-              </div>
-              <div className="meeting-info">
-                <h3>{meeting.title}</h3>
-                <p>{meeting.room}</p>
-              </div>
-              <div className="meeting-time">
-                <Clock3 size={16} />
-                <span>{meeting.time}</span>
-                <small>{meeting.duration}</small>
-              </div>
-              <div className="avatar-stack">
-                <span>MA</span>
-                <span>QH</span>
-                <span>+{meeting.participants - 2}</span>
-              </div>
-              <button
-                className="button small secondary"
-                onClick={navigateToMeeting}
-                type="button"
-              >
-                Tham gia
-              </button>
-            </div>
-          ))}
+          {/* Chưa có API lấy cuộc họp của user trên mọi phòng (small_task #2, phần C) */}
+          <div className="p-8 text-center text-slate-500">Chưa có dữ liệu</div>
         </div>
       </section>
 

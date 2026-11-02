@@ -966,3 +966,23 @@ Cập nhật lại các role * đọc file rule/role.md
   - Hot reload: sửa `<h1>` trong `LoginForm.tsx` → trang `/login` có nội dung mới sau ~25 s (compile 19,4 s); đã hoàn tác.
 - **Lệch khỏi tài liệu:** không. `CLAUDE.md` (mục Lệnh + ghi chú ADR-016) đã cập nhật theo yêu cầu user: một lệnh compose cho cả hệ thống; lệnh native chỉ cho test / debug.
 - **Commit:** chưa — chờ user.
+
+## 2026-11-02 — small_task #2 phần A: bỏ dữ liệu gắn cứng ở frontend (branch `feature/user-api-real-data`)
+
+- **Phạm vi:** `docs/task/small_task.md` (#1 API người dùng, #2 dữ liệu gắn cứng) tách 4 phần, user chốt làm A trước: A = bỏ dữ liệu giả ở chỗ backend đã có dữ liệu + route / file giả (chỉ frontend); B = `GET/PATCH /users/me` + đổi mật khẩu; C = API thống kê theo user, email + online của thành viên; D = quên mật khẩu + OTP email (architectural, cần dependency + SMTP, `[phát sinh kỹ thuật]`).
+- **Quyết định (user chốt):** ô chưa có dữ liệu thật hiện "—" / "Chưa có dữ liệu", giữ bố cục để B / C đổ dữ liệu vào; bỏ số giả và câu so sánh bịa.
+- **Đã xong:**
+  - Dashboard: "Cuộc họp" / "Thời gian học" → "—"; bỏ "4 giờ học tuần này", "+12% so với tuần trước"; "Cuộc họp sắp tới" bỏ `mockData` → "Chưa có dữ liệu"; bỏ điều hướng tới `sprint-review-05` / `software-engineering`.
+  - Profile: số phòng lấy thật từ `GET /rooms` (`n` hoặc `n+` khi `hasMore`); cuộc họp / giờ học → "—"; "Sinh viên · Đang hoạt động" → `@username`; "Tài khoản sinh viên đã xác minh · Thành viên từ ngày 02/06/2026" → "Ngày tham gia · Chưa có dữ liệu".
+  - Room: `mapBackendMember` bỏ email bịa `xxxxxx@member`, bỏ `online: true` mặc định, bỏ ngày `02/06/2026`; `RoomMember.online` thành tùy chọn (không biết → "—"); `MembersTab` bỏ 5 thành viên giả và "x đang trực tuyến"; `MeetingsTab` / `RoomOverviewTab` bỏ fallback `mockMeetings`; mã phòng giả `STUDY-6X2P` → "—" (`RoomView`, `RoomOverviewTab`, `InviteDialog`); `RoomView` bỏ `roomId` mặc định, state khởi tạo không còn tên / mô tả mẫu, `role` mặc định `member` (trước là `owner` → nút chủ phòng hiện thoáng qua với thành viên khi đang tải); nhánh dự phòng tới `sprint-review-05` → báo lỗi.
+  - Meeting: bỏ màn preview giả (~150 dòng, `mockParticipants`) và `meetingId` mặc định; chưa đăng nhập → `/login?returnUrl=…` (như `/join`); id sai → "Không tìm thấy buổi học".
+  - Xoá: route `/room`, `/meeting`; `src/App.tsx` + 7 wrapper trong `components/` chỉ `App.tsx` dùng; `features/whiteboard/services/whiteboard.service.ts`; `data/mockData.ts`.
+- **Kiểm tra (chạy thật):** script Chrome headless (đồ bỏ ở scratchpad), frontend trong container, backend Docker, user + phòng thật; tìm chuỗi giả ("8.5h", "+12%", "An Nguyễn", "Minh Anh", "@member", "02/06/2026", "đã xác minh", "example.com", "sprint-review"…).
+  - Trước khi sửa: 5 FAIL (dashboard, profile, tab Thành viên, meeting id sai hiện màn giả "Minh Anh, Quang Huy", chưa đăng nhập không về `/login`).
+  - Sau khi sửa: 7/7 PASS.
+  - `npm run build` exit 0, 12 trang (bỏ `/room`, `/meeting`); `tsc --noEmit` 0 lỗi (sau build — `.next/types` cũ còn trỏ route đã xoá); `next lint` sạch.
+- **Đánh đổi:** không còn trang thử Excalidraw không cần backend (`/meeting` preview) — muốn thử whiteboard phải vào meeting thật.
+- **Gặp khi chạy:** container `frontend-dev` dừng 2 lần trong lúc làm (1 lần mã 255 sau khi Docker Desktop khởi động lại, kèm `EIO` đọc thư mục mount; 1 lần mã 0 giữa lúc compile). Service `frontend` thiếu `restart: unless-stopped` (4 service khác có) → không tự lên lại. Chưa sửa, chờ user.
+- **Chưa làm (để phần sau):** chat giả (module chat); `account.service` mock + form đổi tên không gọi API (B); `src/imports/pasted_text/*.md`, `src/index.css` thừa; component preview không còn dùng (`MeetingControls`, `MeetingHeader`, `ParticipantPanel`, `VideoRail` bản không-live) vẫn export trong `features/meeting/index.ts`.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** chưa — chờ user.

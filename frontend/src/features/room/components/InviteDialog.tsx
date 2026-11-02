@@ -18,7 +18,7 @@ interface InviteDialogProps {
 
 export function InviteDialog({
   copied,
-  joinCode = "STUDY-6X2P",
+  joinCode = "—",
   roomId,
   onCopy,
   onClose,

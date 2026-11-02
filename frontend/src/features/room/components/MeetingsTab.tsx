@@ -1,7 +1,6 @@
 "use client";
 
 import { Users, Video } from "lucide-react";
-import { meetings as mockMeetings } from "@/data/mockData";
 import type { Meeting } from "@/types";
 
 interface MeetingsTabProps {
@@ -25,8 +24,8 @@ export function MeetingsTab({
   isHost,
   onEndMeeting,
 }: MeetingsTabProps) {
-  // If undefined, fallback to mockData for preview. If array is passed (even empty []), use real data.
-  const displayMeetings = propMeetings !== undefined ? propMeetings : mockMeetings;
+  // Chỉ hiện meeting thật từ backend; chưa có thì danh sách rỗng
+  const displayMeetings = propMeetings ?? [];
   const activeMeeting = displayMeetings.find((m) => m.status === "Live");
   const historyMeetings = displayMeetings.filter((m) => m.id !== activeMeeting?.id);
 
