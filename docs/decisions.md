@@ -166,3 +166,12 @@ Phần này không nằm trong scope hiện tại
 **Alternatives:** tiếp tục MinIO, tự build MinIO Community, hoặc dùng S3-compatible provider.
 **Rejected because:** yêu cầu task hiện tại là Amazon S3 và image MinIO không pull được ở môi trường phát triển.
 **Status:** CONFIRMED — user yêu cầu chuyển sang Amazon S3 2026-10-27.
+
+## ADR-027 — Đổi mật khẩu thu hồi các phiên khác; tài khoản Google được đặt mật khẩu lần đầu
+**Decision:** `POST /auth/password { currentPassword?, newPassword }`. Tài khoản đã có mật khẩu phải nhập đúng mật khẩu hiện tại (sai / thiếu → `400`, không `401` vì frontend coi 401 là hết phiên). Tài khoản chỉ dùng Google (không có mật khẩu) được đặt mật khẩu lần đầu không cần mật khẩu cũ; xong thêm `local` vào `providers` → đăng nhập được bằng cả Google lẫn mật khẩu. Đổi xong thu hồi mọi refresh token còn sống của user **trừ** token trong cookie của request đang đổi (`tokenHash: { $ne }`); không có cookie → thu hồi hết. Endpoint đặt dưới `/auth` vì cookie `refresh_token` có `Path=/auth` (ADR-023) — ở `/users/*` trình duyệt không gửi cookie, không biết phiên hiện tại. Đổi tên ở `PATCH /auth/me` (An làm, merge 2026-11-02); `GET /auth/me` trả Profile qua `toProfile` (`id` không `_id`, kèm `createdAt`, `hasPassword`) — trước đó trả nguyên document Mongo.
+**Reason:** Đổi mật khẩu thường vì nghi lộ → phiên của người giữ mật khẩu cũ phải chết; phiên đang thao tác thì giữ để người dùng không bị đá ra. User chốt 2026-11-02: (1) tài khoản Google được đặt mật khẩu lần đầu, (2) đăng xuất các phiên khác.
+**Truy vết:** đề cương §3.2 và §5.4 ("Xây dựng chức năng đăng ký, đăng nhập và **quản lý tài khoản người dùng**"). Đề cương không nói chi tiết đổi mật khẩu; thu hồi phiên, đặt mật khẩu cho tài khoản Google là `[phát sinh kỹ thuật]` — xuất phát từ `docs/task/small_task.md` #1.
+**Alternatives:** từ chối đổi mật khẩu với tài khoản Google; giữ nguyên mọi phiên sau khi đổi; đặt endpoint ở `/users/me/password`.
+**Rejected because:** từ chối → user Google không có cách đăng nhập bằng mật khẩu (user chọn cho đặt); giữ phiên → mật khẩu lộ thì phiên kẻ gian vẫn sống tới 7 ngày; `/users/*` không nhận được cookie `Path=/auth` → không giữ được phiên hiện tại.
+**Giới hạn biết trước:** thiết bị khác chỉ bị đăng xuất khi access token (≤ 15 phút) hết hạn và refresh bị `401`, không tức thì.
+**Status:** CONFIRMED — user chốt 2026-11-02.

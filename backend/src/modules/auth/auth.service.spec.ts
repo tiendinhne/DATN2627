@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import * as crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service.js';
 
 // Query Mongoose giả: lean() nối chuỗi, exec() trả result
@@ -43,6 +44,8 @@ function tokenDoc(overrides: Record<string, unknown> = {}) {
 function build(doc: unknown = tokenDoc(), claimed: unknown = { _id: 'x' }) {
   const usersService = {
     findById: vi.fn().mockResolvedValue(user),
+    findByIdWithPassword: vi.fn().mockResolvedValue(user),
+    setPassword: vi.fn().mockResolvedValue(undefined),
     updateDisplayName: vi.fn().mockResolvedValue({ ...user, displayName: 'Tên mới' }),
   };
   const jwtService = { sign: vi.fn(() => 'access.jwt') };
@@ -52,6 +55,7 @@ function build(doc: unknown = tokenDoc(), claimed: unknown = { _id: 'x' }) {
     findOneAndUpdate: q(claimed),
     create: vi.fn().mockResolvedValue({}),
     updateOne: q({ modifiedCount: 1 }),
+    updateMany: q({ modifiedCount: 2 }),
   };
   const service = new AuthService(usersService as any, jwtService as any, refreshTokenModel as any);
   return { service, usersService, jwtService, refreshTokenModel };
@@ -183,5 +187,72 @@ describe('AuthService.logout', () => {
     await service.logout(undefined);
     await service.logout('abc');
     expect(refreshTokenModel.updateOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthService.changePassword', () => {
+  // User trong DB kèm hash mật khẩu (findByIdWithPassword select +password). password undefined = chỉ dùng Google
+  async function buildFor(oldPassword: string | undefined, providers = ['local']) {
+    const ctx = build();
+    const dbUser = { ...user, providers, password: oldPassword ? await bcrypt.hash(oldPassword, 4) : undefined };
+    ctx.usersService.findByIdWithPassword.mockResolvedValue(dbUser);
+    return ctx;
+  }
+
+  it('đã có mật khẩu mà thiếu mật khẩu hiện tại → 400, không đổi gì', async () => {
+    const { service, usersService, refreshTokenModel } = await buildFor('old-pass');
+    await expect(
+      service.changePassword(userId.toString(), { newPassword: 'new-pass' }, rawToken),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(usersService.setPassword).not.toHaveBeenCalled();
+    expect(refreshTokenModel.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('mật khẩu hiện tại sai → 400, không đổi gì', async () => {
+    const { service, usersService, refreshTokenModel } = await buildFor('old-pass');
+    await expect(
+      service.changePassword(userId.toString(), { currentPassword: 'sai', newPassword: 'new-pass' }, rawToken),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(usersService.setPassword).not.toHaveBeenCalled();
+    expect(refreshTokenModel.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('đúng mật khẩu hiện tại → lưu hash mới, thu hồi mọi phiên khác, giữ phiên hiện tại', async () => {
+    const { service, usersService, refreshTokenModel } = await buildFor('old-pass');
+
+    await service.changePassword(userId.toString(), { currentPassword: 'old-pass', newPassword: 'new-pass' }, rawToken);
+
+    const [id, hash] = usersService.setPassword.mock.calls[0];
+    expect(id).toBe(userId.toString());
+    expect(await bcrypt.compare('new-pass', hash)).toBe(true);
+    const [filter, update] = refreshTokenModel.updateMany.mock.calls[0];
+    expect(filter).toEqual({ userId: userId.toString(), revokedAt: null, tokenHash: { $ne: sha256(rawToken) } });
+    expect(update.$set.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it('tài khoản Google chưa có mật khẩu → đặt mật khẩu không cần mật khẩu cũ', async () => {
+    const { service, usersService } = await buildFor(undefined, ['google']);
+
+    await service.changePassword(userId.toString(), { newPassword: 'new-pass' }, rawToken);
+
+    const [, hash] = usersService.setPassword.mock.calls[0];
+    expect(await bcrypt.compare('new-pass', hash)).toBe(true);
+  });
+
+  it('không có cookie refresh (không biết phiên hiện tại) → thu hồi mọi phiên', async () => {
+    const { service, refreshTokenModel } = await buildFor('old-pass');
+
+    await service.changePassword(userId.toString(), { currentPassword: 'old-pass', newPassword: 'new-pass' }, undefined);
+
+    const [filter] = refreshTokenModel.updateMany.mock.calls[0];
+    expect(filter).toEqual({ userId: userId.toString(), revokedAt: null });
+  });
+
+  it('user không còn tồn tại → 401', async () => {
+    const { service, usersService } = build();
+    usersService.findByIdWithPassword.mockResolvedValue(null);
+    await expect(
+      service.changePassword(userId.toString(), { newPassword: 'new-pass' }, rawToken),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

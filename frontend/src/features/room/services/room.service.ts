@@ -18,12 +18,12 @@ export function mapBackendMember(m: BackendRoomMember, index = 0): RoomMember {
   return {
     userId: m.userId,
     name,
-    email: `${m.userId.slice(-6)}@member`,
+    // API members chưa trả email / trạng thái online (small_task #2, phần C) → không bịa
+    email: "—",
     initials,
     role: m.role === "HOST" ? "Chủ phòng" : "Thành viên",
-    online: true,
     color: MEMBER_COLORS[index % MEMBER_COLORS.length],
-    joinedDate: m.joinedAt ? new Date(m.joinedAt).toLocaleDateString("vi-VN") : "02/06/2026",
+    joinedDate: m.joinedAt ? new Date(m.joinedAt).toLocaleDateString("vi-VN") : undefined,
   };
 }
 

@@ -34,6 +34,27 @@ export class UsersService {
     return this.userModel.findById(id).exec();
   }
 
+  // Kèm hash mật khẩu (mặc định select: false) — chỉ dùng khi đổi mật khẩu
+  async findByIdWithPassword(id: string) {
+    return this.userModel.findById(id).select('+password').exec();
+  }
+
+  // Thông tin user trả cho frontend ở GET /auth/me: id thay _id (ràng buộc 2), không lộ password / __v
+  toProfile(user: UserDocument) {
+    return {
+      id: String(user._id),
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl ?? null,
+      providers: user.providers,
+      // Có provider local = có mật khẩu (tài khoản chỉ dùng Google thì chưa có)
+      hasPassword: user.providers.includes(AuthProvider.LOCAL),
+      createdAt: (user as any).createdAt,
+    };
+  }
+
+  // PATCH /auth/me — đổi tên hiển thị (AuthService.updateProfile gọi)
   async updateDisplayName(id: string, displayName: string) {
     return this.userModel
       .findByIdAndUpdate(
@@ -41,6 +62,13 @@ export class UsersService {
         { $set: { displayName } },
         { returnDocument: 'after', runValidators: true },
       )
+      .exec();
+  }
+
+  // Lưu hash mật khẩu mới; thêm provider local để tài khoản Google đặt mật khẩu lần đầu đăng nhập được bằng mật khẩu
+  async setPassword(userId: string, passwordHash: string) {
+    await this.userModel
+      .findByIdAndUpdate(userId, { $set: { password: passwordHash }, $addToSet: { providers: AuthProvider.LOCAL } })
       .exec();
   }
 

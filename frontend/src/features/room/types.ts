@@ -10,7 +10,7 @@ export interface RoomMember {
   email: string;
   initials: string;
   role: "Chủ phòng" | "Thành viên";
-  online: boolean;
+  online?: boolean; // chưa có API presence (small_task #2, phần C) → undefined = không biết
   color: string;
   joinedDate?: string;
 }

@@ -70,6 +70,7 @@ services:
     build: { context: ./frontend }
     container_name: frontend-dev
     ports: ["3000:3000"]
+    restart: unless-stopped
     environment:
       WATCHPACK_POLLING: "true"   # Windows: mount không báo file đổi → dò định kỳ để hot reload chạy
     depends_on: [backend]

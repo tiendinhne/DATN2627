@@ -1033,4 +1033,58 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
 - **Quyết định:** preview dùng object URL cục bộ; không upload ảnh cho tới khi bấm Gửi.
 - **Lệch khỏi tài liệu:** không.
+
+## 2026-11-02 — small_task #2 phần A: bỏ dữ liệu gắn cứng ở frontend (branch `feature/user-api-real-data`)
+
+- **Phạm vi:** `docs/task/small_task.md` (#1 API người dùng, #2 dữ liệu gắn cứng) tách 4 phần, user chốt làm A trước: A = bỏ dữ liệu giả ở chỗ backend đã có dữ liệu + route / file giả (chỉ frontend); B = `GET/PATCH /users/me` + đổi mật khẩu; C = API thống kê theo user, email + online của thành viên; D = quên mật khẩu + OTP email (architectural, cần dependency + SMTP, `[phát sinh kỹ thuật]`).
+- **Quyết định (user chốt):** ô chưa có dữ liệu thật hiện "—" / "Chưa có dữ liệu", giữ bố cục để B / C đổ dữ liệu vào; bỏ số giả và câu so sánh bịa.
+- **Đã xong:**
+  - Dashboard: "Cuộc họp" / "Thời gian học" → "—"; bỏ "4 giờ học tuần này", "+12% so với tuần trước"; "Cuộc họp sắp tới" bỏ `mockData` → "Chưa có dữ liệu"; bỏ điều hướng tới `sprint-review-05` / `software-engineering`.
+  - Profile: số phòng lấy thật từ `GET /rooms` (`n` hoặc `n+` khi `hasMore`); cuộc họp / giờ học → "—"; "Sinh viên · Đang hoạt động" → `@username`; "Tài khoản sinh viên đã xác minh · Thành viên từ ngày 02/06/2026" → "Ngày tham gia · Chưa có dữ liệu".
+  - Room: `mapBackendMember` bỏ email bịa `xxxxxx@member`, bỏ `online: true` mặc định, bỏ ngày `02/06/2026`; `RoomMember.online` thành tùy chọn (không biết → "—"); `MembersTab` bỏ 5 thành viên giả và "x đang trực tuyến"; `MeetingsTab` / `RoomOverviewTab` bỏ fallback `mockMeetings`; mã phòng giả `STUDY-6X2P` → "—" (`RoomView`, `RoomOverviewTab`, `InviteDialog`); `RoomView` bỏ `roomId` mặc định, state khởi tạo không còn tên / mô tả mẫu, `role` mặc định `member` (trước là `owner` → nút chủ phòng hiện thoáng qua với thành viên khi đang tải); nhánh dự phòng tới `sprint-review-05` → báo lỗi.
+  - Meeting: bỏ màn preview giả (~150 dòng, `mockParticipants`) và `meetingId` mặc định; chưa đăng nhập → `/login?returnUrl=…` (như `/join`); id sai → "Không tìm thấy buổi học".
+  - Xoá: route `/room`, `/meeting`; `src/App.tsx` + 7 wrapper trong `components/` chỉ `App.tsx` dùng; `features/whiteboard/services/whiteboard.service.ts`; `data/mockData.ts`.
+- **Kiểm tra (chạy thật):** script Chrome headless (đồ bỏ ở scratchpad), frontend trong container, backend Docker, user + phòng thật; tìm chuỗi giả ("8.5h", "+12%", "An Nguyễn", "Minh Anh", "@member", "02/06/2026", "đã xác minh", "example.com", "sprint-review"…).
+  - Trước khi sửa: 5 FAIL (dashboard, profile, tab Thành viên, meeting id sai hiện màn giả "Minh Anh, Quang Huy", chưa đăng nhập không về `/login`).
+  - Sau khi sửa: 7/7 PASS.
+  - `npm run build` exit 0, 12 trang (bỏ `/room`, `/meeting`); `tsc --noEmit` 0 lỗi (sau build — `.next/types` cũ còn trỏ route đã xoá); `next lint` sạch.
+- **Đánh đổi:** không còn trang thử Excalidraw không cần backend (`/meeting` preview) — muốn thử whiteboard phải vào meeting thật.
+- **Gặp khi chạy:** container `frontend-dev` dừng 2 lần trong lúc làm (1 lần mã 255 sau khi Docker Desktop khởi động lại, kèm `EIO` đọc thư mục mount; 1 lần mã 0 giữa lúc compile). Service `frontend` thiếu `restart: unless-stopped` (4 service khác có) → không tự lên lại. Chưa sửa, chờ user.
+- **Chưa làm (để phần sau):** chat giả (module chat); `account.service` mock + form đổi tên không gọi API (B); `src/imports/pasted_text/*.md`, `src/index.css` thừa; component preview không còn dùng (`MeetingControls`, `MeetingHeader`, `ParticipantPanel`, `VideoRail` bản không-live) vẫn export trong `features/meeting/index.ts`.
+- **Lệch khỏi tài liệu:** không.
+- **Commit:** `b12366a`.
+
+## 2026-11-02 — small_task #1 phần B: thông tin tài khoản, đổi tên, đổi mật khẩu (branch `feature/user-api-real-data`, ADR-027)
+
+- **Quyết định (user chốt):** tài khoản chỉ dùng Google được đặt mật khẩu lần đầu không cần mật khẩu cũ (thêm `local` vào `providers`); đổi mật khẩu thì thu hồi mọi phiên khác, giữ phiên hiện tại → endpoint ở `POST /auth/password` (cookie `Path=/auth`). ADR-027 (lúc viết là ADR-025, đổi số khi merge vì main đã có ADR-025/026 của module chat).
+- **Backend:**
+  - `UsersController` mới: `GET /users/me`, `PATCH /users/me { displayName }` (`UpdateProfileDto`: trim, 1–20 ký tự như đăng ký). `UsersModule` import `PassportModule` (như `RoomsModule`).
+  - `UsersService`: `toProfile` (map `_id → id`, `hasPassword`, `createdAt`), `updateDisplayName`, `findByIdWithPassword`, `setPassword` (`$set password` + `$addToSet providers: local`).
+  - `AuthService.changePassword` + `ChangePasswordDto`; `POST /auth/password` → `204`; sai / thiếu mật khẩu hiện tại → `400`.
+  - **Sửa lỗi có sẵn:** `GET /auth/me` trả nguyên document Mongo (`_id`, `__v`, `updatedAt`, `lastLoginAt`) — vi phạm ràng buộc 2 → giờ trả `toProfile`.
+- **Frontend:** `src/services/user.service.ts` (`getMyProfile`, `updateMyProfile`, `changePassword` — dùng `request` có `credentials: 'include'`); type `MyProfile`; `AuthContext.updateUser` (đổi tên xong menu đổi ngay); Profile: ngày tham gia thật, form đổi tên gọi API + báo lỗi; Settings: mục "Đổi mật khẩu" / "Đặt mật khẩu" (ẩn ô mật khẩu cũ khi `hasPassword = false`), bỏ nhãn giả "Đã xác minh" (phần A sót vì script tìm chữ thường), nút "Chỉnh sửa" mở `/profile`. Xoá `features/account/services/account.service.ts` (mock "An Nguyễn") và `features/account/types.ts` (không ai dùng).
+- **Kiểm tra (chạy thật):**
+  - TDD: viết 11 test trước (`auth.service.spec.ts` 6 test `changePassword`, `users.service.spec.ts` mới 5 test) → 11 FAIL (`is not a function`) → code → backend `vitest run` 9 file, **154/154** pass; `nest build` exit 0.
+  - curl, 2 phiên (2 cookie) cùng user: `/users/me` + `/auth/me` có `id`, không `_id`; PATCH tên toàn dấu cách / 21 ký tự → 400; đổi MK thiếu / sai MK cũ / MK mới 3 ký tự → 400; không token → 401; đúng → 204; refresh phiên kia → **401**, phiên hiện tại → 200; login MK cũ → 401, MK mới → 201.
+  - Node (UTF-8): tên "  Tên mới  " lưu "Tên mới". Tài khoản Google (dùng `mongosh` bỏ `password`, `providers: ['google']`): `hasPassword=false`, login bằng mật khẩu → 401; đặt MK không gửi MK cũ → 204, `providers=['google','local']`, login MK mới được; đổi lần 2 không gửi MK cũ → 400.
+  - Chrome headless (đồ bỏ ở scratchpad), frontend trong container: 11/11 PASS — ngày tham gia đúng ngày tạo, lưu tên → "Đã lưu thay đổi", tên hiện ngay ở menu, F5 giữ tên mới; Settings không còn "Đã xác minh"; nhập lại không khớp / sai MK hiện tại báo lỗi; đổi đúng → "Đã cập nhật mật khẩu"; F5 vẫn đăng nhập; đăng nhập lại bằng MK mới được. (Lần chạy đầu 1 FAIL ở bước "không khớp" — script bấm quá sớm; chạy riêng bước đó và chạy lại toàn bộ với user mới đều PASS.)
+  - Frontend `tsc` 0 lỗi, `next lint` sạch, `npm run build` exit 0.
+- **Gặp khi chạy (chưa sửa, chờ user):**
+  1. **Container frontend chết vì hết RAM:** `dmesg` VM Docker: `Out of memory: Killed process … (next-server (v1)) anon-rss:2012596kB` — Next dev ~2 GB khi compile trang meeting (5.500+ module), VM Docker chỉ 3,3 GB. Container thoát mã 0, thiếu `restart: unless-stopped` nên không tự lên.
+  2. **Backend không hot reload trong Docker trên Windows:** sửa `backend/src` → container có file mới nhưng `nest start --watch` không biết (bind mount không báo sự kiện) → phải `docker compose restart backend`. README / ADR-016 đang ghi "tự reload" — sai với backend.
+- **Lệch khỏi tài liệu:** không (endpoint.md + ADR-027 đã cập nhật).
+- **Commit:** chưa — chờ user.
+
+## 2026-11-02 — Merge `origin/main` vào `feature/user-api-real-data` (9 file conflict)
+
+- **Bối cảnh:** main có 6 commit của An (27–30/10): module chat (REST + upload S3 + Socket.IO), `RealtimePublisher`, sửa UI, và **đổi tên hiển thị `PATCH /auth/me`** — trùng phần B (`PATCH /users/me`).
+- **Quyết định (user chốt):** phần trùng ưu tiên bản của An. Đã làm:
+  - Giữ `PATCH /auth/me`, `AuthService.updateProfile`, `UsersService.updateDisplayName` (trả document), `auth.context.updateDisplayName`, logic lưu tên trong `ProfileView` của An.
+  - Bỏ của phần B: `UsersController` (`GET` / `PATCH /users/me`), `users/dto/update-profile.dto.ts`, `AuthContext.updateUser`, `updateMyProfile`; `users.module.ts` về như cũ.
+  - Giữ của phần B (An không làm): `GET /auth/me` trả `toProfile` (sửa lỗi `_id` / `__v`), `POST /auth/password`, mục đổi mật khẩu trong Settings. `getMyProfile` (ngày tham gia, `hasPassword`) giờ gọi `GET /auth/me`.
+  - `ProfileView`: logic lưu của An + dữ liệu thật của phần A / B (số phòng, ngày tham gia, `@username`, "—"); bản của An còn `3` / `12` / `8.5h` / "Sinh viên · Đang hoạt động".
+  - `MeetingWorkspace`: giữ props chat của An ở bản live; bỏ màn preview (An có sửa props chat cho cả bản preview, nhưng phần A đã bỏ màn này).
+  - ADR của phần B đổi số **ADR-025 → ADR-027** (main đã có ADR-025, 026 cho S3); `endpoint.md` bỏ mục Users, mô tả Profile ở `GET /auth/me`.
+  - `users.service.spec.ts` (cả hai cùng tạo): giữ nguyên test `updateDisplayName` của An + test `toProfile`, `setPassword`; `auth.service.spec.ts`: gộp mock của hai bên.
+- **Gặp khi chạy:** `nest build` lỗi `Cannot find module '@aws-sdk/s3-request-presigner'` — `package.json` của main đã khai báo, chỉ `node_modules` máy chưa cài → `npm ci` theo lockfile, không thêm dependency. Image Docker backend cũng phải `--build` lại vì có dependency mới.
 - **Commit:** chưa — chờ user.

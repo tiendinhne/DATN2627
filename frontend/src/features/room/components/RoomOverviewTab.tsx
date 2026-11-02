@@ -10,7 +10,6 @@ import {
   Video,
 } from "lucide-react";
 import { useState } from "react";
-import { meetings as mockMeetings } from "@/data/mockData";
 import type { Meeting } from "@/types";
 import type { RoomRole } from "../types";
 
@@ -42,8 +41,9 @@ export function RoomOverviewTab({
 }: RoomOverviewTabProps) {
   const [copied, setCopied] = useState(false);
 
-  const joinCode = roomInfo?.joinCode || "STUDY-6X2P";
-  const displayMeetings = recentMeetings !== undefined ? recentMeetings : mockMeetings;
+  const joinCode = roomInfo?.joinCode || "—";
+  // Chỉ hiện meeting thật từ backend; chưa có thì danh sách rỗng
+  const displayMeetings = recentMeetings ?? [];
 
   const handleCopyCode = () => {
     navigator.clipboard?.writeText(joinCode);

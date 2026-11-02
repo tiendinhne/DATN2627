@@ -33,12 +33,12 @@ import { StartMeetingDialog } from "./StartMeetingDialog";
 const tabs = ["Tổng quan", "Trò chuyện", "Cuộc họp", "Thành viên"];
 
 interface RoomViewProps {
-  roomId?: string;
+  roomId: string;
   onNavigate?: (page: string) => void;
 }
 
 export function RoomView({
-  roomId = "software-engineering",
+  roomId,
   onNavigate,
 }: RoomViewProps) {
   const router = useRouter();
@@ -46,12 +46,12 @@ export function RoomView({
 
   const [tab, setTab] = useState("Tổng quan");
   const [backendRoom, setBackendRoom] = useState<BackendRoom | null>(null);
-  const [roomName, setRoomName] = useState("Software Engineering");
-  const [description, setDescription] = useState(
-    "Không gian làm việc cho đồ án tốt nghiệp · Nhóm 05"
-  );
-  const [role, setRole] = useState<RoomRole>("owner");
-  const [joinCode, setJoinCode] = useState("STUDY-6X2P");
+  // Giá trị rỗng tới khi GET /rooms/:id trả về — không hiện dữ liệu mẫu
+  const [roomName, setRoomName] = useState("");
+  const [description, setDescription] = useState("");
+  // Mặc định thành viên thường: chưa tải xong thì không hiện nút của chủ phòng
+  const [role, setRole] = useState<RoomRole>("member");
+  const [joinCode, setJoinCode] = useState("—");
   const [ownerName, setOwnerName] = useState("Chủ phòng");
   const [memberCount, setMemberCount] = useState(1);
   const [members, setMembers] = useState<RoomMember[]>([]);
@@ -150,11 +150,8 @@ export function RoomView({
       }
     }
 
-    if (onNavigate) {
-      onNavigate("meeting");
-    } else {
-      router.push("/meetings/sprint-review-05");
-    }
+    // Chưa tải xong phòng / chưa đăng nhập → không có meeting thật để mở
+    notify("Phòng chưa tải xong, thử lại sau giây lát");
   };
 
   // Tham gia cuộc họp đã có
@@ -307,7 +304,7 @@ export function RoomView({
             joinCode,
             ownerName,
             memberCount,
-            createdAt: backendRoom ? new Date(backendRoom.createdAt).toLocaleDateString("vi-VN") : "02/06/2026",
+            createdAt: backendRoom ? new Date(backendRoom.createdAt).toLocaleDateString("vi-VN") : "—",
           }}
           activeMeeting={
             activeBackendMeeting

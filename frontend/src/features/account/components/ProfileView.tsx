@@ -2,20 +2,36 @@
 
 import { Camera, Check, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/context/auth.context";
+import { listMyRooms } from "@/services/room.service";
+import { getMyProfile } from "@/services/user.service";
 import { useEffect, useState, type FormEvent } from "react";
 
 export function ProfileView() {
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const { user, updateDisplayName } = useAuth();
+  const { user, token, updateDisplayName } = useAuth();
   const [displayName, setDisplayName] = useState("");
+  // Số phòng thật từ GET /rooms; "—" khi chưa tải được
+  const [roomCount, setRoomCount] = useState("—");
+  // Ngày tạo tài khoản từ GET /auth/me
+  const [joinedDate, setJoinedDate] = useState("Chưa có dữ liệu");
 
   useEffect(() => {
     if (user) {
       setDisplayName(user.displayName || user.username || "");
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!token) return;
+    getMyProfile(token)
+      .then((profile) => setJoinedDate(new Date(profile.createdAt).toLocaleDateString("vi-VN")))
+      .catch(() => setJoinedDate("Chưa có dữ liệu"));
+    listMyRooms(token, 1)
+      .then((res) => setRoomCount(`${res.items.length}${res.hasMore ? "+" : ""}`))
+      .catch(() => setRoomCount("—"));
+  }, [token]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -59,20 +75,21 @@ export function ProfileView() {
             </div>
             <div>
               <h2>{user?.displayName || user?.username || "Chưa cập nhật"}</h2>
-              <p>Sinh viên · Đang hoạt động</p>
+              <p>@{user?.username}</p>
             </div>
           </div>
           <div className="profile-facts">
             <div>
-              <strong>3</strong>
+              <strong>{roomCount}</strong>
               <span>Phòng học</span>
             </div>
+            {/* Cuộc họp / giờ học: chưa có API thống kê theo user (small_task #2, phần C) */}
             <div>
-              <strong>12</strong>
+              <strong>—</strong>
               <span>Cuộc họp</span>
             </div>
             <div>
-              <strong>8.5h</strong>
+              <strong>—</strong>
               <span>Thời gian học</span>
             </div>
           </div>
@@ -120,8 +137,8 @@ export function ProfileView() {
                 <ShieldCheck size={17} />
               </span>
               <p>
-                <strong>Tài khoản sinh viên đã xác minh</strong>
-                <small>Thành viên từ ngày 02/06/2026</small>
+                <strong>Ngày tham gia</strong>
+                <small>{joinedDate}</small>
               </p>
             </div>
             <div className="form-footer">

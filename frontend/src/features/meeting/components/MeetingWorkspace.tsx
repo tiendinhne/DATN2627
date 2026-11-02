@@ -30,7 +30,6 @@ import "@livekit/components-styles";
 
 import { useAuth } from "@/context/auth.context";
 import { useTheme } from "@/context/ThemeContext";
-import { participants as mockParticipants } from "@/data/mockData";
 import { MeetingChat } from "@/features/chat";
 import { getAvatarColor, getInitials } from "@/features/meeting/services/meeting.service";
 import { AIPanel, WhiteboardCanvas } from "@/features/whiteboard";
@@ -39,10 +38,10 @@ import { getRoom } from "@/services/room.service";
 import type { JoinMeetingResponse } from "@/types/backend";
 
 import { EndMeetingModal } from "./EndMeetingModal";
-import { LiveMeetingControls, MeetingControls } from "./MeetingControls";
-import { LiveMeetingHeader, MeetingHeader } from "./MeetingHeader";
-import { LiveParticipantPanel, ParticipantPanel } from "./ParticipantPanel";
-import { LiveVideoRail, VideoRail } from "./VideoRail";
+import { LiveMeetingControls } from "./MeetingControls";
+import { LiveMeetingHeader } from "./MeetingHeader";
+import { LiveParticipantPanel } from "./ParticipantPanel";
+import { LiveVideoRail } from "./VideoRail";
 
 // LiveKit configuration matching frontend-re spec §11.3, §11.4
 const ROOM_OPTIONS: RoomOptions = {
@@ -66,7 +65,7 @@ const DEVICE_MESSAGE: Record<MediaDeviceFailure, string> = {
 
 interface MeetingWorkspaceProps {
   dark?: boolean;
-  meetingId?: string;
+  meetingId: string;
   initialRoomId?: string;
   onBack?: () => void;
 }
@@ -346,7 +345,7 @@ function LiveMeetingContent({
 
 export function MeetingWorkspace({
   dark: propDark,
-  meetingId = "sprint-review-05",
+  meetingId,
   initialRoomId,
   onBack,
 }: MeetingWorkspaceProps) {
@@ -365,18 +364,18 @@ export function MeetingWorkspace({
   const [attempt, setAttempt] = useState(0);
   const [pinnedContent, setPinnedContent] = useState<MeetingPin>(null);
 
-  // Fallback states for mock preview
-  const [muted, setMuted] = useState(false);
-  const [camera, setCamera] = useState(true);
-  const [sideTab, setSideTab] = useState<"chat" | "people" | "ai">("chat");
-  const [panelOpen, setPanelOpen] = useState(true);
-  const [endConfirm, setEndConfirm] = useState(false);
-
   const connectedRef = useRef(false);
   const tokenRef = useRef(token);
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
+
+  // Chưa đăng nhập → /login, đăng nhập xong quay lại đúng buổi học (giống trang /join)
+  useEffect(() => {
+    if (!isAuthLoading && !token) {
+      router.replace(`/login?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    }
+  }, [isAuthLoading, token, router]);
 
   // Load meeting backend data and LiveKit token
   useEffect(() => {
@@ -570,162 +569,26 @@ export function MeetingWorkspace({
     );
   }
 
-  // Fallback / preview workspace (used when running without active backend or in preview mode)
-  return (
-    <div className={`meeting-workspace ${isDark ? "dark" : ""}`}>
-      <MeetingHeader
-        roomName={roomName}
-        meetingTitle="Họp tiến độ nhóm"
-        participantCount={mockParticipants.length + 1}
-        onBack={handleBack}
-        onLeave={() => setEndConfirm(true)}
-      />
-
-      <div className="meeting-body">
-        <VideoRail
-          participants={mockParticipants}
-          pinnedParticipantId={
-            pinnedContent?.type === "participant" ? pinnedContent.id : undefined
-          }
-          onPinParticipant={(id, label) => {
-            setPinnedContent(
-              pinnedContent?.type === "participant" && pinnedContent.id === id
-                ? null
-                : { type: "participant", id, label }
-            );
-          }}
-        />
-
-        <main className="board-area">
-          <div className="board-topbar">
-            <div className="board-title">
-              <strong>Bảng vẽ cộng tác</strong>
-              <span>Đã lưu phiên học</span>
-            </div>
-            <div className="collaborators">
-              <span style={{ background: "#5667e9" }}>AN</span>
-              <span style={{ background: "#dd7a55" }}>MA</span>
-              <span style={{ background: "#349a79" }}>QH</span>
-              <small>+2</small>
-            </div>
-            <button
-              className={`ai-button ${pinnedContent?.type === "whiteboard" ? "active" : ""}`}
-              onClick={() => {
-                setPinnedContent(
-                  pinnedContent?.type === "whiteboard" ? null : { type: "whiteboard" }
-                );
-              }}
-              title={pinnedContent?.type === "whiteboard" ? "Bỏ ghim bảng vẽ" : "Ghim bảng vẽ"}
-              type="button"
-            >
-              <Pin size={15} /> {pinnedContent?.type === "whiteboard" ? "Đã ghim" : "Ghim bảng vẽ"}
-            </button>
-            <button
-              className="ai-button"
-              onClick={() => {
-                setPanelOpen(true);
-                setSideTab("ai");
-              }}
-              type="button"
-            >
-              <Sparkles size={16} /> AI hỗ trợ
-            </button>
-          </div>
-
-          {pinnedContent?.type === "participant" ? (
-            <div className="pinned-stage pinned-preview">
-              <div
-                className="participant-avatar"
-                style={{
-                  background: mockParticipants.find(
-                    (person) => person.id === pinnedContent.id
-                  )?.color,
-                }}
-              >
-                {mockParticipants.find((person) => person.id === pinnedContent.id)?.initials}
-              </div>
-              <span className="pinned-stage-label">
-                <Pin size={13} /> {pinnedContent.label} · chỉ hiển thị với bạn
-              </span>
-            </div>
-          ) : null}
-          {/* Luôn render, chỉ ẩn khi ghim người tham gia — để không mất nét vẽ */}
-          <WhiteboardCanvas dark={isDark} hidden={pinnedContent?.type === "participant"} />
-        </main>
-
-        {panelOpen && (
-          <aside className="meeting-panel">
-            <div className="panel-tabs">
-              <button
-                className={sideTab === "chat" ? "active" : ""}
-                onClick={() => setSideTab("chat")}
-                type="button"
-              >
-                <MessageSquare size={16} /> Trò chuyện
-              </button>
-              <button
-                className={sideTab === "people" ? "active" : ""}
-                onClick={() => setSideTab("people")}
-                type="button"
-                aria-label="Thành viên"
-              >
-                <Users size={16} />
-              </button>
-              <button
-                className={sideTab === "ai" ? "active" : ""}
-                onClick={() => setSideTab("ai")}
-                type="button"
-                aria-label="AI hỗ trợ"
-              >
-                <Bot size={16} />
-              </button>
-              <button
-                className="collapse"
-                onClick={() => setPanelOpen(false)}
-                type="button"
-                aria-label="Thu gọn"
-              >
-                <ChevronRight size={17} />
-              </button>
-            </div>
-
-            {sideTab === "chat" ? (
-              <MeetingChat
-                roomId={initialRoomId}
-                token={token}
-                currentUserId={user?.id}
-              />
-            ) : sideTab === "ai" ? (
-              <AIPanel />
-            ) : (
-              <ParticipantPanel participants={mockParticipants} />
-            )}
-          </aside>
-        )}
+  // Id không đúng dạng ObjectId → không gọi backend, báo không tìm thấy (không còn màn preview giả)
+  if (!hasValidMeetingId) {
+    return (
+      <div className={`meeting-workspace flex flex-col items-center justify-center p-6 text-center ${isDark ? "dark" : ""}`}>
+        <div className="max-w-md rounded-2xl border border-slate-700 bg-slate-900/90 p-8 shadow-2xl backdrop-blur-sm">
+          <h2 className="mb-2 text-xl font-bold text-white">Không tìm thấy buổi học</h2>
+          <p className="mb-6 text-sm text-slate-400">Đường dẫn buổi học không hợp lệ.</p>
+          <button className="button secondary" onClick={() => router.push("/dashboard")} type="button">
+            ← Về trang chủ
+          </button>
+        </div>
       </div>
+    );
+  }
 
-      <MeetingControls
-        muted={muted}
-        camera={camera}
-        onToggleMic={() => setMuted(!muted)}
-        onToggleCamera={() => setCamera(!camera)}
-        onOpenChat={() => {
-          setPanelOpen(true);
-          setSideTab("chat");
-        }}
-        onOpenPeople={() => {
-          setPanelOpen(true);
-          setSideTab("people");
-        }}
-        onHangup={handleBack}
-      />
-
-      {endConfirm && (
-        <EndMeetingModal
-          onClose={() => setEndConfirm(false)}
-          onConfirm={handleEndMeeting}
-        />
-      )}
+  // Đang kiểm đăng nhập / chưa bắt đầu vào buổi học / đang chuyển về /login
+  return (
+    <div className={`meeting-workspace flex flex-col items-center justify-center p-6 text-center ${isDark ? "dark" : ""}`}>
+      <div className="mb-4 inline-block h-10 w-10 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+      <p className="text-base text-slate-300">Đang vào buổi học trực tuyến...</p>
     </div>
   );
 }

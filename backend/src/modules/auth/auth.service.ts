@@ -12,6 +12,7 @@ import * as crypto from 'crypto';
 import { UsersService } from '../users/users.service.js';
 import { RefreshToken } from './schemas/refresh-token.schema.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 import type { UserDocument } from '../users/schemas/user.schema.js';
 
 // Refresh token sống 7 ngày; controller dùng cùng giá trị cho maxAge của cookie
@@ -183,6 +184,35 @@ export class AuthService {
     if (!rawToken || !REFRESH_TOKEN_FORMAT.test(rawToken)) return;
     await this.refreshTokenModel
       .updateOne({ tokenHash: this.hashToken(rawToken), revokedAt: null }, { $set: { revokedAt: new Date() } })
+      .exec();
+  }
+
+  // POST /auth/password — đổi mật khẩu (ADR-027). Tài khoản đã có mật khẩu phải nhập đúng mật khẩu hiện tại;
+  // tài khoản chỉ dùng Google được đặt mật khẩu lần đầu. Xong thì thu hồi mọi phiên khác, giữ phiên hiện tại
+  // (rawToken = cookie refresh của request này). Lỗi mật khẩu trả 400, không 401 — 401 frontend hiểu là hết phiên.
+  async changePassword(userId: string, dto: ChangePasswordDto, rawToken: string | undefined) {
+    const user = await this.usersService.findByIdWithPassword(userId);
+    if (!user) {
+      throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
+    }
+
+    if (user.password) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException('Cần nhập mật khẩu hiện tại');
+      }
+      if (!(await bcrypt.compare(dto.currentPassword, user.password))) {
+        throw new BadRequestException('Mật khẩu hiện tại không đúng');
+      }
+    }
+
+    await this.usersService.setPassword(userId, await bcrypt.hash(dto.newPassword, 10));
+
+    // Thu hồi mọi refresh token còn sống của user, trừ token của phiên đang đổi mật khẩu.
+    // Không có cookie hợp lệ → không biết phiên hiện tại → thu hồi hết (phiên này hết khi access token hết hạn)
+    const keepCurrent =
+      rawToken && REFRESH_TOKEN_FORMAT.test(rawToken) ? { tokenHash: { $ne: this.hashToken(rawToken) } } : {};
+    await this.refreshTokenModel
+      .updateMany({ userId, revokedAt: null, ...keepCurrent }, { $set: { revokedAt: new Date() } })
       .exec();
   }
 
