@@ -1167,3 +1167,24 @@ Cập nhật lại các role * đọc file rule/role.md
   - [ ] 11. HOST kết thúc meeting -> Mongo `elementCount` đúng, không còn key `wb:*` của meeting.
 - **Commit:** `feat: đồng bộ whiteboard realtime ở frontend`.
 - **Sửa sau review (fix round 1, 2026-11-03):** hook thêm cờ `joined` (chỉ gửi wb:ops / wb:pointer sau khi nhận snapshot; reset khi connect / disconnect, vì server 403 trước khi join xong); `applyRemote` reconcile trước rồi chỉ ghi `synced` cho element remote đã được áp (không nâng version của element local đang sửa dở); chặn batch rỗng khi 1 element đúng bằng WB_MAX_BATCH_BYTES - 2. Plan đã cập nhật khớp. Commit: `fix: whiteboard client chỉ gửi sau khi join, không chặn nét đang sửa`.
+
+
+## 2026-11-03 — Whiteboard: Task 8 — số đo 1 instance
+- **Script:** `tests/load/wb-latency.mjs` (nguyên văn plan, không sửa; `socket.io-client` lấy từ `frontend/node_modules`, không thêm dependency). Mỗi N tạo N tài khoản `bench_*`, 1 phòng, 1 meeting; A gửi 1 element mỗi 50 ms trong 10 s, N-1 người nhận đo (nhận − sentAt).
+- **Lệnh:** chạy thử `WB_SIZES=2` (không lỗi), rồi `node tests/load/wb-latency.mjs` (N = 2, 10, 20). Ngày giờ: 2026-11-03 12:37 (+07:00).
+- **Máy:** AMD Ryzen 7 5700U with Radeon Graphics, 8 nhân; RAM 6.8 GB; Docker Desktop engine 29.3.1. Client đo và server (backend, Redis, Mongo, LiveKit) chạy CÙNG một máy, nên số đo chưa gồm độ trễ mạng thật.
+- **Kết quả:**
+```
+┌─────────┬────┬─────────────────┬─────────┬────────┬────────┬────────┬──────────────────┬────────────────────────┐
+│ (index) │ N  │ scenario        │ samples │ p50_ms │ p95_ms │ max_ms │ lastPayloadBytes │ bytesPerSecPerReceiver │
+├─────────┼────┼─────────────────┼─────────┼────────┼────────┼────────┼──────────────────┼────────────────────────┤
+│ 0       │ 2  │ 'A element nhỏ' │ 162     │ 5      │ 10     │ 22     │ 160              │ 5530                   │
+│ 1       │ 2  │ 'B nét vẽ tay'  │ 161     │ 9      │ 27     │ 45     │ 16231            │ 135542                 │
+│ 2       │ 10 │ 'A element nhỏ' │ 1440    │ 7      │ 18     │ 88     │ 161              │ 5477                   │
+│ 3       │ 10 │ 'B nét vẽ tay'  │ 1440    │ 11     │ 39     │ 186    │ 16149            │ 133916                 │
+│ 4       │ 20 │ 'A element nhỏ' │ 3059    │ 7      │ 12     │ 68     │ 161              │ 5511                   │
+│ 5       │ 20 │ 'B nét vẽ tay'  │ 3059    │ 11     │ 25     │ 48     │ 16232            │ 135558                 │
+└─────────┴────┴─────────────────┴─────────┴────────┴────────┴────────┴──────────────────┴────────────────────────┘
+```
+- **Đọc số:** p50 từ 5 đến 11 ms và p95 từ 10 đến 39 ms ở cả N = 2, 10, 20; max cao nhất 186 ms (N = 10, nét vẽ tay). Giữa N = 2 và N = 20 độ trễ không tăng theo N trong các lần đo này. Nét vẽ tay nặng hơn rõ rệt (gói cuối ~16 KB, ~135 KB/s mỗi người nhận so với ~5.5 KB/s) vì mỗi lần gửi toàn bộ `points`. `samples` (~161 mỗi kịch bản ở N = 2) thấp hơn 200 vì vòng gửi của script thực tế chạy ~62 ms/tick trên máy này (sleep 50 ms cộng thời gian xử lý), không phải do mất gói. Mỗi cấu hình chỉ chạy một lần, trên một máy, nên chỉ là số đo tham khảo cho 1 instance.
+- **Commit:** `test: script đo độ trễ đồng bộ whiteboard`.
