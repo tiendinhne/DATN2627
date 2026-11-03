@@ -96,6 +96,12 @@ function build() {
     createJoinToken: vi.fn().mockResolvedValue({ token: 'lk-token', url: 'ws://localhost:7880' }),
     parseWebhook: vi.fn(),
   };
+  // Whiteboard + publisher giả: lưu bản cuối / đóng kênh khi kết thúc, rời kênh khi kick (spec whiteboard §3.3, §5)
+  const whiteboard = { finalizeBoard: vi.fn().mockResolvedValue(undefined) };
+  const realtime = {
+    closeMeetingChannel: vi.fn().mockResolvedValue(undefined),
+    leaveMeeting: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new MeetingsService(
     meetingModel as any,
     participantModel as any,
@@ -103,8 +109,10 @@ function build() {
     access as any,
     redis as any,
     media as any,
+    whiteboard as any,
+    realtime as any,
   );
-  return { service, meetingModel, participantModel, roomModel, access, redis, media };
+  return { service, meetingModel, participantModel, roomModel, access, redis, media, whiteboard, realtime };
 }
 
 // Lỗi trùng unique index của Mongo
@@ -321,6 +329,32 @@ describe('endMeeting', () => {
 
     expect(meetingModel.updateOne).not.toHaveBeenCalled();
     expect(redis.del).not.toHaveBeenCalled();
+  });
+
+  it('whiteboard: đóng kênh meeting rồi lưu bản cuối', async () => {
+    const { service, meetingModel, whiteboard, realtime } = build();
+    meetingModel.findById
+      .mockReturnValueOnce(query(fakeMeeting({ startedAt })))
+      .mockReturnValueOnce(query(fakeMeeting({ startedAt, status: MeetingStatus.ENDED, endedAt })));
+
+    await service.endMeeting(meetingId, EndReason.HOST_ENDED, endedAt, userId);
+
+    expect(realtime.closeMeetingChannel).toHaveBeenCalledWith(meetingId);
+    expect(whiteboard.finalizeBoard).toHaveBeenCalledWith(meetingId);
+    expect(realtime.closeMeetingChannel.mock.invocationCallOrder[0]).toBeLessThan(
+      whiteboard.finalizeBoard.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('whiteboard: đóng kênh lỗi → vẫn lưu bản cuối, endMeeting không ném', async () => {
+    const { service, meetingModel, whiteboard, realtime } = build();
+    meetingModel.findById
+      .mockReturnValueOnce(query(fakeMeeting({ startedAt })))
+      .mockReturnValueOnce(query(fakeMeeting({ startedAt, status: MeetingStatus.ENDED, endedAt })));
+    realtime.closeMeetingChannel.mockRejectedValue(new Error('redis down'));
+
+    await expect(service.endMeeting(meetingId, EndReason.HOST_ENDED, endedAt, userId)).resolves.toBeUndefined();
+    expect(whiteboard.finalizeBoard).toHaveBeenCalledWith(meetingId);
   });
 });
 
@@ -649,6 +683,23 @@ describe('removeFromActiveMeeting', () => {
     meetingModel.findOne.mockReturnValue(failingQuery(new Error('mongo down')));
 
     await expect(service.removeFromActiveMeeting(roomId, userId)).resolves.toBeUndefined();
+  });
+
+  it('có meeting ACTIVE → ép socket của người đó rời kênh whiteboard', async () => {
+    const { service, meetingModel, realtime } = build();
+    meetingModel.findOne.mockReturnValue(query(fakeMeeting()));
+
+    await service.removeFromActiveMeeting(roomId, userId);
+
+    expect(realtime.leaveMeeting).toHaveBeenCalledWith(userId, meetingId);
+  });
+
+  it('không có meeting ACTIVE → không đụng kênh whiteboard', async () => {
+    const { service, realtime } = build();
+
+    await service.removeFromActiveMeeting(roomId, userId);
+
+    expect(realtime.leaveMeeting).not.toHaveBeenCalled();
   });
 });
 

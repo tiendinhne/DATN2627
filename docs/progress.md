@@ -1138,3 +1138,11 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Test:** `npx vitest run src/modules/realtime` → 2 file / 23 ca pass (gateway 4 chat + 11 whiteboard, publisher 8). RED trước đó: 11 fail `gateway.handleMeetingJoin is not a function`, 4 chat cũ pass. Full suite `npx vitest run` → 16 file / 261 ca pass. `npm run build` → exit 0. `npm run lint` (oxlint) không có cảnh báo ở file đã sửa.
 - **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
 - **Commit:** `feat: gateway meeting:join, wb:ops, wb:pointer cho whiteboard` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 6 (Meeting đóng kênh + lưu bản cuối, kick rời kênh, branch `feature/whiteboard`)
+
+- **Xong:** `meetings.service.ts` thêm 2 tham số constructor cuối (`WhiteboardService`, `RealtimePublisher`); `endMeeting` gọi `closeBoard` (đóng kênh `closeMeetingChannel` rồi `finalizeBoard`, không ném) giữa `updateOne` và `finalize`; `removeFromActiveMeeting` gọi `realtime.leaveMeeting` trước `media.removeParticipant`. `meetings.module.ts` import `WhiteboardModule`, `RealtimeModule` (không vòng).
+- **Test:** `npx vitest run src/modules/meetings/meetings.service.spec.ts` → 50/50 pass. RED trước đó: 3 fail, 47 pass. Full suite `npx vitest run` → 16 file / 265 ca pass. `npm run lint` không lỗi. `npm run build` → exit 0.
+- **Chạy thật:** `docker compose restart backend` → log có `RealtimeModule dependencies initialized`, `MeetingsModule dependencies initialized`, `Nest application successfully started`, không có `Nest can't resolve dependencies`. node-redis `eval("return {'OK', 1, 0}")` trong backend-dev → `[ 'OK', 1, 0 ]` (chuỗi + số, đúng cách đọc `reply` trong `applyOps`).
+- **Lệch plan:** không. Code và test chép nguyên văn. (Lệnh eval chạy bằng file .cjs tạm đặt trong `/app` của container vì quoting PowerShell; đã xoá.)
+- **Commit:** `feat: kết thúc meeting đóng kênh và lưu bản cuối whiteboard` (user duyệt commit local từng task 2026-11-03).
