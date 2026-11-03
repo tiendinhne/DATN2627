@@ -73,6 +73,71 @@ export class RealtimePublisher {
     await namespace.in(roomChannel).socketsLeave(roomChannel);
   }
 
+  // Whiteboard: snapshot gửi riêng socket vừa meeting:join (spec whiteboard §3.2)
+  sendSnapshot(
+    socket: Socket,
+    input: { seq: number | null; actorId: string; roomId: string; meetingId: string; elements: unknown[] },
+  ) {
+    socket.emit('meeting:snapshot', {
+      v: 1,
+      seq: input.seq,
+      ts: new Date().toISOString(),
+      actorId: input.actorId,
+      roomId: input.roomId,
+      meetingId: input.meetingId,
+      data: { elements: input.elements },
+    });
+  }
+
+  // Whiteboard: element thắng tới mọi người trong meeting trừ người gửi — qua Redis adapter tới mọi instance
+  publishWbOps(
+    senderSocketId: string,
+    input: { seq: number; actorId: string; roomId: string; meetingId: string; elements: unknown[] },
+  ) {
+    this.requireNamespace()
+      .to(`meeting:${input.meetingId}`)
+      .except(senderSocketId)
+      .emit('wb:ops', {
+        v: 1,
+        seq: input.seq,
+        ts: new Date().toISOString(),
+        actorId: input.actorId,
+        roomId: input.roomId,
+        meetingId: input.meetingId,
+        data: { elements: input.elements },
+      });
+  }
+
+  // Whiteboard: con trỏ — volatile (gói cũ bỏ, không xếp hàng), không seq, không lưu
+  publishWbPointer(
+    senderSocketId: string,
+    input: { actorId: string; displayName: string; roomId: string; meetingId: string; x: number; y: number },
+  ) {
+    this.requireNamespace()
+      .volatile.to(`meeting:${input.meetingId}`)
+      .except(senderSocketId)
+      .emit('wb:pointer', {
+        v: 1,
+        seq: null,
+        ts: new Date().toISOString(),
+        actorId: input.actorId,
+        roomId: input.roomId,
+        meetingId: input.meetingId,
+        data: { userId: input.actorId, displayName: input.displayName, x: input.x, y: input.y },
+      });
+  }
+
+  // Kick / rời phòng: ép socket của user rời kênh whiteboard của meeting đang diễn ra (spec §3.3)
+  async leaveMeeting(userId: string, meetingId: string) {
+    await this.requireNamespace().in(`user:${userId}`).socketsLeave(`meeting:${meetingId}`);
+  }
+
+  // Meeting kết thúc: ép mọi socket rời kênh → op gửi sau đó tự bị chặn 403 (spec §3.3)
+  async closeMeetingChannel(meetingId: string) {
+    const channel = `meeting:${meetingId}`;
+    await this.requireNamespace().in(channel).socketsLeave(channel);
+  }
+
   private requireNamespace(): Namespace {
     if (!this.namespace)
       throw new Error('Socket.IO namespace chưa được khởi tạo');

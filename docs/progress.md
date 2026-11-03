@@ -1124,3 +1124,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Test:** `npx vitest run src/modules/whiteboard/whiteboard.service.spec.ts` → 19/19 pass. RED trước đó: `Failed to resolve import "./whiteboard.service.js"`. Full suite `npx vitest run` → 16 file / 245 ca pass. `npm run build` → exit 0.
 - **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
 - **Commit:** `feat: WhiteboardService — snapshot, áp op qua Lua, lưu Mongo có guard` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 4 (RealtimePublisher whiteboard, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/realtime/realtime-publisher.service.ts` thêm 5 method trước `requireNamespace()`: `sendSnapshot` (emit riêng socket, `meeting:snapshot`), `publishWbOps` (`to('meeting:…').except(sender)`, `wb:ops`), `publishWbPointer` (`volatile`, `seq: null`, `wb:pointer`), `leaveMeeting` (`in('user:…').socketsLeave('meeting:…')`), `closeMeetingChannel` (`in('meeting:…').socketsLeave('meeting:…')`). Inline envelope, không tách helper.
+- **Test:** `npx vitest run src/modules/realtime/realtime-publisher.service.spec.ts` → 8/8 pass. RED trước đó: 5 fail `publisher.<method> is not a function`, 3 test cũ pass. Full suite `npx vitest run` → 16 file / 250 ca pass (Redis `redis-dev` đang chạy, `whiteboard.lua.spec.ts` không bị skip). `npm run build` → exit 0.
+- **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: publisher phát snapshot, wb:ops, wb:pointer và đóng kênh meeting` (user duyệt commit local từng task 2026-11-03).
