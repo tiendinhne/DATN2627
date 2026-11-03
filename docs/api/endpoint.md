@@ -287,7 +287,7 @@ Cùng namespace `/meeting`. Spec: `docs/task/whiteboard/whiteboard_sync_spec.md`
 |---|---|---|
 | `meeting:join` | `{ meetingId }` | 400 sai định dạng · 404 không có meeting · 403 không phải thành viên · 409 meeting đã kết thúc |
 | `meeting:leave` | `{ meetingId }` | 400 |
-| `wb:ops` | `{ meetingId, elements[] }` — 1–100 element, ≤ 512 KB; mỗi element có `id`, `type` (rectangle, diamond, ellipse, arrow, line, freedraw, text, frame), `version` ≥ 1, `versionNonce`, `isDeleted` | 400 sai / trùng `id` trong batch / vượt 5.000 đối tượng · 403 chưa join |
+| `wb:ops` | `{ meetingId, elements[] }` — 1–100 element, ≤ 512 KB; mỗi element có `id`, `type` (rectangle, diamond, ellipse, arrow, line, freedraw, text, frame), `version` ≥ 1, `versionNonce`, `isDeleted` | 400 sai / trùng `id` trong batch / vượt 5.000 đối tượng · 403 chưa join · 409 buổi học đã kết thúc |
 | `wb:pointer` | `{ meetingId, x, y }` (±1e7) | 400 · 403 |
 
 | Server → Client | `data` | Gửi tới |

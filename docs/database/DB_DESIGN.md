@@ -536,6 +536,7 @@ export class AiRequest {
 |---|---|---|---|
 | `wb:{meetingId}` | Hash (elementId → JSON) | 24h | Live state, gồm tombstone |
 | `wb:alive:{meetingId}` | String | 24h | Số element chưa xoá (Lua) |
+| `wb:closed:{meetingId}` | String | 24h | Board đã đóng (đặt lúc kết thúc meeting) — Lua từ chối mọi op |
 | `wb:persist-lock:{meetingId}` | String | 15 s | Khoá giới hạn ghi Mongo |
 | `wb:seq:{meetingId}` | String (INCR) | 24h | Bộ đếm seq |
 | `presence:{meetingId}` | Set | 24h | userId đang online — webhook joined (SADD) / left (SREM) ghi, finalize xoá khi meeting kết thúc |

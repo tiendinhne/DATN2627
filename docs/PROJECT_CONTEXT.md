@@ -240,12 +240,12 @@ Excalidraw onChange (throttle 50 ms)
 | Tầng | Nơi lưu | Mục đích |
 |---|---|---|
 | Live state | Redis `wb:{meetingId}` | Nguồn đọc snapshot khi join |
-| Persisted snapshot | Mongo `whiteboards` | Khôi phục sau restart |
+| Persisted snapshot | Mongo `whiteboards` | Lưu lâu dài để xem lại / clone (task sau); chưa có đường nạp lại Mongo → Redis |
 | Historical | Mongo, gắn meeting ENDED | Review sau meeting |
 
 **Không ghi Mongo mỗi op.** Sau op có thay đổi: `SET wb:persist-lock:{id} NX PX 15000`, instance giành được khoá ghi nền; `endMeeting` ghi bản cuối rồi xoá key Redis (ADR-030). Không timer RAM, không cron, không ghi khi graceful shutdown (state ở Redis).
 
-Đánh đổi cho báo cáo: đổi write amplification lấy RPO ~15–60s. Chấp nhận được với ngữ cảnh học nhóm.
+Đánh đổi cho báo cáo: đổi write amplification lấy RPO ~15 s khi đang vẽ (ADR-030). Chấp nhận được với ngữ cảnh học nhóm.
 
 **Ràng buộc 16 MB/document:** elements lưu dạng `gzip(JSON)` → `Buffer`. Hard limit **5.000 element/board**, vượt thì báo lỗi rõ ràng; 5.000 tính element còn hiển thị, Mongo không lưu tombstone. Nêu ở phần Limitations.
 

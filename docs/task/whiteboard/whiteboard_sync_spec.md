@@ -99,15 +99,18 @@ Cả hai chạy được trên mọi instance nhờ Redis adapter. Lỗi ở bư
 | `wb:{meetingId}` | **Hash** `elementId → JSON element` | 24 h, làm mới mỗi op | Live state (thay String gzip) |
 | `wb:seq:{meetingId}` | String (`INCR`) | 24 h | Seq |
 | `wb:alive:{meetingId}` | String (số) | 24 h | Số element **chưa xoá** trong Hash — chỉ Lua sửa |
+| `wb:closed:{meetingId}` | String | 24 h (đặt 1 lần lúc kết thúc) | Đánh dấu board đã đóng — Lua từ chối mọi op (§13.1). Không bị `DEL` ở bước finalize |
 | `wb:persist-lock:{meetingId}` | String | 15 s (`PX 15000`) | Khoá giới hạn tần suất ghi Mongo |
 | ~~`wb:ops:{meetingId}`~~ | | | Bỏ |
 
 ### 4.2 Script `wb-apply` (atomic)
 
-Gọi bằng `client.eval(script, { keys: [hashKey, seqKey, aliveKey], arguments: [...] })` (node-redis 4.7.1).
+Gọi bằng `client.eval(script, { keys: [hashKey, seqKey, aliveKey, closedKey], arguments: [...] })` (node-redis 4.7.1).
 `ARGV`: `maxAlive (5000)`, `maxTotal (20000)`, `ttlSeconds (86400)`, rồi mỗi element 5 giá trị `id, version, versionNonce, isDeleted (0|1), json`.
 
-Giá trị trả về là **mảng** (Lua không trả được `nil` trong table): `{'LIMIT'}` · `{'NOOP'}` · `{'OK', seq, idx1, idx2, …}` (idx = vị trí element thắng trong batch, đếm từ 0).
+`KEYS[4]` = `wb:closed:{meetingId}`. **Câu đầu tiên của script:** key này tồn tại → trả `{'CLOSED'}`, không đọc / ghi gì.
+
+Giá trị trả về là **mảng** (Lua không trả được `nil` trong table): `{'CLOSED'}` · `{'LIMIT'}` · `{'NOOP'}` · `{'OK', seq, idx1, idx2, …}` (idx = vị trí element thắng trong batch, đếm từ 0).
 
 **Lượt 1 — tính, chưa ghi gì.** Với mỗi element:
 - Chưa có trong Hash → **thắng**; là id mới (`newIds + 1`); bản tới chưa xoá → `aliveDelta + 1`.
@@ -126,7 +129,7 @@ Lua **không encode lại JSON** — lưu nguyên chuỗi server nhận (`JSON.s
 
 ### 4.3 Snapshot
 
-`MULTI { HGETALL wb:{id}; GET wb:seq:{id} }` → `elements = Object.values(hash).map(JSON.parse)` (**gồm cả tombstone**, lý do ở §4.2). Redis trống → `elements: []`, `seq: null`.
+`MULTI { HGETALL wb:{id}; GET wb:seq:{id} }` → `elements = Object.values(hash).map(JSON.parse)` **sắp theo fractional index** (`index`, hoà thì theo `id` — giống `orderByFractionalIndex` của Excalidraw; `HGETALL` không có thứ tự mà `restoreElements` coi thứ tự mảng là z-order) và **gồm cả tombstone** (lý do ở §4.2). Redis trống → `elements: []`, `seq: null`.
 
 ---
 
@@ -136,16 +139,16 @@ Lua **không encode lại JSON** — lưu nguyên chuỗi server nhận (`JSON.s
 
 1. `MULTI { HGETALL; GET seq }` — state và seq đọc cùng lúc (nếu đọc riêng: state cũ có thể bị gắn seq mới → bản cuối bị guard chặn).
 2. Hash rỗng hoặc seq không có → **không ghi** (tránh `endMeeting` chạy lại lần 2 ghi board rỗng đè Mongo).
-3. `elements` = chỉ element **`isDeleted !== true`** (Mongo chỉ dùng để xem lại / clone — không cần tombstone; cỡ document bị chặn bởi 5.000 element còn hiển thị, đúng ý ADR-014). Hash có dữ liệu nhưng mọi element đã xoá → vẫn ghi `[]` (board bị clear là trạng thái thật). `elementCount = elements.length`, `raw = JSON.stringify(elements)`, `elementsGzip = gzip(raw)`.
+3. `elements` = chỉ element **`isDeleted !== true`**, **sắp theo fractional index** như §4.3 (Mongo chỉ dùng để xem lại / clone — không cần tombstone; cỡ document bị chặn bởi 5.000 element còn hiển thị, đúng ý ADR-014). Hash có dữ liệu nhưng mọi element đã xoá → vẫn ghi `[]` (board bị clear là trạng thái thật). `elementCount = elements.length`, `raw = JSON.stringify(elements)`, `elementsGzip = gzip(raw)`.
 4. `updateOne({ meetingId, lastSeq: { $lt: seq } }, { $set: { elementsGzip, elementCount, rawSizeBytes, lastSeq: seq, lastPersistedAt: now }, $setOnInsert: { roomId } }, { upsert: true })` — `roomId` đọc từ document Meeting.
-5. **Lỗi E11000 → bỏ qua** (filter không khớp vì đã có `lastSeq >=` → upsert cố insert trùng `meetingId` unique → nghĩa là đã có bản mới hơn). Code mẫu ở §11 / `whiteboard.md` §4 thiếu bước này — sửa tài liệu.
+5. **Lỗi E11000 → thử lại đúng 1 lần, cùng filter và update nhưng KHÔNG `upsert`.** E11000 xảy ra khi (a) đã có `lastSeq >=` → upsert cố insert trùng `meetingId` unique, hoặc (b) hai upsert đầu tiên cùng insert và mình thua nhưng `seq` lại mới hơn. Không upsert thì lần thử lại chỉ khớp khi bản Mongo cũ hơn, ngược lại sửa 0 dòng — cả hai đều đúng, không cần catch. Code mẫu ở §11 / `whiteboard.md` §4 thiếu bước này — sửa tài liệu.
 
 **Khi nào gọi:**
 
 | Khi | Cách |
 |---|---|
 | Sau mỗi `wb:ops` có element thắng | `SET wb:persist-lock:{id} 1 NX PX 15000` → giành được thì `persist` chạy nền (không await, lỗi → `Logger.error`) |
-| `endMeeting` (HOST kết thúc, giải tán, `room_finished`, tự hồi phục — mọi đường đều qua đây) | Sau `socketsLeave` (§3.3): `persist` bắt buộc, không khoá → thành công thì `DEL` 3 key Redis (`wb:`, `wb:seq:`, `wb:alive:`). Lỗi → log, **giữ key** (TTL 24 h), không chặn kết thúc meeting |
+| `endMeeting` (HOST kết thúc, giải tán, `room_finished`, tự hồi phục — mọi đường đều qua đây) | Sau `socketsLeave` (§3.3): **`SET wb:closed:{id} 1 EX 86400`** → `persist` bắt buộc, không khoá → thành công thì `DEL` 3 key Redis (`wb:`, `wb:seq:`, `wb:alive:`; `wb:closed:` ở lại tới hết TTL). Redis chạy tuần tự nên mọi op sau lệnh SET bị Lua từ chối, op trước nó đã nằm trong bản đọc cuối — đúng trên mọi instance. Lỗi → log, **giữ key** (TTL 24 h), không chặn kết thúc meeting |
 
 **Bỏ "ghi khi graceful shutdown" (§11):** state nằm ở Redis, không ở RAM instance.
 
@@ -182,6 +185,7 @@ Sai → `error` 400 cho người gửi, **từ chối cả batch**, không phát
 | Payload sai | `error` 400 |
 | `meeting:join` meeting không tồn tại / không phải thành viên / meeting ENDED | `error` 404 / 403 / 409 |
 | `wb:*` khi socket chưa ở kênh | `error` 403 |
+| Lua trả `CLOSED` (board đã đóng, op muộn / join sát lúc kết thúc) | `error` 409 "Buổi học đã kết thúc", không phát |
 | Lua trả `LIMIT` | `error` 400 "Bảng vẽ đã đạt giới hạn 5.000 đối tượng", không phát (trần tổng 20.000 dùng chung thông báo — chỉ chạm khi tạo / xoá bất thường) |
 | Redis lỗi khi chạy Lua / snapshot | không phát / không gửi snapshot, ném lỗi như các handler hiện có (không phải `HttpException` → log) |
 | `persist` nền lỗi | `Logger.error`; lần giành khoá sau thử lại |
@@ -302,12 +306,13 @@ Set-Location ../frontend; npm run lint; npm run build
 
 ## 13. Giới hạn (Limitations của báo cáo)
 
-1. **Op tới sát lúc kết thúc:** op đã qua bước kiểm kênh nhưng chạy Lua sau khi `endMeeting` xoá key → tạo lại key Redis chỉ có vài element (TTL 24 h tự dọn). **Vì sao không đè bản đã lưu:** key bị xoá nên `wb:seq` mới bắt đầu lại từ 1; nếu op này giành được khoá persist, filter `{ meetingId, lastSeq: { $lt: 1 } }` không khớp document đã có (`lastSeq ≥ 1`) → upsert cố insert trùng `meetingId` unique → E11000 → bỏ qua (§5 bước 5). Trường hợp duy nhất op muộn vào Mongo: board **chưa từng được lưu** (trống tới lúc kết thúc) — khi đó insert thành công, và đó là dữ liệu thật nên đúng.
-2. **Join sát lúc kết thúc:** `meeting:join` đọc ACTIVE rồi `endMeeting` chạy `socketsLeave` trước khi `socket.join` → socket ở lại kênh của meeting đã kết thúc; op của nó rơi vào trường hợp 1.
+1. **Op tới sát lúc kết thúc:** `socketsLeave` qua `@socket.io/redis-adapter` chỉ *publish* lệnh, socket rời kênh sau khi message pub/sub quay về — nên op vẫn có thể tới Lua sau bản đọc cuối. Chặn cứng là key `wb:closed` (§5): `finalizeBoard` `SET` nó **trước** khi đọc bản cuối, Lua từ chối op sau đó bằng `{'CLOSED'}` → `error` 409. Không key Redis nào bị tạo lại, `wb:seq` không bao giờ bắt đầu lại từ 1 nên không thể đè bản đã lưu.
+2. **Join sát lúc kết thúc:** `meeting:join` đọc ACTIVE rồi `endMeeting` chạy trước `socket.join` → socket ở lại kênh của meeting đã kết thúc; mọi op của nó nhận 409 nhờ `wb:closed` (snapshot nó nhận có thể là board trống hoặc bản cuối trước khi `DEL`, không ảnh hưởng dữ liệu đã lưu).
 3. **Element bị từ chối vì giới hạn** (5.000 còn hiển thị / 20.000 tổng) vẫn còn ở máy người gửi tới lần join / reconnect sau. Element bị **client lọc** (`embeddable`, quá cỡ) chỉ hiện trên máy người tạo, có thông báo.
-4. **Redis là điểm chết duy nhất** của live state (1 node) — mất Redis giữa buổi mất tối đa ~15 s cuối + phải vẽ lại phần chưa lưu.
+4. **Redis là điểm chết duy nhất** của live state (1 node) — mất Redis giữa buổi: `wb:seq` bắt đầu lại từ 1 nên các lần lưu nền bị guard `lastSeq` từ chối cho tới khi `seq` vượt `lastSeq` của Mongo, và bản lưu cuối lúc kết thúc có thể bị bỏ qua → Mongo giữ bản đã lưu gần nhất, thay đổi từ đó trở đi mất.
 5. **LWW per-element:** 2 người sửa cùng 1 element trong cùng khoảng 50 ms → 1 bản thắng, bản kia mất (ADR-003, CRDT là alternative).
 6. Mỗi người trong meeting giữ 2 websocket (chat + whiteboard).
 7. Chỉ đo 1 instance ở task này.
-8. `[phát sinh kỹ thuật]` **`wb:ops` bị server từ chối** (400 / 403 / vượt giới hạn, hoặc lỗi Redis tạm thời) không được gửi lại — element chỉ hiện trên máy người gửi cho tới khi họ sửa nó lần nữa.
+8. `[phát sinh kỹ thuật]` **`wb:ops` bị server từ chối** (400 / 403 / vượt giới hạn, hoặc lỗi Redis tạm thời) không được gửi lại ngay — element chỉ hiện trên máy người gửi cho tới khi họ sửa nó lần nữa hoặc tới lần snapshot kế (reconnect / join lại: client xoá map version nên gửi lại phần chỉ có ở máy mình).
 9. `[phát sinh kỹ thuật]` **Hai người cùng đổi kích thước / sửa chữ của một element** cùng lúc: bên thua LWW vẫn thấy bản của mình tới lần snapshot kế (reconnect / join lại) hoặc lần sửa kế, vì không có resync toàn scene định kỳ (ADR-029).
+10. `[phát sinh kỹ thuật]` **Không có trần byte cho cả board và không giới hạn tần suất:** giới hạn chỉ là 512 KB mỗi batch và 5.000 / 20.000 element. Một thành viên đã xác thực có thể làm Redis phình hoặc vượt document 16 MB của Mongo (khiến `persist` lỗi). Chấp nhận ở phạm vi đồ án; hướng sửa: trần byte per board trong Lua + rate limit theo socket.

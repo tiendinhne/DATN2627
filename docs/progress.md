@@ -848,7 +848,7 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Không kiểm được:** luồng Google (chưa có credentials); `visibilitychange` sau khi máy ngủ (headless không mô phỏng được).
 - **Lệch khỏi tài liệu:** `SameSite=Lax; Path=/auth` không `Domain` thay `SameSite=None; Domain=.<domain>` của §5 `[phát sinh kỹ thuật]` (ADR-023).
 - **Giới hạn biết trước:** đăng xuất ở một tab → tab khác vẫn dùng access token đang có tới khi hết hạn (≤ 15 phút), lần làm mới tiếp theo bị 401 → về `/login`. Token bị xoay vòng còn dùng được trong 10 s (chỉ để lấy access token).
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 - **Task sau cần biết:** gateway Socket.IO lấy `token` từ `useAuth()` (memory) khi kết nối; token đổi mỗi ~14 phút — socket đang mở không cần kết nối lại, chỉ lần kết nối lại sau đó dùng token mới. Effect nào phụ thuộc `token` mà gọi API có side effect (như vào meeting) thì làm như trang cuộc gọi (`hasToken` + ref).
 
@@ -901,7 +901,7 @@ Cập nhật lại các role * đọc file rule/role.md
   1. `whiteboard.md` §6 có quyền `DRAW_WHITEBOARD` / `DELETE_OTHERS_ELEMENT` / `CLEAR_BOARD`; `role.md` + `shared/permissions.ts`: MEMBER làm được hết → chỉ cần là thành viên.
   2. PROJECT_CONTEXT §10, §19.2 "`lww-merge` ở `shared/`, client và server dùng chung một bản"; nhưng frontend / backend là 2 project npm độc lập (ADR-021), frontend không import được `backend/src/shared`.
   3. `whiteboard.md` §3 chống echo bằng cờ `isApplyingRemote`; Excalidraw chính thức so `getSceneVersion`.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 - **Task sau cần biết:** bước đồng bộ cần nền socket trước (JWT handshake, `meeting:join` kiểm thành viên, publisher envelope) — gateway `/meeting` hiện chỉ ghi log; frontend chưa có `socket.io-client`. `WhiteboardCanvas` chưa giữ `excalidrawAPI` / `onChange` — thêm khi làm đồng bộ.
 
 ## 2026-10-22 — Frontend dùng chung `backend/src/shared` qua alias `@shared/*` (ADR-024)
@@ -914,28 +914,28 @@ Cập nhật lại các role * đọc file rule/role.md
   - Thêm `extensionAlias`: `next build --no-lint` → `Compiled successfully in 92s`, rồi dừng ở bước kiểm type vì lỗi có sẵn `EndMeetingModal.tsx:14`. `next dev`: `GET /shared-check 200`, HTML có `{"host":true,"member":false}` — khớp bảng quyền backend. Chạy lại script Chrome headless trên `/meeting`: Excalidraw vẽ / ẩn khi ghim / giữ nét / theme tối như trước, console chỉ favicon 404 + `/auth/refresh` (backend tắt).
 - **Chưa làm (cần user quyết riêng):** chuyển frontend sang dùng `@shared` — `types/backend.ts` đang viết lại `RoomRole`, ~15 chỗ gõ chuỗi `"HOST"` / `"ACTIVE"` / `AUTO_EMPTY`. Lưu ý (đã thử bằng `tsc --strict`): so sánh `role === "HOST"` với `role: RoomRole` vẫn hợp lệ; nhưng **gán** chuỗi vào kiểu enum lỗi `TS2322: Type '"HOST"' is not assignable to type 'RoomRole'` → chỗ nào tạo giá trị (mock data, khai báo kiểu response) phải dùng `RoomRole.HOST`.
 - **Lệch khỏi tài liệu:** PROJECT_CONTEXT §19.2 ghi `shared/` (không nói vị trí) — vị trí thật `backend/src/shared` theo ADR-024.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-25 — Bỏ lockfile thừa (chỉ dùng npm, ADR-021)
 
 - **Đã xong:** xoá `package-lock.json` ở gốc repo (sinh do `npm install` chạy nhầm ở gốc trong commit `e8d84c8`; `package.json` gốc không có dependency, gốc không có `node_modules`) và `frontend/pnpm-lock.yaml`; bỏ dòng `"npm:pnpm"` trong `frontend/.mise.toml` để không sinh lại lock pnpm.
 - **Kiểm tra (chạy thật):** `npm run build` (frontend) không còn cảnh báo "multiple lockfiles / inferred your workspace root"; build vẫn dừng ở lỗi có sẵn `RoomOverviewTab.tsx:102` (chưa sửa, chờ user duyệt). Không thứ gì đọc 2 file đã xoá: CI chỉ `echo`/`ls`, Docker chỉ build `backend/`.
 - **Lệch khỏi tài liệu:** không.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-25 — Sửa lỗi build frontend
 
 - **Đã xong:** `EndMeetingModal` khai báo prop `meetingTitle?: string` (component đã dùng, `MeetingWorkspace` đã truyền, chỉ thiếu trong interface); xoá `src/lib/utils.ts` (import package `cn` đã gỡ, không file nào dùng); `RoomOverviewTab.tsx:102` bỏ dấu `"` chưa escape (user sửa).
 - **Kiểm tra (chạy thật):** `tsc --noEmit` 0 lỗi; `npm run build` exit 0, 14 trang.
 - **Lệch khỏi tài liệu:** không.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-25 — Test `searchUsers` khớp cách tìm theo tiền tố
 
 - **Đã xong:** 2 test `searchUsers` trong `rooms.service.spec.ts` (thêm ở `afdbd2e`) mong đợi regex "chứa chuỗi" (`/dent@exam/i`, `/s\.t/i`), trong khi code và `docs/api/endpoint.md` tìm theo tiền tố (`^`). User chốt **tiền tố** → sửa test: input `stud` → `/^stud/i`, `s.t` → `/^s\.t/i`, đổi tên test "khi tìm giữa chuỗi" → "khi tìm theo tiền tố". Không đổi code service.
 - **Kiểm tra (chạy thật):** tạm bỏ `^` trong service → 2 test fail đúng chỗ regex (chứng minh test bắt được nếu ai đổi về "chứa chuỗi"); khôi phục → backend `vitest run` 8 file, 143/143 pass.
 - **Lệch khỏi tài liệu:** không.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-27 — Backend Chat text, ảnh và file đính kèm
 
@@ -946,7 +946,7 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra (chạy thật):** `npm run build` pass; `npm run lint` pass; `npm test` pass 13 file / 171 test; `docker compose config --quiet` pass với env test tạm (đã xoá). `npm audit --omit=dev` còn báo 5 high ở các dependency sẵn có `body-parser`, `multer`/Nest và `zod`; không nâng phiên bản ngoài scope.
 - **Cấu hình lúc đó (đã hết hiệu lực sau ADR-026):** tạo `infrastructure/.env.minio` từ file `.example`, đặt credentials trùng với `backend/.env`, tạo bucket private và bật CORS cho origin Frontend.
 - **Lệch khỏi tài liệu:** thêm giới hạn 20 MiB/allowlist MIME và trạng thái `READY` là quyết định kỹ thuật phát sinh, ghi tại ADR-025.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-27 — Chuyển Chat file storage sang Amazon S3
 
@@ -955,7 +955,7 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Cấu hình còn thiếu theo AWS account:** tên bucket và region thật chưa được cung cấp, nên vẫn là placeholder trong `.env.example`. Production nên cấp IAM Role/Task Role; Compose local truyền credentials từ root `.env` chỉ vào Backend.
 - **Tài liệu:** cập nhật hướng dẫn AWS S3, IAM least privilege, bucket CORS và lưu ý object cũ trong MinIO không tự migrate; ADR-026 supersedes ADR-025.
 - **Kiểm tra:** `npm run build`, `npm run lint`, `npm test` (13 file/171 test), `docker compose config --quiet` và `git diff --check` đều pass.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-30 — Kết nối Chat hiện có vào Frontend
 
@@ -964,14 +964,14 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Tài liệu:** endpoint đã có trong `docs/api/endpoint.md`; không đổi API/backend contract.
 - **Kiểm tra:** ESLint các file frontend sửa đổi pass; `git diff --check` pass. `npm run build` biên dịch JS thành công nhưng dừng ở type-check của dependency có sẵn `@livekit/components-core/src/components/chat.ts:141` (`Uint8Array<ArrayBufferLike>` không tương thích `BlobPart`); `tsc --noEmit` cũng báo thêm lỗi trong các file nguồn LiveKit khác, không báo lỗi từ file chat vừa sửa. Chưa xác minh gửi/nhận trên trình duyệt với backend chạy thật.
 - **Lệch khỏi tài liệu:** không.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-30 — Sửa Socket.IO trả 404 ở frontend
 
 - **Nguyên nhân:** `RedisIoAdapter` được khởi tạo không truyền Nest app. `IoAdapter` không có HTTP server để gắn Socket.IO vào; gateway đã đăng ký nhưng `/socket.io` trên cổng 3001 trả `404`.
 - **Đã sửa:** khởi tạo `new RedisIoAdapter(app)` để Socket.IO dùng HTTP server của Nest.
 - **Kiểm tra:** `docker compose up -d --build backend` dựng lại và khởi động container; Socket.IO client dùng WebSocket tới `/meeting` nhận lỗi `Thiếu access token` từ middleware xác thực (chứng minh kết nối đã tới namespace, không còn lỗi handshake/404); `npm run build` backend pass; gateway tests 4/4 pass.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-30 — Thêm gửi file và hình ảnh trong Chat
 
@@ -979,13 +979,13 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Tài liệu:** dùng lại upload/download API và giới hạn đã ghi trong `docs/api/endpoint.md`; không đổi backend.
 - **Kiểm tra:** `npm run lint` pass, không warning/error ESLint; `git diff --check` pass. `npm run build` biên dịch thành công nhưng dừng ở lỗi type-check có sẵn trong `@livekit/components-core/src/components/chat.ts:141` (`Uint8Array<ArrayBufferLike>` không tương thích `BlobPart`); không có chẩn đoán từ file chat vừa sửa. Chưa kiểm thử upload thực trên trình duyệt/S3.
 - **Lệch khỏi tài liệu:** không.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-30 — Dùng backend/.env cho AWS credentials trong Compose
 
 - **Đã sửa:** xoá các biến AWS được nội suy từ `.env` gốc ở `docker-compose.yml`. Backend dùng `env_file: ./backend/.env` thống nhất cho AWS credentials, region và bucket; không còn giá trị rỗng từ Compose override credentials.
 - **Kiểm tra:** `docker compose config --quiet` và `git diff --check` pass. Đã recreate `backend`; kiểm tra chỉ sự hiện diện (không đọc/in giá trị) xác nhận access key, secret key, region và bucket đã vào container; `Nest application successfully started`, Redis kết nối.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 
 
@@ -1003,7 +1003,7 @@ Cập nhật lại các role * đọc file rule/role.md
   - `tsc --noEmit` 0 lỗi; `npm run build` exit 0, 14 trang.
 - **Chưa kiểm:** đăng nhập Google (cần credential thật).
 - **Lệch khỏi tài liệu:** không — code quay về đúng ADR-023.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-27 — Frontend chạy trong Docker Compose (branch `chore/fe-docker`, ADR-016 mở rộng)
 
@@ -1017,7 +1017,7 @@ Cập nhật lại các role * đọc file rule/role.md
   - Script Chrome headless ADR-023 trên frontend trong container: 5/5 PASS (đăng nhập, không token trong `localStorage`, F5 còn đăng nhập, đăng xuất + F5 → `/login`) → trình duyệt gọi được backend, cookie refresh chạy.
   - Hot reload: sửa `<h1>` trong `LoginForm.tsx` → trang `/login` có nội dung mới sau ~25 s (compile 19,4 s); đã hoàn tác.
 - **Lệch khỏi tài liệu:** không. `CLAUDE.md` (mục Lệnh + ghi chú ADR-016) đã cập nhật theo yêu cầu user: một lệnh compose cho cả hệ thống; lệnh native chỉ cho test / debug.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-30 — Hiển thị xem trước ảnh đính kèm
 
@@ -1025,7 +1025,7 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra:** `npm run lint` frontend pass, không warning/error ESLint; `git diff --check` pass.
 - **Quyết định:** dùng presigned download URL hiện có; không thêm API/dependency.
 - **Lệch khỏi tài liệu:** không.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-10-30 — Xem trước ảnh trước khi gửi chat
 
@@ -1073,7 +1073,7 @@ Cập nhật lại các role * đọc file rule/role.md
   1. **Container frontend chết vì hết RAM:** `dmesg` VM Docker: `Out of memory: Killed process … (next-server (v1)) anon-rss:2012596kB` — Next dev ~2 GB khi compile trang meeting (5.500+ module), VM Docker chỉ 3,3 GB. Container thoát mã 0, thiếu `restart: unless-stopped` nên không tự lên.
   2. **Backend không hot reload trong Docker trên Windows:** sửa `backend/src` → container có file mới nhưng `nest start --watch` không biết (bind mount không báo sự kiện) → phải `docker compose restart backend`. README / ADR-016 đang ghi "tự reload" — sai với backend.
 - **Lệch khỏi tài liệu:** không (endpoint.md + ADR-027 đã cập nhật).
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-11-02 — Merge `origin/main` vào `feature/user-api-real-data` (9 file conflict)
 
@@ -1087,7 +1087,7 @@ Cập nhật lại các role * đọc file rule/role.md
   - ADR của phần B đổi số **ADR-025 → ADR-027** (main đã có ADR-025, 026 cho S3); `endpoint.md` bỏ mục Users, mô tả Profile ở `GET /auth/me`.
   - `users.service.spec.ts` (cả hai cùng tạo): giữ nguyên test `updateDisplayName` của An + test `toProfile`, `setPassword`; `auth.service.spec.ts`: gộp mock của hai bên.
 - **Gặp khi chạy:** `nest build` lỗi `Cannot find module '@aws-sdk/s3-request-presigner'` — `package.json` của main đã khai báo, chỉ `node_modules` máy chưa cài → `npm ci` theo lockfile, không thêm dependency. Image Docker backend cũng phải `--build` lại vì có dependency mới.
-- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+- **Commit:** chưa — chờ user.
 
 ## 2026-11-03 — Whiteboard: Task 0 (thiết kế + spec đồng bộ realtime, branch `feature/whiteboard`)
 
@@ -1210,3 +1210,17 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Sửa phụ:** Task 2 "Lệch plan: không" sửa thành có (fix round 1); Task 8: số tick suy ra từ số mẫu, băng thông ~200 KB/s ước tính thô, "có thể do cold start", thêm dòng tiêu đề cho khối lần chạy thử, ghi chú xu hướng p50 nằm trong dao động giữa các lần chạy.
 - **Kiểm:** `git diff --stat` chỉ gồm `docs/*.md`. Grep PROJECT_CONTEXT.md, whiteboard.md, DB_DESIGN.md, endpoint.md (ring buffer, wb:resync, lastSeq, isApplyingRemote, debounce, graceful, realtime.md, security.md, wb:ops:, replay, String (gzip), 150ms) còn lại: `lastSeq` ở guard Mongo (ADR-015, vẫn là thiết kế hiện hành) và câu E11000; "ring buffer" chỉ trong câu "không ring buffer — ADR-029"; "graceful shutdown" ở tiêu đề §7.6 và câu "không ghi khi graceful shutdown" (ADR-030). Fix round 1 đã bỏ dòng ring buffer ở bảng stateless và `wb:resync` ở §7.6.
 - **Commit:** `docs: whiteboard đồng bộ realtime — §9 §10 §11, ADR-028…031`.
+
+## 2026-11-03 — Whiteboard: sửa sau review toàn nhánh
+- **Xong:**
+  - F1 `whiteboard.service.ts`: `getSnapshot` và `persist` sắp element theo fractional index (`byFractionalIndex`, giống `orderByFractionalIndex`) — trước đó thứ tự `HGETALL` ngẫu nhiên làm xáo z-order cho người vào muộn.
+  - F2 `useWhiteboardSync.ts`: `meeting:snapshot` gọi `synced.clear()` trước `applyRemote` → phần chỉ có ở máy mình được gửi lại ở `flush()`.
+  - F3 đóng board nguyên tử: Lua thêm `KEYS[4] = wb:closed:{id}` (có → `{'CLOSED'}`), `applyOps` → 409 "Buổi học đã kết thúc", `finalizeBoard` `SET wb:closed` (EX 86400) → persist → `DEL` 3 key. Sửa comment `closeBoard` / `closeMeetingChannel` (socketsLeave qua adapter là bất đồng bộ).
+  - F4 `applyRemote`: `restoreElements` lỗi → thử từng element, bỏ cái lỗi; `reconcileElements` + `updateScene` trong try/catch, lỗi thì hoàn tác version đã ghi.
+  - F5 `docs/progress.md`: khôi phục 17 dòng `- **Commit:** chưa — chờ user.` bị commit 19d0f46 thay nhầm (đối chiếu `git show 2158a34:docs/progress.md`); dòng trong mục Task 0 giữ nguyên.
+  - F6 (a) validator `Number.isSafeInteger` cho `version` / `versionNonce`; (b) `handleMeetingJoin` rời kênh khi `getSnapshot` lỗi; (c) `removeFromActiveMeeting` bọc `leaveMeeting` riêng; (d) `persist` E11000 → thử lại 1 lần không upsert; (e) cleanup hook gọi `flush()` trước khi huỷ throttle.
+  - F7 docs: spec §4.1 §4.2 §4.3 §5 §7 §13 (1, 2, 4, 8 sửa; thêm 10), DB_DESIGN Phần E, ADR-028 / ADR-030, PROJECT_CONTEXT §11, architecture/whiteboard.md, endpoint.md.
+- **Test:** `npx vitest run` (backend): 16 file, 273 pass (Lua spec trên redis-dev). Test mới: snapshot theo index, persist theo index, `CLOSED` → 409, Lua `CLOSED`, finalize SET trước persist, E11000 thử lại không upsert, version/nonce 2^53, join rời kênh khi snapshot lỗi, `leaveMeeting` lỗi vẫn gọi LiveKit. `npm run lint`, `npm run build` (backend) sạch; frontend `npm run lint` + `npx tsc --noEmit` sạch; `curl /meetings/000…0` → 200.
+- **Chạy thật:** `docker compose restart backend` → "Nest application successfully started". Smoke script (ngoài git): snapshot người vào muộn đúng thứ tự `a0,a1,a2,a9`; sau khi kết thúc Mongo `elementCount=4`, Redis chỉ còn `wb:closed:{id}`; op muộn của socket còn kết nối nhận 403 (socketsLeave đã xong kịp nên chưa chạm nhánh 409 — nhánh `CLOSED` được phủ bởi test Lua trên Redis thật).
+- **Lệch brief:** `applyRemote` ghi version trước `updateScene` (giữ thứ tự cũ để `onChange` không echo lại) và hoàn tác nếu `updateScene` ném, thay vì "không ghi" thuần tuý.
+- **Commit:** `fix: whiteboard backend — z-order snapshot, đóng board nguyên tử, củng cố persist`; `fix: whiteboard client — dựng lại map version từ snapshot, chịu element lỗi`; `docs: whiteboard sửa sau review toàn nhánh`.
