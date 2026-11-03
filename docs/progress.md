@@ -1186,5 +1186,12 @@ Cập nhật lại các role * đọc file rule/role.md
 │ 5       │ 20 │ 'B nét vẽ tay'  │ 3059    │ 11     │ 25     │ 48     │ 16232            │ 135558                 │
 └─────────┴────┴─────────────────┴─────────┴────────┴────────┴────────┴──────────────────┴────────────────────────┘
 ```
-- **Đọc số:** p50 từ 5 đến 11 ms và p95 từ 10 đến 39 ms ở cả N = 2, 10, 20; max cao nhất 186 ms (N = 10, nét vẽ tay). Giữa N = 2 và N = 20 độ trễ không tăng theo N trong các lần đo này. Nét vẽ tay nặng hơn rõ rệt (gói cuối ~16 KB, ~135 KB/s mỗi người nhận so với ~5.5 KB/s) vì mỗi lần gửi toàn bộ `points`. `samples` (~161 mỗi kịch bản ở N = 2) thấp hơn 200 vì vòng gửi của script thực tế chạy ~62 ms/tick trên máy này (sleep 50 ms cộng thời gian xử lý), không phải do mất gói. Mỗi cấu hình chỉ chạy một lần, trên một máy, nên chỉ là số đo tham khảo cho 1 instance.
-- **Commit:** `test: script đo độ trễ đồng bộ whiteboard`.
+- **Lần chạy thử đầu, có cold start (N=2, chạy riêng trước lần chạy đủ; số liệu nguyên văn, chưa công bố ở trên):**
+```
+│ 0       │ 2  │ 'A element nhỏ' │ 161     │ 6      │ 96     │ 192    │ 160              │ 5495                   │
+│ 1       │ 2  │ 'B nét vẽ tay'  │ 161     │ 9      │ 29     │ 172    │ 16231            │ 135542                 │
+```
+  Cùng N=2 giữa hai lần chạy: p95 của kịch bản A là 96 ms so với 10 ms, max 192 ms so với 22 ms. Biến động giữa các lần chạy ở N=2 lớn hơn chênh lệch giữa các N.
+- **Điều kiện đo thực tế:** vòng gửi chạy ~62 ms/tick trên Windows (không phải 50 ms), tức ~16 tick/s × 3 điểm ≈ 48 điểm/s thay vì 60 điểm/s (20 tick/s) như thiết kế. `lastPayloadBytes` (~16 KB, ≈480 điểm) và bytes/s (~135 KB/s) của kịch bản B mô tả mức tải nhẹ hơn đó; ở đúng tốc độ thiết kế thì gói và băng thông sẽ cao hơn (ước tính thô ~20 KB và ~170 KB/s — đây là ước tính, KHÔNG phải số đo). `bytesPerSecPerReceiver` tính trên JSON của envelope, không gồm phần đóng khung Socket.IO trên dây. Node: v22.16.0. Mỗi lần chạy để lại user `bench_*`, phòng và meeting đã kết thúc trong DB dev.
+- **Đọc số:** p50 từ 5 đến 11 ms và p95 từ 10 đến 39 ms ở cả N = 2, 10, 20; max cao nhất 186 ms (N = 10, nét vẽ tay). p50 tăng ~2 ms từ N=2 lên N≥10 (A: 5→7; B: 9→11); đuôi p95/max dao động không theo xu hướng rõ theo N. Nét vẽ tay nặng hơn rõ rệt (gói cuối ~16 KB, ~135 KB/s mỗi người nhận so với ~5.5 KB/s) vì mỗi lần gửi toàn bộ `points`. `samples` (~161 mỗi kịch bản ở N = 2) thấp hơn 200 vì tick thực tế ~62 ms; số mẫu hai kịch bản bằng nhau (và ở N=10, 20 khớp số tick × số người nhận) nên suy ra không mất gói, đây là suy luận chứ không kiểm tra trực tiếp. Mỗi cấu hình chạy một lần trong lần chạy đủ (N=2 có thêm lần chạy thử ở trên), trên một máy, nên chỉ là số đo tham khảo cho 1 instance.
+- **Commit:** `test: script đo độ trễ đồng bộ whiteboard`; sửa ghi chú: `docs: ghi rõ điều kiện đo độ trễ whiteboard`.
