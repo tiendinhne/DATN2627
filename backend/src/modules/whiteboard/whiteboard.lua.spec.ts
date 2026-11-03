@@ -106,6 +106,14 @@ describe('wb-apply — giới hạn và đếm element còn hiển thị', () =>
     expect(await alive()).toBe(1);
   });
 
+  it('bộ đếm đã vượt giới hạn → batch chỉ sửa / xoá vẫn qua, thêm mới bị chặn', async () => {
+    await apply([{ id: 'a', version: 1, versionNonce: 1 }, { id: 'b', version: 1, versionNonce: 1 }], 5);
+    // Giả lập giới hạn bị hạ xuống dưới số đang có (maxAlive 1, maxTotal 1)
+    expect((await apply([{ id: 'a', version: 2, versionNonce: 1 }], 1, 1))[0]).toBe('OK');
+    expect((await apply([{ id: 'b', version: 2, versionNonce: 1, isDeleted: true }], 1, 1))[0]).toBe('OK');
+    expect(await apply([{ id: 'c', version: 1, versionNonce: 1 }], 1, 1)).toEqual(['LIMIT']);
+  });
+
   it('bảng đầy vẫn sửa và xoá được', async () => {
     await apply([{ id: 'a', version: 1, versionNonce: 1 }], 1);
     expect((await apply([{ id: 'a', version: 2, versionNonce: 1 }], 1))[0]).toBe('OK');

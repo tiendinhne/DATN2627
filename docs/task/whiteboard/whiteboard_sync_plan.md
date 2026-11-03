@@ -439,9 +439,10 @@ for a = 4, #ARGV, 5 do
   i = i + 1
 end
 
--- Kiểm giới hạn trước khi ghi: 5.000 element còn hiển thị, 20.000 tính cả tombstone
+-- Kiểm giới hạn trước khi ghi: 5.000 element còn hiển thị, 20.000 tính cả tombstone.
+-- Batch không thêm gì (aliveDelta ≤ 0, không có id mới) luôn qua, để bảng đầy vẫn sửa / xoá được (spec §4.2)
 local alive = tonumber(redis.call('GET', KEYS[3]) or '0')
-if alive + aliveDelta > maxAlive or redis.call('HLEN', KEYS[1]) + newIds > maxTotal then
+if (aliveDelta > 0 and alive + aliveDelta > maxAlive) or (newIds > 0 and redis.call('HLEN', KEYS[1]) + newIds > maxTotal) then
   return {'LIMIT'}
 end
 if #winners == 0 then return {'NOOP'} end
