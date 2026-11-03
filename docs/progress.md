@@ -1109,3 +1109,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Test:** `npx vitest run src/modules/whiteboard/element.validator.spec.ts` → 32/32 pass. RED trước đó: `Cannot find module './element.validator.js'`. `npm run build` (backend) → exit 0.
 - **Lệch plan:** không. Code và test chép nguyên văn từ plan, không sửa.
 - **Commit:** `feat: hằng số whiteboard dùng chung và kiểm element` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 2 (script Lua wb-apply, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/whiteboard/whiteboard.lua.ts` (`WB_APPLY_SCRIPT`: merge LWW theo luật Excalidraw 0.18.1 dấu `<`, đếm element còn hiển thị `wb:alive`, trần 5.000 hiển thị / 20.000 tổng, TTL 86400 s cho cả 3 key) và test `whiteboard.lua.spec.ts` chạy trên Redis thật (`redis-dev`, 13 ca).
+- **Test:** `npx vitest run src/modules/whiteboard/whiteboard.lua.spec.ts` → 13/13 pass. RED: lúc Docker tắt, vitest báo `connect ECONNREFUSED 127.0.0.1:6379` (13 ca skipped, không phải lỗi thiếu module). Sau khi Redis lên: `PONG`, không còn key `test:wb:*`. Full suite `npx vitest run` → 15 file / 225 ca pass. `npm run build` → exit 0.
+- **Lệch plan:** không. Code và test chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: script Lua wb-apply merge LWW whiteboard trong Redis` (user duyệt commit local từng task 2026-11-03).
