@@ -1131,3 +1131,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Test:** `npx vitest run src/modules/realtime/realtime-publisher.service.spec.ts` → 8/8 pass. RED trước đó: 5 fail `publisher.<method> is not a function`, 3 test cũ pass. Full suite `npx vitest run` → 16 file / 250 ca pass (Redis `redis-dev` đang chạy, `whiteboard.lua.spec.ts` không bị skip). `npm run build` → exit 0.
 - **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
 - **Commit:** `feat: publisher phát snapshot, wb:ops, wb:pointer và đóng kênh meeting` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 5 (Gateway meeting:join, wb:ops, wb:pointer, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/whiteboard/dto/whiteboard-events.dto.ts` (`MeetingIdDto`, `WbOpsDto`, `WbPointerDto`). `meeting.gateway.ts`: tham số thứ 6 `WhiteboardService`, thay handler `wb:ops` cũ bằng `handleMeetingJoin` (kiểm quyền → vào kênh → đọc snapshot → gửi riêng socket), `handleMeetingLeave`, `handleWhiteboardOps` (validate → Lua → phát element thắng → lưu nền), `handleWhiteboardPointer` và `assertInMeeting` (kiểm `socket.rooms` trong RAM). `realtime.module.ts` import `WhiteboardModule`.
+- **Test:** `npx vitest run src/modules/realtime` → 2 file / 23 ca pass (gateway 4 chat + 11 whiteboard, publisher 8). RED trước đó: 11 fail `gateway.handleMeetingJoin is not a function`, 4 chat cũ pass. Full suite `npx vitest run` → 16 file / 261 ca pass. `npm run build` → exit 0. `npm run lint` (oxlint) không có cảnh báo ở file đã sửa.
+- **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: gateway meeting:join, wb:ops, wb:pointer cho whiteboard` (user duyệt commit local từng task 2026-11-03).

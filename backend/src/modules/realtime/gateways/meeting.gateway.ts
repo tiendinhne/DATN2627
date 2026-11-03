@@ -6,6 +6,7 @@ import {
 } from '@nestjs/websockets';
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Logger,
   UnauthorizedException,
@@ -20,6 +21,10 @@ import { ChatSendDto } from '../../chat/dto/chat-send.dto.js';
 import { RoomAccessService } from '../../room-members/room-access.service.js';
 import { UsersService } from '../../users/users.service.js';
 import { RealtimePublisher } from '../realtime-publisher.service.js';
+import { WhiteboardService } from '../../whiteboard/whiteboard.service.js';
+import { MeetingIdDto, WbOpsDto, WbPointerDto } from '../../whiteboard/dto/whiteboard-events.dto.js';
+import { validateElementsBatch } from '../../whiteboard/element.validator.js';
+import type { WbElement } from '../../whiteboard/element.validator.js';
 
 class RoomIdDto {
   @IsMongoId()
@@ -45,6 +50,7 @@ export class MeetingGateway
     private readonly roomAccess: RoomAccessService,
     private readonly chat: ChatService,
     private readonly publisher: RealtimePublisher,
+    private readonly whiteboard: WhiteboardService,
   ) {}
 
   afterInit(namespace: Namespace) {
@@ -141,9 +147,89 @@ export class MeetingGateway
     }
   }
 
+  // Vào board của meeting: thành viên + meeting ACTIVE → vào kênh TRƯỚC rồi mới đọc snapshot,
+  // để op phát ra ở giữa vẫn tới (LWW không phụ thuộc thứ tự) — spec whiteboard §3.1
+  @SubscribeMessage('meeting:join')
+  async handleMeetingJoin(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(MeetingIdDto, data);
+      const { roomId } = await this.whiteboard.assertCanJoin(socket.data.userId, dto.meetingId);
+      await socket.join(`meeting:${dto.meetingId}`);
+      // roomId của meeting giữ trên kết nối (không phải state server) để gắn envelope cho wb:*
+      socket.data.meetingRoomIds = { ...socket.data.meetingRoomIds, [dto.meetingId]: roomId };
+      const snapshot = await this.whiteboard.getSnapshot(dto.meetingId);
+      this.publisher.sendSnapshot(socket, {
+        seq: snapshot.seq,
+        actorId: socket.data.userId,
+        roomId,
+        meetingId: dto.meetingId,
+        elements: snapshot.elements,
+      });
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  @SubscribeMessage('meeting:leave')
+  async handleMeetingLeave(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(MeetingIdDto, data);
+      await socket.leave(`meeting:${dto.meetingId}`);
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  // Nét vẽ: validate → Lua merge LWW (atomic) → phát element thắng → thử lưu nền. Không query Mongo mỗi op
   @SubscribeMessage('wb:ops')
-  handleWhiteboardOps(socket: Socket, data: any) {
-    this.logger.log(`Whiteboard ops from ${socket.id}:`, data);
+  async handleWhiteboardOps(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(WbOpsDto, data);
+      const roomId = this.assertInMeeting(socket, dto.meetingId);
+      const invalid = validateElementsBatch(dto.elements);
+      if (invalid) throw new BadRequestException(invalid);
+
+      const result = await this.whiteboard.applyOps(dto.meetingId, dto.elements as WbElement[]);
+      if (!result) return;
+      this.publisher.publishWbOps(socket.id, {
+        seq: result.seq,
+        actorId: socket.data.userId,
+        roomId,
+        meetingId: dto.meetingId,
+        elements: result.winners,
+      });
+      this.whiteboard.tryPersistInBackground(dto.meetingId);
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  // Con trỏ: chỉ chuyển tiếp, không Redis, không seq, không lưu
+  @SubscribeMessage('wb:pointer')
+  async handleWhiteboardPointer(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(WbPointerDto, data);
+      const roomId = this.assertInMeeting(socket, dto.meetingId);
+      this.publisher.publishWbPointer(socket.id, {
+        actorId: socket.data.userId,
+        displayName: socket.data.displayName,
+        roomId,
+        meetingId: dto.meetingId,
+        x: dto.x,
+        y: dto.y,
+      });
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  // Socket phải đang ở kênh meeting (đã join, chưa bị kick / meeting chưa kết thúc) — kiểm trong RAM, không query
+  private assertInMeeting(socket: Socket, meetingId: string): string {
+    const roomId: string | undefined = socket.data.meetingRoomIds?.[meetingId];
+    if (!roomId || !socket.rooms.has(`meeting:${meetingId}`)) {
+      throw new ForbiddenException('Bạn chưa vào buổi học này');
+    }
+    return roomId;
   }
 
   private async validatePayload<T extends object>(
