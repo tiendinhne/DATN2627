@@ -67,4 +67,9 @@ Xem `realtime.md` §5. Client gửi `lastSeq`: chênh ≤ 500 → replay diff t�
 
 ## 6. Permission
 
-`DRAW_WHITEBOARD`, `DELETE_OTHERS_ELEMENT`, `CLEAR_BOARD` — xem `security.md`.
+**Mọi thành viên phòng đều được vẽ, sửa, xoá element của người khác và clear board** — không có hành động whiteboard nào trong bảng quyền `backend/src/shared/permissions.ts` (user chốt 2026-11-02).
+
+- Truy vết: đề cương §5.6 "Người dùng có thể cùng tạo, chỉnh sửa, di chuyển và xóa các đối tượng trên bảng vẽ" — không phân biệt HOST/MEMBER; `docs/rule/role.md` cho MEMBER ✅ ở "Vẽ whiteboard" và "Xoá element người khác / clear board".
+- Backend vẫn enforce (ràng buộc #4): `meeting:join` kiểm là thành viên phòng + meeting ACTIVE; `wb:*` chỉ nhận từ socket đã join kênh `meeting:{meetingId}`.
+- Bỏ 3 quyền `DRAW_WHITEBOARD`, `DELETE_OTHERS_ELEMENT`, `CLEAR_BOARD` ghi ở bản trước.
+- **NOTE — sau này chia quyền:** khi có role mới (vd VIEWER chỉ xem, xem mục "Mở rộng" của `role.md`) thì thêm các hành động này vào `RoomAction` + `ROOM_PERMISSIONS` và kiểm ở handler `wb:ops`. Ngoài scope hiện tại.
