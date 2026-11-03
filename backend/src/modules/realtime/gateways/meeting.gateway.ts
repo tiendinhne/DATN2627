@@ -157,7 +157,14 @@ export class MeetingGateway
       await socket.join(`meeting:${dto.meetingId}`);
       // roomId của meeting giữ trên kết nối (không phải state server) để gắn envelope cho wb:*
       socket.data.meetingRoomIds = { ...socket.data.meetingRoomIds, [dto.meetingId]: roomId };
-      const snapshot = await this.whiteboard.getSnapshot(dto.meetingId);
+      let snapshot: Awaited<ReturnType<WhiteboardService['getSnapshot']>>;
+      try {
+        snapshot = await this.whiteboard.getSnapshot(dto.meetingId);
+      } catch (snapshotError) {
+        // Không để socket nằm trong kênh mà không có snapshot (sẽ nhận op rời rạc trên nền sai)
+        await socket.leave(`meeting:${dto.meetingId}`);
+        throw snapshotError;
+      }
       this.publisher.sendSnapshot(socket, {
         seq: snapshot.seq,
         actorId: socket.data.userId,

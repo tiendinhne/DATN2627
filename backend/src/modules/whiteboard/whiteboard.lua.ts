@@ -1,10 +1,13 @@
 // Script Lua wb-apply — merge LWW batch element vào Redis Hash, atomic (spec whiteboard_sync_spec.md §4.2).
 // Redis chạy từng script một → 2 instance cùng ghi 1 board không mất op.
-// KEYS[1] = wb:{meetingId} (Hash id → JSON) · KEYS[2] = wb:seq:{meetingId} · KEYS[3] = wb:alive:{meetingId}
+// KEYS[1] = wb:{meetingId} (Hash id → JSON) · KEYS[2] = wb:seq:{meetingId} · KEYS[3] = wb:alive:{meetingId} · KEYS[4] = wb:closed:{meetingId} (có = board đã đóng)
 // ARGV[1] = maxAlive · ARGV[2] = maxTotal · ARGV[3] = ttlSeconds
 // ARGV[4..] = mỗi element 5 giá trị: id, version, versionNonce, isDeleted ('0'|'1'), json
-// Trả về: {'LIMIT'} · {'NOOP'} · {'OK', seq, idx…} (idx = vị trí element thắng trong batch, đếm từ 0)
+// Trả về: {'CLOSED'} · {'LIMIT'} · {'NOOP'} · {'OK', seq, idx…} (idx = vị trí element thắng trong batch, đếm từ 0)
 export const WB_APPLY_SCRIPT = `
+-- Board đã đóng (hết buổi): từ chối mọi op, không ghi gì
+if redis.call('EXISTS', KEYS[4]) == 1 then return {'CLOSED'} end
+
 local maxAlive = tonumber(ARGV[1])
 local maxTotal = tonumber(ARGV[2])
 local ttl = tonumber(ARGV[3])

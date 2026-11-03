@@ -678,6 +678,16 @@ describe('removeFromActiveMeeting', () => {
     await expect(service.removeFromActiveMeeting(roomId, userId)).resolves.toBeUndefined();
   });
 
+  it('leaveMeeting lỗi → vẫn đưa người đó ra khỏi LiveKit, không ném', async () => {
+    const { service, meetingModel, media, realtime } = build();
+    meetingModel.findOne.mockReturnValue(query(fakeMeeting()));
+    realtime.leaveMeeting.mockRejectedValue(new Error('redis down'));
+
+    await expect(service.removeFromActiveMeeting(roomId, userId)).resolves.toBeUndefined();
+
+    expect(media.removeParticipant).toHaveBeenCalledWith(meetingId, userId);
+  });
+
   it('Mongo lỗi → không ném lỗi', async () => {
     const { service, meetingModel } = build();
     meetingModel.findOne.mockReturnValue(failingQuery(new Error('mongo down')));

@@ -163,6 +163,15 @@ describe('MeetingGateway whiteboard events', () => {
     );
   });
 
+  it('meeting:join: getSnapshot lỗi → rời kênh rồi ném lại (không ở trong kênh mà thiếu snapshot)', async () => {
+    const { gateway, whiteboard, socket } = build();
+    whiteboard.getSnapshot.mockRejectedValue(new Error('redis down'));
+
+    await expect(gateway.handleMeetingJoin(socket as any, { meetingId })).rejects.toThrow('redis down');
+
+    expect(socket.leave).toHaveBeenCalledWith(`meeting:${meetingId}`);
+  });
+
   it('meeting:join không có quyền → error 403, không vào kênh', async () => {
     const { gateway, whiteboard, socket } = build();
     whiteboard.assertCanJoin.mockRejectedValue(new ForbiddenException('Không phải thành viên'));

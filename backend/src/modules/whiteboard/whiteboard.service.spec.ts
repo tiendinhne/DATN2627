@@ -85,6 +85,15 @@ describe('getSnapshot', () => {
     expect(snapshot.elements).toEqual(expect.arrayContaining([{ id: 'a', isDeleted: false }, { id: 'b', isDeleted: true }]));
   });
 
+  it('elements trả theo fractional index (z-order), không theo thứ tự Hash', async () => {
+    const { service } = build(
+      { c: json({ id: 'c', index: 'a2' }), a: json({ id: 'a', index: 'a0' }), b: json({ id: 'b', index: 'a1' }) },
+      '4',
+    );
+    const snapshot = await service.getSnapshot(meetingId);
+    expect((snapshot.elements as Array<{ id: string }>).map((e) => e.id)).toEqual(['a', 'b', 'c']);
+  });
+
   it('board trống → seq null, elements rỗng', async () => {
     const { service } = build();
     await expect(service.getSnapshot(meetingId)).resolves.toEqual({ seq: null, elements: [] });
@@ -100,7 +109,7 @@ describe('applyOps', () => {
     client.eval.mockResolvedValue(['OK', 5, 1]);
     await expect(service.applyOps(meetingId, [a, b])).resolves.toEqual({ seq: 5, winners: [b] });
     expect(client.eval).toHaveBeenCalledWith(WB_APPLY_SCRIPT, {
-      keys: [`wb:${meetingId}`, `wb:seq:${meetingId}`, `wb:alive:${meetingId}`],
+      keys: [`wb:${meetingId}`, `wb:seq:${meetingId}`, `wb:alive:${meetingId}`, `wb:closed:${meetingId}`],
       arguments: ['5000', '20000', '86400', 'a', '2', '9', '0', json(a), 'b', '1', '3', '1', json(b)],
     });
   });
@@ -109,6 +118,12 @@ describe('applyOps', () => {
     const { service, client } = build();
     client.eval.mockResolvedValue(['NOOP']);
     await expect(service.applyOps(meetingId, [a])).resolves.toBeNull();
+  });
+
+  it('CLOSED → 409', async () => {
+    const { service, client } = build();
+    client.eval.mockResolvedValue(['CLOSED']);
+    await expect(service.applyOps(meetingId, [a])).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('LIMIT → 400', async () => {
@@ -146,6 +161,17 @@ describe('persist', () => {
     expect(JSON.parse(gunzipSync(update.$set.elementsGzip).toString())).toEqual([{ id: 'a', isDeleted: false }]);
   });
 
+  it('mảng ghi Mongo theo fractional index, không theo thứ tự Hash', async () => {
+    const { service, whiteboardModel } = build(
+      { c: json({ id: 'c', index: 'a2' }), a: json({ id: 'a', index: 'a0' }), b: json({ id: 'b', index: 'a1' }) },
+      '4',
+    );
+    await service.persist(meetingId);
+    const update = whiteboardModel.updateOne.mock.calls[0][1] as any;
+    const ids = JSON.parse(gunzipSync(update.$set.elementsGzip).toString()).map((e: { id: string }) => e.id);
+    expect(ids).toEqual(['a', 'b', 'c']);
+  });
+
   it('Hash rỗng → không ghi (endMeeting chạy lại không đè board rỗng)', async () => {
     const { service, whiteboardModel } = build({}, null);
     await service.persist(meetingId);
@@ -160,10 +186,18 @@ describe('persist', () => {
     expect(JSON.parse(gunzipSync(update.$set.elementsGzip).toString())).toEqual([]);
   });
 
-  it('E11000 (đã có bản mới hơn) → bỏ qua, không ném', async () => {
+  it('E11000 (đua insert đầu tiên) → thử lại 1 lần, cùng filter / update, KHÔNG upsert', async () => {
     const { service, whiteboardModel } = build({ a: json({ id: 'a', isDeleted: false }) }, '3');
-    whiteboardModel.updateOne.mockReturnValue({ exec: vi.fn().mockRejectedValue(duplicateKeyError()) });
+    whiteboardModel.updateOne
+      .mockReturnValueOnce({ exec: vi.fn().mockRejectedValue(duplicateKeyError()) })
+      .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue({ acknowledged: true }) });
     await expect(service.persist(meetingId)).resolves.toBeUndefined();
+    expect(whiteboardModel.updateOne).toHaveBeenCalledTimes(2);
+    const [first, second] = whiteboardModel.updateOne.mock.calls as any[];
+    expect(second[0]).toEqual(first[0]);
+    expect(second[1]).toEqual(first[1]);
+    expect(first[2]).toEqual({ upsert: true });
+    expect(second[2]).toBeUndefined();
   });
 
   it('lỗi Mongo khác → ném', async () => {
@@ -200,10 +234,12 @@ describe('tryPersistInBackground', () => {
 });
 
 describe('finalizeBoard', () => {
-  it('persist rồi xoá 3 key Redis', async () => {
+  it('SET wb:closed → persist → xoá 3 key Redis (closed giữ lại)', async () => {
     const { service, client } = build();
     const persist = vi.spyOn(service, 'persist').mockResolvedValue();
     await service.finalizeBoard(meetingId);
+    expect(client.set).toHaveBeenCalledWith(`wb:closed:${meetingId}`, '1', { EX: 86400 });
+    expect(client.set.mock.invocationCallOrder[0]).toBeLessThan(persist.mock.invocationCallOrder[0]);
     expect(client.del).toHaveBeenCalledWith([`wb:${meetingId}`, `wb:seq:${meetingId}`, `wb:alive:${meetingId}`]);
     expect(persist.mock.invocationCallOrder[0]).toBeLessThan(client.del.mock.invocationCallOrder[0]);
   });

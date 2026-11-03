@@ -20,9 +20,9 @@ export function isValidElement(value: unknown): value is WbElement {
   return (
     typeof e.id === 'string' &&
     ID_PATTERN.test(e.id) &&
-    Number.isInteger(e.version) &&
+    Number.isSafeInteger(e.version) &&
     (e.version as number) >= 1 &&
-    Number.isInteger(e.versionNonce) &&
+    Number.isSafeInteger(e.versionNonce) &&
     typeof e.isDeleted === 'boolean' &&
     typeof e.type === 'string' &&
     WB_ELEMENT_TYPES.includes(e.type)

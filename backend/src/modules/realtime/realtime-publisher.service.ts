@@ -132,7 +132,8 @@ export class RealtimePublisher {
     await this.requireNamespace().in(`user:${userId}`).socketsLeave(`meeting:${meetingId}`);
   }
 
-  // Meeting kết thúc: ép mọi socket rời kênh → op gửi sau đó tự bị chặn 403 (spec §3.3)
+  // Meeting kết thúc: ép mọi socket rời kênh. Qua redis-adapter lệnh này chỉ publish, socket rời SAU đó —
+  // KHÔNG đồng bộ; chặn cứng op muộn là key wb:closed (409 từ Lua), không phải việc rời kênh (spec §3.3, §13.1)
   async closeMeetingChannel(meetingId: string) {
     const channel = `meeting:${meetingId}`;
     await this.requireNamespace().in(channel).socketsLeave(channel);

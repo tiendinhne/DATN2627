@@ -24,6 +24,8 @@ describe('isValidElement', () => {
     ['version 0', el({ version: 0 })],
     ['version không nguyên', el({ version: 1.5 })],
     ['versionNonce là chuỗi', el({ versionNonce: '1' })],
+    ['version 2^53', el({ version: 2 ** 53 })],
+    ['versionNonce 2^53', el({ versionNonce: 2 ** 53 })],
     ['isDeleted là chuỗi', el({ isDeleted: 'false' })],
     ['id có khoảng trắng', el({ id: 'a b' })],
     ['id rỗng', el({ id: '' })],

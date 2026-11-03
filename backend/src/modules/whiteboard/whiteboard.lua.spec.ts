@@ -6,7 +6,7 @@ import { WB_APPLY_SCRIPT } from './whiteboard.lua.js';
 // CI sau này cần `services: redis` (spec §10.3)
 const client = createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
 const prefix = `test:wb:${process.pid}:${Date.now()}:`;
-const keys = [`${prefix}hash`, `${prefix}seq`, `${prefix}alive`];
+const keys = [`${prefix}hash`, `${prefix}seq`, `${prefix}alive`, `${prefix}closed`];
 
 type El = { id: string; version: number; versionNonce: number; isDeleted?: boolean; [key: string]: unknown };
 
@@ -127,8 +127,20 @@ describe('wb-apply — giới hạn và đếm element còn hiển thị', () =>
 
   it('có element thắng → cả 3 key có TTL', async () => {
     await apply([{ id: 'a', version: 1, versionNonce: 1 }]);
-    for (const key of keys) {
+    for (const key of keys.slice(0, 3)) {
       expect(await client.ttl(key)).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('wb-apply — board đã đóng (wb:closed)', () => {
+  it('có key closed → CLOSED, Hash / alive / seq không đổi', async () => {
+    await apply([{ id: 'a', version: 1, versionNonce: 1 }]);
+    await client.set(keys[3], '1');
+    expect(await apply([{ id: 'a', version: 2, versionNonce: 1 }, { id: 'b', version: 1, versionNonce: 1 }])).toEqual(['CLOSED']);
+    expect((await stored('a')).version).toBe(1);
+    expect(await client.hLen(keys[0])).toBe(1);
+    expect(await alive()).toBe(1);
+    expect(await seq()).toBe(1);
   });
 });

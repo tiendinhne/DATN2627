@@ -29,12 +29,21 @@ function boardKeys(meetingId: string) {
     seq: `wb:seq:${meetingId}`,
     alive: `wb:alive:${meetingId}`,
     lock: `wb:persist-lock:${meetingId}`,
+    closed: `wb:closed:${meetingId}`,
   };
 }
 
 // Lỗi trùng unique index của Mongo
 function isDuplicateKey(err: unknown): boolean {
   return (err as { code?: number })?.code === 11000;
+}
+
+// Thứ tự lớp (z-order) của Excalidraw: theo fractional index, hoà thì theo id (giống orderByFractionalIndex)
+function byFractionalIndex(a: { index?: string | null; id: string }, b: { index?: string | null; id: string }) {
+  const ai = a.index ?? '';
+  const bi = b.index ?? '';
+  if (ai !== bi) return ai < bi ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 @Injectable()
@@ -62,7 +71,10 @@ export class WhiteboardService {
     const { hash, seq } = await this.readBoard(meetingId);
     return {
       seq: seq === null ? null : Number(seq),
-      elements: Object.values(hash).map((value) => JSON.parse(value)),
+      // HGETALL không có thứ tự; restoreElements của client coi thứ tự mảng là z-order → sắp theo index
+      elements: Object.values(hash)
+        .map((value) => JSON.parse(value))
+        .sort(byFractionalIndex),
     };
   }
 
@@ -80,10 +92,11 @@ export class WhiteboardService {
       );
     }
     const reply = (await this.redis.getClient().eval(WB_APPLY_SCRIPT, {
-      keys: [keys.hash, keys.seq, keys.alive],
+      keys: [keys.hash, keys.seq, keys.alive, keys.closed],
       arguments: args,
     })) as Array<string | number>;
 
+    if (reply[0] === 'CLOSED') throw new ConflictException('Buổi học đã kết thúc');
     if (reply[0] === 'LIMIT') throw new BadRequestException('Bảng vẽ đã đạt giới hạn 5.000 đối tượng');
     if (reply[0] === 'NOOP') return null;
     return { seq: Number(reply[1]), winners: reply.slice(2).map((index) => elements[Number(index)]) };
@@ -106,39 +119,41 @@ export class WhiteboardService {
     if (seq === null || values.length === 0) return;
 
     // Mongo chỉ giữ element còn hiển thị — tombstone chỉ cần cho đồng bộ live (spec §1 câu 12)
-    const elements = values.map((value) => JSON.parse(value)).filter((element) => element.isDeleted !== true);
+    const elements = values.map((value) => JSON.parse(value)).filter((element) => element.isDeleted !== true)
+      .sort(byFractionalIndex);
     const raw = JSON.stringify(elements);
     const meeting = await this.meetingModel.findById(meetingId).select('roomId').lean().exec();
     if (!meeting) return;
 
+    const filter = { meetingId, lastSeq: { $lt: Number(seq) } };
+    const update = {
+      $set: {
+        elementsGzip: await gzipAsync(raw),
+        elementCount: elements.length,
+        rawSizeBytes: Buffer.byteLength(raw),
+        lastSeq: Number(seq),
+        lastPersistedAt: new Date(),
+      },
+      $setOnInsert: { roomId: meeting.roomId },
+    };
     try {
-      await this.whiteboardModel
-        .updateOne(
-          { meetingId, lastSeq: { $lt: Number(seq) } },
-          {
-            $set: {
-              elementsGzip: await gzipAsync(raw),
-              elementCount: elements.length,
-              rawSizeBytes: Buffer.byteLength(raw),
-              lastSeq: Number(seq),
-              lastPersistedAt: new Date(),
-            },
-            $setOnInsert: { roomId: meeting.roomId },
-          },
-          { upsert: true },
-        )
-        .exec();
+      await this.whiteboardModel.updateOne(filter, update, { upsert: true }).exec();
     } catch (err) {
-      // Đã có lastSeq >= seq → filter không khớp → upsert cố insert trùng meetingId → E11000: bản Mongo mới hơn, bỏ qua
       if (!isDuplicateKey(err)) throw err;
+      // E11000: (a) Mongo đã có lastSeq >= seq, hoặc (b) 2 upsert đầu tiên cùng insert và mình thua nhưng seq mới hơn.
+      // Thử lại 1 lần KHÔNG upsert: chỉ khớp khi bản Mongo cũ hơn, ngược lại sửa 0 dòng — cả hai đều đúng
+      await this.whiteboardModel.updateOne(filter, update).exec();
     }
   }
 
   // Gọi từ endMeeting: lưu bản cuối rồi xoá key Redis. KHÔNG BAO GIỜ ném — lỗi thì giữ key (TTL 24 h) để không mất board
   async finalizeBoard(meetingId: string): Promise<void> {
     try {
-      await this.persist(meetingId);
       const keys = boardKeys(meetingId);
+      // Đặt cờ đóng TRƯỚC khi đọc bản cuối. Redis chạy tuần tự → mọi op sau lệnh SET này bị Lua từ chối,
+      // op trước nó đã nằm trong bản đọc cuối — đúng trên mọi instance (socketsLeave qua adapter là bất đồng bộ)
+      await this.redis.getClient().set(keys.closed, '1', { EX: BOARD_TTL_SECONDS });
+      await this.persist(meetingId);
       await this.redis.getClient().del([keys.hash, keys.seq, keys.alive]);
     } catch (err) {
       this.logger.error(`Không lưu được bản cuối whiteboard, meeting ${meetingId}: ${err}`);
