@@ -1146,3 +1146,23 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Chạy thật:** `docker compose restart backend` → log có `RealtimeModule dependencies initialized`, `MeetingsModule dependencies initialized`, `Nest application successfully started`, không có `Nest can't resolve dependencies`. node-redis `eval("return {'OK', 1, 0}")` trong backend-dev → `[ 'OK', 1, 0 ]` (chuỗi + số, đúng cách đọc `reply` trong `applyOps`).
 - **Lệch plan:** không. Code và test chép nguyên văn. (Lệnh eval chạy bằng file .cjs tạm đặt trong `/app` của container vì quoting PowerShell; đã xoá.)
 - **Commit:** `feat: kết thúc meeting đóng kênh và lưu bản cuối whiteboard` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 7 (Frontend đồng bộ trong WhiteboardCanvas)
+- **Xong:** tạo `features/whiteboard/hooks/useWhiteboardSync.ts` (socket `/meeting`, snapshot, `wb:ops` throttle 50 ms, con trỏ, reconcile, lọc type/byte trước khi gửi); thay `WhiteboardCanvas.tsx` (props `token`, `meetingId`, thông báo nổi); `MeetingWorkspace.tsx` truyền `token={accessToken}` + `meetingId={meetingData.meeting.id}`; `index.ts` bỏ export types; xoá `types.ts` (grep `WhiteboardElement|WhiteboardState` chỉ còn chính file đó).
+- **Kiểm (a):** `npm run lint` -> "No ESLint warnings or errors". `npm run build` -> exit 0, Compiled successfully, type-check sạch (route `/meetings/[meetingId]` 172 kB). Không lỗi mới, không lỗi có sẵn.
+- **Kiểm (b):** container `frontend-dev` trả HTTP 200 cho `/meetings/000000000000000000000000`; log không có lỗi compile ở file của task (chỉ còn `Watchpack Error (initial scan) EIO` có sẵn do bind-mount Windows).
+- **Kiểm (c):** script tạm ngoài repo `C:\Users\dinht\AppData\Local\Temp\claude\j--HK7-----N-CODE-DATN2627\e89a5293-5b9a-4252-8f32-5ca3ce2a1478\scratchpad\wb-smoke.mjs`, chạy với backend thật: đăng ký 3 user + phòng + meeting PASS; snapshot rỗng PASS; B nhận wb:ops, A không nhận echo PASS; pointer PASS; batch có `embeddable` -> A nhận error 400, B không nhận PASS; tombstone trong snapshot khi B vào lại PASS; C vào muộn thấy đủ PASS; kick 204 + B nhận error 403 PASS; end meeting 204, Mongo `elementCount=1, lastSeq=3` PASS. Redis: sau 1.5 s còn đúng 1 key `wb:persist-lock:<meetingId>` (khoá persist TTL 15 s theo thiết kế); sau 16 s không còn key `wb:*` của meeting -> kết quả đúng, dòng "no redis keys" của script FAIL do chờ chỉ 1.5 s.
+- **Lệch plan:** không (code chép nguyên văn từ brief; tsc không báo khác biệt type).
+- **Chờ user tự thử trên 2 trình duyệt:**
+  - [ ] 1. A vẽ hình chữ nhật -> B thấy.
+  - [ ] 2. A kéo hình liên tục -> B thấy hình di chuyển trong lúc kéo.
+  - [ ] 3. A, B cùng sửa 1 hình -> hai bên ra cùng kết quả.
+  - [ ] 4. Xoá 1 hình; clear board -> bên kia mất theo.
+  - [ ] 5. B tắt mạng (DevTools Offline), A xoá 1 hình, B bật lại -> hình biến mất ở B.
+  - [ ] 6. B vẽ lúc offline, bật lại -> A thấy nét đó.
+  - [ ] 7. A chèn `embeddable` -> thấy thông báo không đồng bộ; hình vẽ cùng lúc vẫn sang B.
+  - [ ] 8. Con trỏ A hiện ở B kèm tên; A dừng 5 s -> con trỏ ẩn.
+  - [ ] 9. Tài khoản C vào giữa buổi -> thấy đủ board.
+  - [ ] 10. HOST kick B -> B vẽ tiếp thì A không thấy (console B có error 403).
+  - [ ] 11. HOST kết thúc meeting -> Mongo `elementCount` đúng, không còn key `wb:*` của meeting.
+- **Commit:** `feat: đồng bộ whiteboard realtime ở frontend`.
