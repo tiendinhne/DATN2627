@@ -6,10 +6,10 @@ Phần	Trạng thái
 Auth (đăng ký, đăng nhập local, Google OAuth, /auth/me)	Chạy được
 9 schema Mongoose + index	Đã có, đúng theo DB_DESIGN.md
 Rooms, room-members	REST đầy đủ + frontend (chạy thật qua Docker 2026-10-01); chưa có realtime
-Meetings, chat, whiteboard	Mới có schema, chưa có service hay controller
-Socket gateway /meeting	Mới là khung, chỉ ghi log, chưa có auth hay validate
+Meetings, chat, whiteboard	Có service + controller; whiteboard đã có đồng bộ realtime (Redis Hash + Lua, lưu Mongo, 2026-11-03)
+Socket gateway /meeting	Có JWT, validate payload, chat, whiteboard
 AI, files, health, LiveKit	Chưa có
-Frontend	Mới có các trang login, register, dashboard và Google callback. Chưa cài socket.io-client, LiveKit. Excalidraw đã nhúng vào meeting (2026-10-22) — chạy local, chưa đồng bộ
+Frontend	Mới có các trang login, register, dashboard và Google callback. Đã có socket.io-client, LiveKit, Excalidraw đồng bộ realtime
 
 ---
 
@@ -1114,7 +1114,7 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Xong:** `backend/src/modules/whiteboard/whiteboard.lua.ts` (`WB_APPLY_SCRIPT`: merge LWW theo luật Excalidraw 0.18.1 dấu `<`, đếm element còn hiển thị `wb:alive`, trần 5.000 hiển thị / 20.000 tổng, TTL 86400 s cho cả 3 key) và test `whiteboard.lua.spec.ts` chạy trên Redis thật (`redis-dev`, 13 ca).
 - **Test:** `npx vitest run src/modules/whiteboard/whiteboard.lua.spec.ts` → 13/13 pass. RED: lúc Docker tắt, vitest báo `connect ECONNREFUSED 127.0.0.1:6379` (13 ca skipped, không phải lỗi thiếu module). Sau khi Redis lên: `PONG`, không còn key `test:wb:*`. Full suite `npx vitest run` → 15 file / 225 ca pass. `npm run build` → exit 0.
-- **Lệch plan:** không. Code và test chép nguyên văn từ plan, không sửa.
+- **Lệch plan:** có, ở fix round 1 (xem dòng cuối). Bản đầu chép nguyên văn từ plan, không sửa.
 - **Commit:** `feat: script Lua wb-apply merge LWW whiteboard trong Redis` (user duyệt commit local từng task 2026-11-03).
 - **Fix round 1 (2026-11-03):** lệch plan — điều kiện giới hạn chỉ áp khi batch thêm (`aliveDelta > 0` / `newIds > 0`), batch chỉ sửa / xoá luôn qua dù bảng đã vượt giới hạn (spec §4.2). Thêm 1 test; RED trước: `expected 'LIMIT' to be 'OK'`; GREEN: `npx vitest run src/modules/whiteboard/whiteboard.lua.spec.ts` → 14/14 pass, không còn key `test:wb:*`. Đã sửa cùng dòng trong `docs/task/whiteboard/whiteboard_sync_plan.md`.
 
@@ -1186,12 +1186,27 @@ Cập nhật lại các role * đọc file rule/role.md
 │ 5       │ 20 │ 'B nét vẽ tay'  │ 3059    │ 11     │ 25     │ 48     │ 16232            │ 135558                 │
 └─────────┴────┴─────────────────┴─────────┴────────┴────────┴────────┴──────────────────┴────────────────────────┘
 ```
-- **Lần chạy thử đầu, có cold start (N=2, chạy riêng trước lần chạy đủ; số liệu nguyên văn, chưa công bố ở trên):**
+- **Lần chạy thử đầu, có thể do cold start (N=2, chạy riêng trước lần chạy đủ; số liệu nguyên văn, chưa công bố ở trên):**
 ```
+│ (index) │ N  │ scenario        │ samples │ p50_ms │ p95_ms │ max_ms │ lastPayloadBytes │ bytesPerSecPerReceiver │
 │ 0       │ 2  │ 'A element nhỏ' │ 161     │ 6      │ 96     │ 192    │ 160              │ 5495                   │
 │ 1       │ 2  │ 'B nét vẽ tay'  │ 161     │ 9      │ 29     │ 172    │ 16231            │ 135542                 │
 ```
   Cùng N=2 giữa hai lần chạy: p95 của kịch bản A là 96 ms so với 10 ms, max 192 ms so với 22 ms. Biến động giữa các lần chạy ở N=2 lớn hơn chênh lệch giữa các N.
-- **Điều kiện đo thực tế:** vòng gửi chạy ~62 ms/tick trên Windows (không phải 50 ms), tức ~16 tick/s × 3 điểm ≈ 48 điểm/s thay vì 60 điểm/s (20 tick/s) như thiết kế. `lastPayloadBytes` (~16 KB, ≈480 điểm) và bytes/s (~135 KB/s) của kịch bản B mô tả mức tải nhẹ hơn đó; ở đúng tốc độ thiết kế thì gói và băng thông sẽ cao hơn (ước tính thô ~20 KB và ~170 KB/s — đây là ước tính, KHÔNG phải số đo). `bytesPerSecPerReceiver` tính trên JSON của envelope, không gồm phần đóng khung Socket.IO trên dây. Node: v22.16.0. Mỗi lần chạy để lại user `bench_*`, phòng và meeting đã kết thúc trong DB dev.
-- **Đọc số:** p50 từ 5 đến 11 ms và p95 từ 10 đến 39 ms ở cả N = 2, 10, 20; max cao nhất 186 ms (N = 10, nét vẽ tay). p50 tăng ~2 ms từ N=2 lên N≥10 (A: 5→7; B: 9→11); đuôi p95/max dao động không theo xu hướng rõ theo N. Nét vẽ tay nặng hơn rõ rệt (gói cuối ~16 KB, ~135 KB/s mỗi người nhận so với ~5.5 KB/s) vì mỗi lần gửi toàn bộ `points`. `samples` (~161 mỗi kịch bản ở N = 2) thấp hơn 200 vì tick thực tế ~62 ms; số mẫu hai kịch bản bằng nhau (và ở N=10, 20 khớp số tick × số người nhận) nên suy ra không mất gói, đây là suy luận chứ không kiểm tra trực tiếp. Mỗi cấu hình chạy một lần trong lần chạy đủ (N=2 có thêm lần chạy thử ở trên), trên một máy, nên chỉ là số đo tham khảo cho 1 instance.
+- **Điều kiện đo thực tế:** vòng gửi chạy ~62 ms/tick trên Windows (không phải 50 ms), tức ~16 tick/s × 3 điểm ≈ 48 điểm/s (các số ~62 ms, ~16 tick/s, ≈48 điểm/s là suy ra từ số mẫu, không đo trực tiếp) thay vì 60 điểm/s (20 tick/s) như thiết kế. `lastPayloadBytes` (~16 KB, ≈480 điểm) và bytes/s (~135 KB/s) của kịch bản B mô tả mức tải nhẹ hơn đó; ở đúng tốc độ thiết kế thì gói và băng thông sẽ cao hơn (ước tính thô ~20 KB và ~200 KB/s (ước tính thô, payload tăng dần theo số điểm) — đây là ước tính, KHÔNG phải số đo). `bytesPerSecPerReceiver` tính trên JSON của envelope, không gồm phần đóng khung Socket.IO trên dây. Node: v22.16.0. Mỗi lần chạy để lại user `bench_*`, phòng và meeting đã kết thúc trong DB dev.
+- **Đọc số:** p50 từ 5 đến 11 ms và p95 từ 10 đến 39 ms ở cả N = 2, 10, 20; max cao nhất 186 ms (N = 10, nét vẽ tay). p50 tăng ~2 ms từ N=2 lên N≥10 (A: 5→7; B: 9→11); đuôi p95/max dao động không theo xu hướng rõ theo N. Xu hướng p50 (tăng ~2 ms) chỉ từ một lần chạy cho mỗi N và nằm trong biên dao động giữa các lần chạy, nên không kết luận được p50 tăng theo N. Nét vẽ tay nặng hơn rõ rệt (gói cuối ~16 KB, ~135 KB/s mỗi người nhận so với ~5.5 KB/s) vì mỗi lần gửi toàn bộ `points`. `samples` (~161 mỗi kịch bản ở N = 2) thấp hơn 200 vì tick thực tế ~62 ms; số mẫu hai kịch bản bằng nhau (và ở N=10, 20 khớp số tick × số người nhận) nên suy ra không mất gói, đây là suy luận chứ không kiểm tra trực tiếp. Mỗi cấu hình chạy một lần trong lần chạy đủ (N=2 có thêm lần chạy thử ở trên), trên một máy, nên chỉ là số đo tham khảo cho 1 instance.
 - **Commit:** `test: script đo độ trễ đồng bộ whiteboard`; sửa ghi chú: `docs: ghi rõ điều kiện đo độ trễ whiteboard`.
+
+## 2026-11-03 — Whiteboard: Task 9 — tài liệu
+- **Xong:** tài liệu khớp code whiteboard đồng bộ realtime. File đã sửa:
+  - `docs/PROJECT_CONTEXT.md` §9 (event catalog, bỏ `wb:resync` / `lastSeq` / ring buffer), §10 (throttle 50 ms, Lua, map version, luật LWW), §11 (khoá `SET NX PX 15000`, 5.000 tính element hiển thị, E11000).
+  - `docs/architecture/whiteboard.md` §1–§5 (bỏ trỏ tới `realtime.md`).
+  - `docs/database/DB_DESIGN.md` §C.8 (ghi chú `elementsGzip`) và Phần E (`wb:{id}` thành Hash, thêm `wb:alive:`, `wb:persist-lock:`, bỏ `wb:ops:`).
+  - `docs/api/endpoint.md` (mục "Socket.IO whiteboard" sau "Socket.IO chat").
+  - `docs/decisions.md` (ADR-014 thêm câu cuối; thêm ADR-028…031).
+  - `docs/task/whiteboard/whiteboard_sync_spec.md` §13 (thêm giới hạn 8, 9), `docs/task/whiteboard/whiteboard_sync_plan.md` Task 2 (13 → 14 test, thêm test còn thiếu).
+  - `docs/progress.md` (bảng "Code hiện có"; sửa mục Task 2 và Task 8).
+- **Lệch text brief (tài liệu mô tả CODE, không mô tả brief):** ADR-028 ghi thêm "batch không thêm gì luôn qua" và "batch trùng id bị validate từ chối". ADR-031 ghi: map ghi version lúc gửi, lúc nhận chỉ ghi khi `reconcileElements` thật sự áp element từ xa; client chỉ gửi sau `meeting:snapshot` (cờ `joined`). Dòng luồng "validate + permission + Redis INCR seq" ở §10 / `whiteboard.md` §2 đổi thành "Redis INCR seq (trong script Lua)" để khỏi trùng với dòng validate mới.
+- **Sửa phụ:** Task 2 "Lệch plan: không" sửa thành có (fix round 1); Task 8: số tick suy ra từ số mẫu, băng thông ~200 KB/s ước tính thô, "có thể do cold start", thêm dòng tiêu đề cho khối lần chạy thử, ghi chú xu hướng p50 nằm trong dao động giữa các lần chạy.
+- **Kiểm:** `git diff --stat` chỉ gồm `docs/*.md`; grep `wb:resync`, `isApplyingRemote`, `debounce`, `lastSeq` replay không còn trong thiết kế hiện hành (chỉ còn trong ADR như phương án bị loại).
+- **Commit:** `docs: whiteboard đồng bộ realtime — §9 §10 §11, ADR-028…031`.

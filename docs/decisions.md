@@ -81,7 +81,7 @@ Phần này không nằm trong scope hiện tại
 **Status:** CONFIRMED. Trước bảo vệ ≥2 tuần phải chuyển sang VPS trả phí — không để buổi bảo vệ phụ thuộc free tier.
 
 ## ADR-014 — Whiteboard elements lưu dạng gzip Buffer, hard limit 5.000
-**Decision:** `gzip(JSON.stringify(elements))` → `Buffer`. Vượt 5.000 element thì báo lỗi rõ ràng.
+**Decision:** `gzip(JSON.stringify(elements))` → `Buffer`. Vượt 5.000 element thì báo lỗi rõ ràng. 5.000 tính element còn hiển thị; tombstone không lưu xuống Mongo (ADR-028).
 **Reason:** Trần 16 MB/document của MongoDB; 5.000 element thô ≈ 3–6 MB.
 **Trade-off:** không query được bên trong elements — chấp nhận vì hệ thống không bao giờ cần.
 **Status:** CONFIRMED. Nêu ở phần Limitations của báo cáo.
@@ -175,3 +175,31 @@ Phần này không nằm trong scope hiện tại
 **Rejected because:** từ chối → user Google không có cách đăng nhập bằng mật khẩu (user chọn cho đặt); giữ phiên → mật khẩu lộ thì phiên kẻ gian vẫn sống tới 7 ngày; `/users/*` không nhận được cookie `Path=/auth` → không giữ được phiên hiện tại.
 **Giới hạn biết trước:** thiết bị khác chỉ bị đăng xuất khi access token (≤ 15 phút) hết hạn và refresh bị `401`, không tức thì.
 **Status:** CONFIRMED — user chốt 2026-11-02.
+
+## ADR-028 — Live state whiteboard = Redis Hash + script Lua `wb-apply` `[phát sinh kỹ thuật]`
+**Decision:** `wb:{meetingId}` là Hash `elementId → JSON`. Mỗi `wb:ops` chạy 1 script Lua atomic: so LWW từng element (luật `shouldDiscardRemoteElement` của Excalidraw 0.18.1, dấu `<`), đếm element còn hiển thị (`wb:alive:{id}`), kiểm giới hạn 5.000 còn hiển thị / 20.000 tổng **trước khi ghi** (batch không thêm gì luôn qua; batch trùng `id` bị validate từ chối trước khi vào script), `INCR` seq. Server Lua trước rồi mới phát. Client dùng `reconcileElements` của Excalidraw (cùng luật + giữ element đang gõ / kéo / vẽ dở). Tombstone giữ ở Redis (snapshot cần), không xuống Mongo. Client lọc type theo `backend/src/shared/whiteboard.ts`, server từ chối cả batch nếu có element sai.
+**Reason:** String gzip + đọc–merge–ghi mất op khi 2 instance ghi cùng board; WATCH/MULTI retry liên tục ở ~130 op/s/board. Lua chạy tuần tự trong Redis → atomic, 1 round-trip (<1 ms cùng host). Không viết hàm LWW TS ở `shared/` vì không ai gọi (server dùng Lua, client dùng Excalidraw) — lệch câu "dùng chung một bản" của PROJECT_CONTEXT §10.
+**Alternatives:** String gzip + WATCH/MULTI; Hash + WATCH/MULTI; server chỉ relay như `excalidraw-room`; phát trước rồi ghi Redis nền.
+**Rejected because:** WATCH xung đột cả key → retry; relay không có snapshot / validate / lưu server (trái §9, §14, đề cương §5.8); phát trước thì giới hạn 5.000 bị từ chối sau khi mọi người đã thấy.
+**Status:** CONFIRMED — user chốt 2026-11-03. Chi tiết: `docs/task/whiteboard/whiteboard_sync_spec.md` §1, §4.
+
+## ADR-029 — Bỏ ring buffer / replay; join và reconnect luôn nhận full snapshot `[phát sinh kỹ thuật]`
+**Decision:** Bỏ `wb:ops:{meetingId}` (ring buffer 500 op), event `wb:resync`, `lastSeq` trong `meeting:join`. Server luôn trả `meeting:snapshot` từ Hash.
+**Reason:** Đề cương không yêu cầu; bớt 1 key, 1 event, 1 nhánh logic. Board học nhóm nhỏ, tải lại cả board khi reconnect chấp nhận được.
+**Alternatives:** giữ ring buffer + replay diff theo `lastSeq`.
+**Rejected because:** thêm code cho lợi ích chỉ thấy với board rất lớn.
+**Status:** CONFIRMED — user chốt 2026-11-02.
+
+## ADR-030 — Lưu whiteboard xuống Mongo bằng `SET NX PX 15000`, bản cuối ở `endMeeting` `[phát sinh kỹ thuật]`
+**Decision:** Sau mỗi op có element thắng: `SET wb:persist-lock:{id} 1 NX PX 15000`; instance giành được khoá đọc Hash + seq trong 1 `MULTI`, ghi gzip element chưa xoá với guard `lastSeq` (ADR-015), E11000 → bỏ qua. `endMeeting` (mọi đường kết thúc) ép socket rời kênh rồi ghi bản cuối, thành công thì xoá key Redis; Redis rỗng thì không ghi.
+**Reason:** `setTimeout` debounce nằm trong RAM 1 instance → vi phạm stateless (ràng buộc #5), instance chết là mất timer. Không cần cron / lock nhả bằng Lua (cùng lý do ADR-022). RPO: Mongo chậm tối đa ~15 s khi đang vẽ; 15 s cuối nằm ở Redis tới khi kết thúc.
+**Alternatives:** debounce 15 s + ép 60 s bằng timer (PROJECT_CONTEXT §11 cũ); cron + distributed lock.
+**Rejected because:** timer RAM không stateless; cron thêm job + lock cho cùng kết quả.
+**Status:** CONFIRMED — user chốt 2026-11-02.
+
+## ADR-031 — Client gửi op bằng throttle 50 ms, chống echo bằng map version `[phát sinh kỹ thuật]`
+**Decision:** `onChange` → throttle 50 ms (chạy ngay lần đầu + cuối chu kỳ) → gửi element có `version` lớn hơn map `id → version đã gửi / nhận`. Map ghi version lúc gửi; lúc nhận chỉ ghi khi `reconcileElements` thật sự áp element từ xa (không ghi khi Excalidraw giữ bản local đang kéo / resize). Client chỉ gửi `wb:ops` / `wb:pointer` sau khi đã nhận `meeting:snapshot` của kết nối hiện tại (cờ `joined`, đặt lại khi connect / disconnect), vì server trả 403 khi join chưa xong. Con trỏ throttle 50 ms, phát `volatile`.
+**Reason:** Debounce chỉ gửi khi người dùng dừng tay → kéo hình liên tục người khác không thấy gì tới khi thả (user ưu tiên độ trễ realtime). Cờ `isApplyingRemote` hỏng khi `onChange` chạy sau lúc tắt cờ; Excalidraw cũng chống echo bằng version.
+**Alternatives:** debounce ~150 ms + cờ `isApplyingRemote` (PROJECT_CONTEXT §10 cũ).
+**Rejected because:** độ trễ khi kéo / vẽ liên tục.
+**Status:** CONFIRMED — user chốt 2026-11-03. Băng thông nét vẽ tay dài đo ở `tests/load/wb-latency.mjs` kịch bản B.

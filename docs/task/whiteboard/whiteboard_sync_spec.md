@@ -309,3 +309,5 @@ Set-Location ../frontend; npm run lint; npm run build
 5. **LWW per-element:** 2 người sửa cùng 1 element trong cùng khoảng 50 ms → 1 bản thắng, bản kia mất (ADR-003, CRDT là alternative).
 6. Mỗi người trong meeting giữ 2 websocket (chat + whiteboard).
 7. Chỉ đo 1 instance ở task này.
+8. `[phát sinh kỹ thuật]` **`wb:ops` bị server từ chối** (400 / 403 / vượt giới hạn, hoặc lỗi Redis tạm thời) không được gửi lại — element chỉ hiện trên máy người gửi cho tới khi họ sửa nó lần nữa.
+9. `[phát sinh kỹ thuật]` **Hai người cùng đổi kích thước / sửa chữ của một element** cùng lúc: bên thua LWW vẫn thấy bản của mình tới lần snapshot kế (reconnect / join lại) hoặc lần sửa kế, vì không có resync toàn scene định kỳ (ADR-029).
