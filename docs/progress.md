@@ -1102,3 +1102,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Plan:** `docs/task/whiteboard/whiteboard_sync_plan.md` — 9 task (1 hằng số + kiểm element · 2 Lua · 3 WhiteboardService · 4 publisher · 5 gateway · 6 meeting + chạy thật backend · 7 frontend + 11 kịch bản 2 trình duyệt · 8 script đo · 9 tài liệu + ADR-028…031). Lúc viết plan đã chạy thử script Lua bằng `redis-cli --eval` trên `redis-dev` (9 ca, key tạm đã xoá — đồ bỏ). Spec §9 chỉnh: không tách file `whiteboard-socket.ts`, hook tự mở socket. Chưa bắt đầu code.
 - **Lỗi phát hiện trong tài liệu cũ (sửa khi code xong):** code mẫu guard `lastSeq` + `upsert: true` (§11, `whiteboard.md` §4) ném E11000 khi đã có bản mới hơn; `wb:{meetingId}` String gzip (DB_DESIGN Phần E) mất op khi 2 instance cùng ghi; `whiteboard.md` trỏ tới `realtime.md`, `security.md` — 2 file không tồn tại. Bảng "Code hiện có" đầu file này lỗi thời (gateway đã có auth, đã cài `socket.io-client`).
 - **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 1 (hằng số dùng chung + kiểm element, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/shared/whiteboard.ts` (`WB_ELEMENT_TYPES`, `WB_MAX_BATCH_ELEMENTS`, `WB_MAX_BATCH_BYTES`, `WB_MAX_ALIVE_ELEMENTS`, `WB_MAX_TOTAL_ELEMENTS`) và `backend/src/modules/whiteboard/element.validator.ts` (`WbElement`, `isValidElement`, `validateElementsBatch`). Chưa có chỗ nào dùng — Task 2+ mới import.
+- **Test:** `npx vitest run src/modules/whiteboard/element.validator.spec.ts` → 32/32 pass. RED trước đó: `Cannot find module './element.validator.js'`. `npm run build` (backend) → exit 0.
+- **Lệch plan:** không. Code và test chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: hằng số whiteboard dùng chung và kiểm element` (user duyệt commit local từng task 2026-11-03).
