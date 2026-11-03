@@ -101,9 +101,8 @@ GVHD nêu rõ: nhân bản server mà code không hỗ trợ distributed thì **
 |---|---|---|
 | Session đăng nhập | MemoryStore | **JWT stateless** + refresh hash trong Mongo |
 | Danh sách socket theo room | `Map<roomId, Socket[]>` | **Socket.IO Redis adapter** |
-| Whiteboard live state | biến global | **Redis** `wb:{meetingId}` |
+| Whiteboard live state | biến global | **Redis Hash** `wb:{meetingId}` (ADR-028) |
 | Sequence counter | `let seq = 0` | **Redis `INCR`** |
-| Ring buffer op | array trong RAM | **Redis List** (LPUSH + LTRIM) |
 | Presence | `Set<userId>` | **Redis Set** + TTL |
 | Rate limit | counter in-memory | **Redis** (`INCR` + `EXPIRE`) |
 | File upload | ghi `/tmp` local | **Amazon S3 qua presigned URL** |
@@ -129,7 +128,7 @@ Giải phóng bằng Lua script kiểm tra token khớp, tránh xoá nhầm lock
 
 ### 7.6 Graceful shutdown
 
-Auto-scale sẽ thu hồi instance đang có kết nối. Cần: `GET /health` (liveness) và `GET /ready` (kiểm tra Mongo + Redis); bắt `SIGTERM` → ngừng nhận kết nối mới → emit `server:draining` → chờ ~10s → đóng; client tự reconnect sang instance khác và `wb:resync` theo `lastSeq`.
+Auto-scale sẽ thu hồi instance đang có kết nối. Cần: `GET /health` (liveness) và `GET /ready` (kiểm tra Mongo + Redis); bắt `SIGTERM` → ngừng nhận kết nối mới → emit `server:draining` → chờ ~10s → đóng; client tự reconnect sang instance khác, gửi lại `meeting:join` và nhận full snapshot (ADR-029).
 
 ### 7.7 Không dựng integration event bus riêng
 

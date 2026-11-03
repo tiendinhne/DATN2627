@@ -385,7 +385,7 @@ export class Whiteboard {
 
 `elementsGzip` chỉ chứa element chưa xoá; `elementCount` = số element đó.
 
-**`lastSeq` là chi tiết quan trọng nhất ở đây.** Với nhiều backend instance, hai instance có thể cùng debounce-persist một board. Nếu ghi mù, bản cũ có thể đè bản mới. Guard bằng conditional update:
+**`lastSeq` là chi tiết quan trọng nhất ở đây.** Với nhiều backend instance, hai instance có thể cùng persist một board (ADR-030). Nếu ghi mù, bản cũ có thể đè bản mới. Guard bằng conditional update:
 
 ```ts
 await this.model.updateOne(
