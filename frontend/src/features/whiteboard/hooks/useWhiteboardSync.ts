@@ -88,20 +88,46 @@ export function useWhiteboardSync({
     // Áp element nhận được: reconcile (giữ element mình đang gõ / kéo / vẽ dở) → không vào undo/redo
     const applyRemote = (remote: unknown[]) => {
       if (!lib || remote.length === 0) return;
-      const restored = lib.restoreElements(remote as OrderedExcalidrawElement[], null);
-      const elements = lib.reconcileElements(
-        api.getSceneElementsIncludingDeleted(),
-        restored as RemoteExcalidrawElement[],
-        api.getAppState(),
-      );
-      // Chỉ ghi version của element nhận về đã được áp; element local đang sửa dở giữ nguyên để còn gửi
-      const reconciledById = new Map(elements.map((element) => [element.id, element]));
-      for (const element of restored) {
-        if (reconciledById.get(element.id)?.version === element.version) {
-          synced.set(element.id, Math.max(synced.get(element.id) ?? 0, element.version));
+      let restored: OrderedExcalidrawElement[];
+      try {
+        restored = lib.restoreElements(remote as OrderedExcalidrawElement[], null) as OrderedExcalidrawElement[];
+      } catch {
+        // 1 element lỗi không được làm hỏng cả bảng: thử từng cái, bỏ cái ném lỗi
+        restored = [];
+        for (const item of remote) {
+          try {
+            restored.push(...(lib.restoreElements([item as OrderedExcalidrawElement], null) as OrderedExcalidrawElement[]));
+          } catch {
+            setNotice("Bỏ qua một đối tượng bảng vẽ bị lỗi.");
+          }
         }
       }
-      api.updateScene({ elements, captureUpdate: lib.CaptureUpdateAction.NEVER });
+      // Version cũ để hoàn tác nếu updateScene lỗi (đã phải ghi TRƯỚC updateScene để onChange không echo lại)
+      const previous = new Map<string, number | undefined>();
+      try {
+        const elements = lib.reconcileElements(
+          api.getSceneElementsIncludingDeleted(),
+          restored as RemoteExcalidrawElement[],
+          api.getAppState(),
+        );
+        // Chỉ ghi version của element nhận về đã được áp; element local đang sửa dở giữ nguyên để còn gửi
+        const reconciledById = new Map(elements.map((element) => [element.id, element]));
+        for (const element of restored) {
+          if (reconciledById.get(element.id)?.version === element.version) {
+            previous.set(element.id, synced.get(element.id));
+            synced.set(element.id, Math.max(synced.get(element.id) ?? 0, element.version));
+          }
+        }
+        api.updateScene({ elements, captureUpdate: lib.CaptureUpdateAction.NEVER });
+      } catch (error) {
+        // Không áp được → bỏ version đã ghi, phần chưa áp không bị coi là đã đồng bộ
+        for (const [id, version] of previous) {
+          if (version === undefined) synced.delete(id);
+          else synced.set(id, version);
+        }
+        setNotice("Không áp được dữ liệu bảng vẽ.");
+        console.error(error);
+      }
     };
 
     // Gửi element có version mới hơn bản đã đồng bộ, chia batch theo số lượng + byte
@@ -151,6 +177,9 @@ export function useWhiteboardSync({
       if (envelope.meetingId !== meetingId) return;
       setNotice("");
       joined = true; // trước applyRemote / flush để flush không bị chặn
+      // Snapshot là sự thật của server — xoá map để phần chỉ có ở máy mình (op đang bay lúc mất kết nối,
+      // op bị từ chối tạm thời) được gửi lại ở flush() ngay sau
+      synced.clear();
       applyRemote(envelope.data.elements);
       flush(); // gửi phần đã vẽ lúc mất mạng
     });
@@ -207,6 +236,7 @@ export function useWhiteboardSync({
     return () => {
       disposed = true;
       handlersRef.current = { onChange: noop, onPointer: noop };
+      flush(); // gửi nốt phần ≤ 50 ms chưa kịp gửi, trước khi huỷ throttle và rời kênh
       scheduleFlush.cancel();
       sendPointer.cancel();
       clearInterval(idleTimer);
