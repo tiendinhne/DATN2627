@@ -1166,3 +1166,4 @@ Cập nhật lại các role * đọc file rule/role.md
   - [ ] 10. HOST kick B -> B vẽ tiếp thì A không thấy (console B có error 403).
   - [ ] 11. HOST kết thúc meeting -> Mongo `elementCount` đúng, không còn key `wb:*` của meeting.
 - **Commit:** `feat: đồng bộ whiteboard realtime ở frontend`.
+- **Sửa sau review (fix round 1, 2026-11-03):** hook thêm cờ `joined` (chỉ gửi wb:ops / wb:pointer sau khi nhận snapshot; reset khi connect / disconnect, vì server 403 trước khi join xong); `applyRemote` reconcile trước rồi chỉ ghi `synced` cho element remote đã được áp (không nâng version của element local đang sửa dở); chặn batch rỗng khi 1 element đúng bằng WB_MAX_BATCH_BYTES - 2. Plan đã cập nhật khớp. Commit: `fix: whiteboard client chỉ gửi sau khi join, không chặn nét đang sửa`.

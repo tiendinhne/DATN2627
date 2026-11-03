@@ -75,6 +75,8 @@ export function useWhiteboardSync({
     const collaborators = new Map<SocketId, Collaborator>();
     const lastSeen = new Map<SocketId, number>();
     let pointer: { x: number; y: number } | null = null;
+    // Server từ chối 403 mọi wb:ops / wb:pointer trước khi join xong → chỉ gửi sau khi nhận snapshot
+    let joined = false;
 
     // Kết nối sau khi tải xong thư viện → snapshot không bao giờ tới trước reconcileElements
     const socket = io(`${API_BASE_URL}/meeting`, {
@@ -86,21 +88,25 @@ export function useWhiteboardSync({
     // Áp element nhận được: reconcile (giữ element mình đang gõ / kéo / vẽ dở) → không vào undo/redo
     const applyRemote = (remote: unknown[]) => {
       if (!lib || remote.length === 0) return;
-      for (const element of remote as { id: string; version: number }[]) {
-        synced.set(element.id, Math.max(synced.get(element.id) ?? 0, element.version));
-      }
       const restored = lib.restoreElements(remote as OrderedExcalidrawElement[], null);
       const elements = lib.reconcileElements(
         api.getSceneElementsIncludingDeleted(),
         restored as RemoteExcalidrawElement[],
         api.getAppState(),
       );
+      // Chỉ ghi version của element nhận về đã được áp; element local đang sửa dở giữ nguyên để còn gửi
+      const reconciledById = new Map(elements.map((element) => [element.id, element]));
+      for (const element of restored) {
+        if (reconciledById.get(element.id)?.version === element.version) {
+          synced.set(element.id, Math.max(synced.get(element.id) ?? 0, element.version));
+        }
+      }
       api.updateScene({ elements, captureUpdate: lib.CaptureUpdateAction.NEVER });
     };
 
     // Gửi element có version mới hơn bản đã đồng bộ, chia batch theo số lượng + byte
     const flush = () => {
-      if (!socket.connected) return; // mất mạng: chưa ghi version → reconnect sẽ gửi
+      if (!socket.connected || !joined) return; // mất mạng / chưa join: chưa ghi version → snapshot sau reconnect sẽ gửi
       const batches: OrderedExcalidrawElement[][] = [];
       let batch: OrderedExcalidrawElement[] = [];
       let batchBytes = 2; // "[]"
@@ -116,7 +122,7 @@ export function useWhiteboardSync({
           }
           continue;
         }
-        if (batch.length === WB_MAX_BATCH_ELEMENTS || batchBytes + bytes + 1 > WB_MAX_BATCH_BYTES) {
+        if (batch.length > 0 && (batch.length === WB_MAX_BATCH_ELEMENTS || batchBytes + bytes + 1 > WB_MAX_BATCH_BYTES)) {
           batches.push(batch);
           batch = [];
           batchBytes = 2;
@@ -130,14 +136,21 @@ export function useWhiteboardSync({
 
     const scheduleFlush = throttle(flush, SEND_INTERVAL_MS);
     const sendPointer = throttle(() => {
-      if (pointer && socket.connected) socket.emit("wb:pointer", { meetingId, ...pointer });
+      if (pointer && socket.connected && joined) socket.emit("wb:pointer", { meetingId, ...pointer });
     }, SEND_INTERVAL_MS);
     const showCollaborators = () => api.updateScene({ collaborators: new Map(collaborators) });
 
-    socket.on("connect", () => socket.emit("meeting:join", { meetingId }));
+    socket.on("connect", () => {
+      joined = false;
+      socket.emit("meeting:join", { meetingId });
+    });
+    socket.on("disconnect", () => {
+      joined = false;
+    });
     socket.on("meeting:snapshot", (envelope: Envelope<{ elements: unknown[] }>) => {
       if (envelope.meetingId !== meetingId) return;
       setNotice("");
+      joined = true; // trước applyRemote / flush để flush không bị chặn
       applyRemote(envelope.data.elements);
       flush(); // gửi phần đã vẽ lúc mất mạng
     });
