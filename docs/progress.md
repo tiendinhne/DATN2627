@@ -1117,3 +1117,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Lệch plan:** không. Code và test chép nguyên văn từ plan, không sửa.
 - **Commit:** `feat: script Lua wb-apply merge LWW whiteboard trong Redis` (user duyệt commit local từng task 2026-11-03).
 - **Fix round 1 (2026-11-03):** lệch plan — điều kiện giới hạn chỉ áp khi batch thêm (`aliveDelta > 0` / `newIds > 0`), batch chỉ sửa / xoá luôn qua dù bảng đã vượt giới hạn (spec §4.2). Thêm 1 test; RED trước: `expected 'LIMIT' to be 'OK'`; GREEN: `npx vitest run src/modules/whiteboard/whiteboard.lua.spec.ts` → 14/14 pass, không còn key `test:wb:*`. Đã sửa cùng dòng trong `docs/task/whiteboard/whiteboard_sync_plan.md`.
+
+## 2026-11-03 — Whiteboard: Task 3 (WhiteboardService + module, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/whiteboard/whiteboard.service.ts` (`assertCanJoin`, `getSnapshot`, `applyOps` gọi `WB_APPLY_SCRIPT`, `tryPersistInBackground` khoá `SET NX PX 15000`, `persist` ghi gzip element chưa xoá với guard `lastSeq` + upsert, bỏ qua E11000, `finalizeBoard` không ném). `whiteboard.module.ts` đăng ký `Whiteboard`, `Meeting`, import `RoomMembersModule`, export `WhiteboardService`.
+- **Test:** `npx vitest run src/modules/whiteboard/whiteboard.service.spec.ts` → 19/19 pass. RED trước đó: `Failed to resolve import "./whiteboard.service.js"`. Full suite `npx vitest run` → 16 file / 245 ca pass. `npm run build` → exit 0.
+- **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: WhiteboardService — snapshot, áp op qua Lua, lưu Mongo có guard` (user duyệt commit local từng task 2026-11-03).
