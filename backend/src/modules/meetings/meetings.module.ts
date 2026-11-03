@@ -5,6 +5,8 @@ import { Meeting, MeetingSchema } from './schemas/meeting.schema.js';
 import { MeetingParticipant, MeetingParticipantSchema } from './schemas/meeting-participant.schema.js';
 import { Room, RoomSchema } from '../rooms/schemas/room.schema.js';
 import { RoomMembersModule } from '../room-members/room-members.module.js';
+import { WhiteboardModule } from '../whiteboard/whiteboard.module.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 import { MeetingsController } from './meetings.controller.js';
 import { MediaWebhookController } from './media-webhook.controller.js';
 import { MeetingsService } from './meetings.service.js';
@@ -21,6 +23,10 @@ import { LivekitMediaAdapter } from './adapters/livekit-media.adapter.js';
     ]),
     // RoomAccessService để kiểm quyền
     RoomMembersModule,
+    // Lưu bản cuối whiteboard khi kết thúc meeting
+    WhiteboardModule,
+    // Đóng kênh whiteboard / ép rời kênh khi kick (RealtimePublisher)
+    RealtimeModule,
     // JwtAuthGuard cần AuthModuleOptions trong module dùng nó (bài học Task 10 module room)
     PassportModule.register({ session: false }),
   ],

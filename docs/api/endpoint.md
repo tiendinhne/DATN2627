@@ -280,6 +280,24 @@ Sau khi lưu thành công, server phát đúng một `chat:new` vào `room:{room
 
 Khi thành viên rời/bị kick hoặc Room giải tán, server phát `room:access_revoked` (envelope chuẩn, `data.reason` là `LEFT`, `KICKED` hoặc `DISSOLVED`) rồi buộc các socket trên mọi Backend instance rời `room:{roomId}` qua Redis Adapter.
 
+### Socket.IO whiteboard
+Cùng namespace `/meeting`. Spec: `docs/task/whiteboard/whiteboard_sync_spec.md` §3.
+
+| Client → Server | Payload | Lỗi (`error`) |
+|---|---|---|
+| `meeting:join` | `{ meetingId }` | 400 sai định dạng · 404 không có meeting · 403 không phải thành viên · 409 meeting đã kết thúc |
+| `meeting:leave` | `{ meetingId }` | 400 |
+| `wb:ops` | `{ meetingId, elements[] }` — 1–100 element, ≤ 512 KB; mỗi element có `id`, `type` (rectangle, diamond, ellipse, arrow, line, freedraw, text, frame), `version` ≥ 1, `versionNonce`, `isDeleted` | 400 sai / trùng `id` trong batch / vượt 5.000 đối tượng · 403 chưa join · 409 buổi học đã kết thúc |
+| `wb:pointer` | `{ meetingId, x, y }` (±1e7) | 400 · 403 |
+
+| Server → Client | `data` | Gửi tới |
+|---|---|---|
+| `meeting:snapshot` | `{ elements[] }` (gồm tombstone), `seq` hiện tại hoặc `null` | riêng socket vừa join |
+| `wb:ops` | `{ elements[] }` — chỉ element thắng LWW | kênh `meeting:{id}` trừ người gửi |
+| `wb:pointer` | `{ userId, displayName, x, y }`, `seq: null`, volatile | kênh `meeting:{id}` trừ người gửi |
+
+Kick / rời phòng / meeting kết thúc → server ép socket rời kênh `meeting:{id}` trên mọi instance; `wb:*` sau đó trả 403.
+
 ### Cấu hình Object Storage
 Tạo bucket Amazon S3 riêng và đặt `AWS_REGION` cùng `S3_BUCKET` trong `backend/.env` (giá trị thật phụ thuộc AWS account; không dùng các placeholder trong `.env.example`). Bucket phải private. Adapter dùng AWS SDK for JavaScript v3 với credential provider chain mặc định; không cấu hình endpoint hay key/secret trong source.
 

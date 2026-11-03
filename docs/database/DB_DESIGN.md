@@ -383,7 +383,9 @@ export class Whiteboard {
 
 **Index:** `{ meetingId: 1 }` unique · `{ roomId: 1, updatedAt: -1 }`
 
-**`lastSeq` là chi tiết quan trọng nhất ở đây.** Với nhiều backend instance, hai instance có thể cùng debounce-persist một board. Nếu ghi mù, bản cũ có thể đè bản mới. Guard bằng conditional update:
+`elementsGzip` chỉ chứa element chưa xoá; `elementCount` = số element đó.
+
+**`lastSeq` là chi tiết quan trọng nhất ở đây.** Với nhiều backend instance, hai instance có thể cùng persist một board (ADR-030). Nếu ghi mù, bản cũ có thể đè bản mới. Guard bằng conditional update:
 
 ```ts
 await this.model.updateOne(
@@ -532,9 +534,11 @@ export class AiRequest {
 
 | Key Redis | Kiểu | TTL | Nội dung |
 |---|---|---|---|
-| `wb:{meetingId}` | String (gzip) | 24h | Live state whiteboard |
+| `wb:{meetingId}` | Hash (elementId → JSON) | 24h | Live state, gồm tombstone |
+| `wb:alive:{meetingId}` | String | 24h | Số element chưa xoá (Lua) |
+| `wb:closed:{meetingId}` | String | 24h | Board đã đóng (đặt lúc kết thúc meeting) — Lua từ chối mọi op |
+| `wb:persist-lock:{meetingId}` | String | 15 s | Khoá giới hạn ghi Mongo |
 | `wb:seq:{meetingId}` | String (INCR) | 24h | Bộ đếm seq |
-| `wb:ops:{meetingId}` | List | 24h | Ring buffer 500 op gần nhất (LPUSH + LTRIM) |
 | `presence:{meetingId}` | Set | 24h | userId đang online — webhook joined (SADD) / left (SREM) ghi, finalize xoá khi meeting kết thúc |
 | `lock:{jobName}` | String | 30s | Distributed lock cho cron (SET NX PX) |
 | `rl:{scope}:{id}` | String | tuỳ | Rate limit counter |

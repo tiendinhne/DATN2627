@@ -20,6 +20,8 @@ import { RoomAccessService } from '../room-members/room-access.service.js';
 import { RedisService } from '../../common/services/redis.service.js';
 import { MEDIA_PORT } from './ports/media.port.js';
 import type { MediaEvent, MediaPort } from './ports/media.port.js';
+import { WhiteboardService } from '../whiteboard/whiteboard.service.js';
+import { RealtimePublisher } from '../realtime/realtime-publisher.service.js';
 import { EndReason, MeetingStatus, RoomStatus } from '../../shared/enums.js';
 import { RoomAction } from '../../shared/permissions.js';
 import { StartMeetingDto } from './dto/start-meeting.dto.js';
@@ -91,6 +93,8 @@ export class MeetingsService {
     private access: RoomAccessService,
     private redis: RedisService,
     @Inject(MEDIA_PORT) private media: MediaPort,
+    private whiteboard: WhiteboardService,
+    private realtime: RealtimePublisher,
   ) {}
 
   // POST /rooms/:roomId/meetings — chỉ HOST (spec §5.2)
@@ -211,6 +215,12 @@ export class MeetingsService {
       const active = await this.meetingModel.findOne({ roomId, status: MeetingStatus.ACTIVE }).lean().exec();
       if (!active) return;
       meetingId = String(active._id);
+      // Ép socket rời kênh whiteboard (bất đồng bộ qua adapter), lỗi thì chỉ log — không được bỏ qua bước LiveKit
+      try {
+        await this.realtime.leaveMeeting(userId, meetingId);
+      } catch (err) {
+        this.logger.error(`Không ép được user ${userId} rời kênh whiteboard của meeting ${meetingId}: ${err}`);
+      }
       await this.media.removeParticipant(meetingId, userId);
     } catch (err) {
       // Người đó còn trong call tới khi tự thoát; vào lại bị webhook chặn; HOST có thể kết thúc buổi học
@@ -263,8 +273,22 @@ export class MeetingsService {
       )
       .exec();
 
+    // Whiteboard: đuổi socket khỏi kênh (bất đồng bộ — chặn cứng là key wb:closed do finalizeBoard đặt) rồi lưu bản cuối (spec whiteboard §3.3, §5). Không bao giờ ném
+    await this.closeBoard(meetingId);
+
     // Vẫn chạy kể cả khi update không khớp → sửa được lần finalize trước bị dở
     await this.finalize(meetingId);
+  }
+
+  // Đóng kênh whiteboard + lưu bản cuối. KHÔNG BAO GIỜ ném — kết thúc meeting không phụ thuộc whiteboard
+  private async closeBoard(meetingId: string) {
+    try {
+      await this.realtime.closeMeetingChannel(meetingId);
+    } catch (err) {
+      this.logger.error(`Không đóng được kênh whiteboard của meeting ${meetingId}: ${err}`);
+    }
+    // finalizeBoard tự bắt lỗi, lỗi thì giữ key Redis
+    await this.whiteboard.finalizeBoard(meetingId);
   }
 
   // Tính lại thống kê từ dữ liệu — idempotent (spec §7.1)

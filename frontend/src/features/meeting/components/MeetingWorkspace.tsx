@@ -262,7 +262,12 @@ function LiveMeetingContent({
             </div>
           ) : null}
           {/* Luôn render, chỉ ẩn khi ghim camera / màn hình — để không mất nét vẽ */}
-          <WhiteboardCanvas dark={isDark} hidden={pinnedContent?.type === "track"} />
+          <WhiteboardCanvas
+            dark={isDark}
+            hidden={pinnedContent?.type === "track"}
+            token={accessToken}
+            meetingId={meetingData.meeting.id}
+          />
         </main>
 
         {panelOpen && (

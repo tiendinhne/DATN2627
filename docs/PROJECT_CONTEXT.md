@@ -101,9 +101,8 @@ GVHD nêu rõ: nhân bản server mà code không hỗ trợ distributed thì **
 |---|---|---|
 | Session đăng nhập | MemoryStore | **JWT stateless** + refresh hash trong Mongo |
 | Danh sách socket theo room | `Map<roomId, Socket[]>` | **Socket.IO Redis adapter** |
-| Whiteboard live state | biến global | **Redis** `wb:{meetingId}` |
+| Whiteboard live state | biến global | **Redis Hash** `wb:{meetingId}` (ADR-028) |
 | Sequence counter | `let seq = 0` | **Redis `INCR`** |
-| Ring buffer op | array trong RAM | **Redis List** (LPUSH + LTRIM) |
 | Presence | `Set<userId>` | **Redis Set** + TTL |
 | Rate limit | counter in-memory | **Redis** (`INCR` + `EXPIRE`) |
 | File upload | ghi `/tmp` local | **Amazon S3 qua presigned URL** |
@@ -129,7 +128,7 @@ Giải phóng bằng Lua script kiểm tra token khớp, tránh xoá nhầm lock
 
 ### 7.6 Graceful shutdown
 
-Auto-scale sẽ thu hồi instance đang có kết nối. Cần: `GET /health` (liveness) và `GET /ready` (kiểm tra Mongo + Redis); bắt `SIGTERM` → ngừng nhận kết nối mới → emit `server:draining` → chờ ~10s → đóng; client tự reconnect sang instance khác và `wb:resync` theo `lastSeq`.
+Auto-scale sẽ thu hồi instance đang có kết nối. Cần: `GET /health` (liveness) và `GET /ready` (kiểm tra Mongo + Redis); bắt `SIGTERM` → ngừng nhận kết nối mới → emit `server:draining` → chờ ~10s → đóng; client tự reconnect sang instance khác, gửi lại `meeting:join` và nhận full snapshot (ADR-029).
 
 ### 7.7 Không dựng integration event bus riêng
 
@@ -168,22 +167,22 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 |---|---|
 | `room:subscribe` | `{ roomId }` |
 | `room:unsubscribe` | `{ roomId }` |
-| `meeting:join` | `{ meetingId, lastSeq? }` |
+| `meeting:join` | `{ meetingId }` |
+| `meeting:leave` | `{ meetingId }` |
 | `chat:send` | `{ roomId, clientMsgId, content, fileId?, meetingId? }` |
-| `wb:ops` | `{ elements[] }` |
-| `wb:pointer` | `{ x, y }` |
-| `wb:resync` | `{ lastSeq }` |
+| `wb:ops` | `{ meetingId, elements[] }` |
+| `wb:pointer` | `{ meetingId, x, y }` |
 | `ai:generate` | `{ requestId, prompt, kind }` |
 
 | Server → Client | Payload |
 |---|---|
-| `meeting:snapshot` | `{ elements[], seq, members[], recentMessages[] }` |
+| `meeting:snapshot` | envelope, `data: { elements[] }` — gửi riêng socket vừa join, gồm cả tombstone |
 | `meeting:member_changed` | `{ userId, action, role }` |
 | `meeting:ended` | `{ reason }` |
 | `chat:new` | envelope chuẩn, `data: { message }` — emit tới `room:{roomId}`; client lọc theo `meetingId` cho khung chat meeting |
 | `room:access_revoked` | envelope chuẩn, `data: { reason: 'LEFT' \| 'KICKED' \| 'DISSOLVED' }`; server phát trước khi ép socket rời kênh Room |
-| `wb:ops` | `{ elements[], byUserId }` |
-| `wb:pointer` | `{ userId, x, y }` |
+| `wb:ops` | envelope, `data: { elements[] }` — chỉ element thắng, kênh `meeting:{id}` trừ người gửi |
+| `wb:pointer` | envelope `seq` null, `data: { userId, displayName, x, y }` — volatile |
 | `ai:status` / `ai:result` | `{ requestId, ... }` |
 | `server:draining` | `{}` |
 | `error` | `{ statusCode, error, message, details? }` |
@@ -192,8 +191,7 @@ Quyền: `room:subscribe`, `chat:send` luôn gọi `RoomAccessService.assertRoom
 
 **Ordering, duplicate, reconnection:**
 - `seq` đơn điệu tăng, cấp bằng **Redis `INCR`** → atomic across instances, tự nhiên có total order
-- **Ring buffer 500 op gần nhất** trong Redis List
-- Client reconnect gửi `lastSeq`: chênh ≤ 500 → **replay diff**; ngược lại → **full snapshot**
+- Join / reconnect: client gửi lại `meeting:join`, server trả full snapshot từ Redis (không ring buffer — ADR-029)
 - Chống trùng: chat dùng `clientMsgId` (unique index ở DB); whiteboard idempotent tự nhiên nhờ LWW
 
 Cơ chế này phục vụ đồng thời reconnect thông thường **và** chuyển instance khi auto-scale.
@@ -219,20 +217,21 @@ isDeleted = true là trạng thái (tombstone), KHÔNG xoá khỏi mảng
 **Luồng:**
 
 ```
-Excalidraw onChange (debounce ~150ms)
+Excalidraw onChange (throttle 50 ms)
  → diff element có version thay đổi
  → emit wb:ops (batch, KHÔNG gửi toàn bộ scene)
- → Backend: validate + permission + Redis INCR seq
- → merge LWW vào Redis live state
+ → Backend: validate + socket đã ở kênh meeting:{id}
+ → Backend: Redis INCR seq (trong script Lua)
+ → Lua wb-apply merge LWW vào Redis Hash (atomic, ADR-028)
  → broadcast qua Redis adapter tới MỌI instance
  → client khác reconcile + updateScene()
 ```
 
 - **Cursor đi kênh riêng**, throttle 50ms, không lưu, không tăng `seq`.
-- **Echo loop:** client nhận op của chính mình → `updateScene` → `onChange` → gửi lại. Chặn bằng cờ `isApplyingRemote`.
+- **Echo loop:** client nhận op của chính mình → `updateScene` → `onChange` → gửi lại. Chặn bằng map id → version đã gửi / nhận (ADR-031).
 - **Clear board** = set `isDeleted` cho tất cả, không phải xoá mảng.
 - **Freedraw** có hàng nghìn point → giới hạn kích thước payload.
-- Hàm merge nằm ở `shared/`, **client và server dùng chung một bản**. Không viết hai bản.
+- Luật LWW: server trong Lua, client dùng `reconcileElements` của Excalidraw — cùng luật, client thêm lớp giữ thao tác đang dở (ADR-028). Hằng số dùng chung ở `backend/src/shared/whiteboard.ts`.
 
 ---
 
@@ -241,14 +240,14 @@ Excalidraw onChange (debounce ~150ms)
 | Tầng | Nơi lưu | Mục đích |
 |---|---|---|
 | Live state | Redis `wb:{meetingId}` | Nguồn đọc snapshot khi join |
-| Persisted snapshot | Mongo `whiteboards` | Khôi phục sau restart |
+| Persisted snapshot | Mongo `whiteboards` | Lưu lâu dài để xem lại / clone (task sau); chưa có đường nạp lại Mongo → Redis |
 | Historical | Mongo, gắn meeting ENDED | Review sau meeting |
 
-**Không ghi Mongo mỗi op.** Debounce 15s sau thay đổi cuối; ép ghi mỗi 60s nếu thay đổi liên tục; ghi ngay khi `endMeeting`, participant cuối rời, hoặc graceful shutdown.
+**Không ghi Mongo mỗi op.** Sau op có thay đổi: `SET wb:persist-lock:{id} NX PX 15000`, instance giành được khoá ghi nền; `endMeeting` ghi bản cuối rồi xoá key Redis (ADR-030). Không timer RAM, không cron, không ghi khi graceful shutdown (state ở Redis).
 
-Đánh đổi cho báo cáo: đổi write amplification lấy RPO ~15–60s. Chấp nhận được với ngữ cảnh học nhóm.
+Đánh đổi cho báo cáo: đổi write amplification lấy RPO ~15 s khi đang vẽ (ADR-030). Chấp nhận được với ngữ cảnh học nhóm.
 
-**Ràng buộc 16 MB/document:** elements lưu dạng `gzip(JSON)` → `Buffer`. Hard limit **5.000 element/board**, vượt thì báo lỗi rõ ràng. Nêu ở phần Limitations.
+**Ràng buộc 16 MB/document:** elements lưu dạng `gzip(JSON)` → `Buffer`. Hard limit **5.000 element/board**, vượt thì báo lỗi rõ ràng; 5.000 tính element còn hiển thị, Mongo không lưu tombstone. Nêu ở phần Limitations.
 
 **Guard chống ghi đè ngược** — bắt buộc khi nhiều instance cùng persist:
 
@@ -259,6 +258,8 @@ updateOne(
   { upsert: true },
 )
 ```
+
+Filter không khớp vì đã có `lastSeq` ≥ seq → upsert ném E11000 → bắt và bỏ qua (đã có bản mới hơn).
 
 ---
 

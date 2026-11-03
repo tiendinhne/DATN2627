@@ -6,10 +6,10 @@ Phần	Trạng thái
 Auth (đăng ký, đăng nhập local, Google OAuth, /auth/me)	Chạy được
 9 schema Mongoose + index	Đã có, đúng theo DB_DESIGN.md
 Rooms, room-members	REST đầy đủ + frontend (chạy thật qua Docker 2026-10-01); chưa có realtime
-Meetings, chat, whiteboard	Mới có schema, chưa có service hay controller
-Socket gateway /meeting	Mới là khung, chỉ ghi log, chưa có auth hay validate
+Meetings, chat, whiteboard	Có service + controller; whiteboard đã có đồng bộ realtime (Redis Hash + Lua, lưu Mongo, 2026-11-03)
+Socket gateway /meeting	Có JWT, validate payload, chat, whiteboard
 AI, files, health, LiveKit	Chưa có
-Frontend	Mới có các trang login, register, dashboard và Google callback. Chưa cài socket.io-client, LiveKit. Excalidraw đã nhúng vào meeting (2026-10-22) — chạy local, chưa đồng bộ
+Frontend	Mới có các trang login, register, dashboard và Google callback. Đã có socket.io-client, LiveKit, Excalidraw đồng bộ realtime
 
 ---
 
@@ -1088,3 +1088,139 @@ Cập nhật lại các role * đọc file rule/role.md
   - `users.service.spec.ts` (cả hai cùng tạo): giữ nguyên test `updateDisplayName` của An + test `toProfile`, `setPassword`; `auth.service.spec.ts`: gộp mock của hai bên.
 - **Gặp khi chạy:** `nest build` lỗi `Cannot find module '@aws-sdk/s3-request-presigner'` — `package.json` của main đã khai báo, chỉ `node_modules` máy chưa cài → `npm ci` theo lockfile, không thêm dependency. Image Docker backend cũng phải `--build` lại vì có dependency mới.
 - **Commit:** chưa — chờ user.
+
+## 2026-11-03 — Whiteboard: Task 0 (thiết kế + spec đồng bộ realtime, branch `feature/whiteboard`)
+
+- **Xong:** spec `docs/task/whiteboard/whiteboard_sync_spec.md` — phần lõi: `meeting:join` / `meeting:leave` / `wb:ops` / `wb:pointer`, live state Redis Hash + Lua `wb-apply`, lưu Mongo `SET NX PX 15000` + bản cuối ở `endMeeting`, client throttle 50 ms + `reconcileElements`, đo độ trễ `tests/load/wb-latency.mjs`.
+- **Sửa tài liệu:** `whiteboard.md` §6 — bỏ 3 quyền `DRAW_WHITEBOARD` / `DELETE_OTHERS_ELEMENT` / `CLEAR_BOARD`; mọi thành viên vẽ / xoá / clear (đề cương §5.6, `role.md`); NOTE chia quyền sau này (user chốt 2026-11-02).
+- **Quyết định (user chốt 2026-11-02/03):** ưu tiên độ trễ realtime; Lua trước rồi mới phát (cách B); bỏ ring buffer / `wb:resync`; không viết hàm LWW TS ở `shared/`; phạm vi chỉ lõi — xem lại + clone board là spec sau, ảnh trong board là spec riêng. Chi tiết + 4 ADR dự kiến (028–031) ở spec §1, §12 — **chưa ghi vào `decisions.md`** (ghi khi code xong).
+- **Đã kiểm khi thiết kế:** mã Excalidraw 0.18.1 (`shouldDiscardRemoteElement` dùng `<`, `reconcileElements` export ở `index.d.ts`, `UIOptions.tools.image`); `excalidraw-room` chỉ relay, không state, không Redis adapter; `excalidraw-app/data/firebase.ts` lưu bằng Firestore `runTransaction` + `reconcileElements`, throttle `{ leading: false }`; node-redis 4.7.1 có `client.eval(script, { keys, arguments })`.
+- **Review spec (phiên khác, 2026-11-03) → đã sửa spec, user chốt:**
+  1. Cả batch bị 400 vì 1 element sai → element hợp lệ cùng batch mất lặng lẽ (version đã ghi vào map lúc gửi). Toolbar 0.18.1 luôn có `embeddable` (dist/dev/index.js ~12497); `magicframe` chỉ hiện khi có plugin `diagramToCode` (không dùng). → client `aiEnabled={false}` + lọc theo hằng số dùng chung `backend/src/shared/whiteboard.ts`, server vẫn từ chối cả batch (spec §1 câu 11, §6, §9).
+  2. `HLEN` đếm cả tombstone → clear vài lần là chạm 5.000. → đếm element còn hiển thị bằng `wb:alive:{id}` trong Lua, trần tổng 20.000, tombstone giữ ở Redis (snapshot cần để người reconnect thấy element đã bị xoá), Mongo chỉ lưu element chưa xoá (spec §1 câu 12, §4, §5).
+  3–6. Thêm kịch bản đo nét vẽ tay dài (chỉ đo); ghi điều kiện `services: redis` khi đưa vitest vào CI; thay `/check` (không tồn tại — không có `.claude/commands`) bằng lệnh thật; §13 ghi rõ vì sao op muộn không đè bản đã lưu (seq mới từ 1 → E11000).
+- **Plan:** `docs/task/whiteboard/whiteboard_sync_plan.md` — 9 task (1 hằng số + kiểm element · 2 Lua · 3 WhiteboardService · 4 publisher · 5 gateway · 6 meeting + chạy thật backend · 7 frontend + 11 kịch bản 2 trình duyệt · 8 script đo · 9 tài liệu + ADR-028…031). Lúc viết plan đã chạy thử script Lua bằng `redis-cli --eval` trên `redis-dev` (9 ca, key tạm đã xoá — đồ bỏ). Spec §9 chỉnh: không tách file `whiteboard-socket.ts`, hook tự mở socket. Chưa bắt đầu code.
+- **Lỗi phát hiện trong tài liệu cũ (sửa khi code xong):** code mẫu guard `lastSeq` + `upsert: true` (§11, `whiteboard.md` §4) ném E11000 khi đã có bản mới hơn; `wb:{meetingId}` String gzip (DB_DESIGN Phần E) mất op khi 2 instance cùng ghi; `whiteboard.md` trỏ tới `realtime.md`, `security.md` — 2 file không tồn tại. Bảng "Code hiện có" đầu file này lỗi thời (gateway đã có auth, đã cài `socket.io-client`).
+- **Commit:** `docs: spec và plan đồng bộ whiteboard realtime` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 1 (hằng số dùng chung + kiểm element, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/shared/whiteboard.ts` (`WB_ELEMENT_TYPES`, `WB_MAX_BATCH_ELEMENTS`, `WB_MAX_BATCH_BYTES`, `WB_MAX_ALIVE_ELEMENTS`, `WB_MAX_TOTAL_ELEMENTS`) và `backend/src/modules/whiteboard/element.validator.ts` (`WbElement`, `isValidElement`, `validateElementsBatch`). Chưa có chỗ nào dùng — Task 2+ mới import.
+- **Test:** `npx vitest run src/modules/whiteboard/element.validator.spec.ts` → 32/32 pass. RED trước đó: `Cannot find module './element.validator.js'`. `npm run build` (backend) → exit 0.
+- **Lệch plan:** không. Code và test chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: hằng số whiteboard dùng chung và kiểm element` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 2 (script Lua wb-apply, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/whiteboard/whiteboard.lua.ts` (`WB_APPLY_SCRIPT`: merge LWW theo luật Excalidraw 0.18.1 dấu `<`, đếm element còn hiển thị `wb:alive`, trần 5.000 hiển thị / 20.000 tổng, TTL 86400 s cho cả 3 key) và test `whiteboard.lua.spec.ts` chạy trên Redis thật (`redis-dev`, 13 ca).
+- **Test:** `npx vitest run src/modules/whiteboard/whiteboard.lua.spec.ts` → 13/13 pass. RED: lúc Docker tắt, vitest báo `connect ECONNREFUSED 127.0.0.1:6379` (13 ca skipped, không phải lỗi thiếu module). Sau khi Redis lên: `PONG`, không còn key `test:wb:*`. Full suite `npx vitest run` → 15 file / 225 ca pass. `npm run build` → exit 0.
+- **Lệch plan:** có, ở fix round 1 (xem dòng cuối). Bản đầu chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: script Lua wb-apply merge LWW whiteboard trong Redis` (user duyệt commit local từng task 2026-11-03).
+- **Fix round 1 (2026-11-03):** lệch plan — điều kiện giới hạn chỉ áp khi batch thêm (`aliveDelta > 0` / `newIds > 0`), batch chỉ sửa / xoá luôn qua dù bảng đã vượt giới hạn (spec §4.2). Thêm 1 test; RED trước: `expected 'LIMIT' to be 'OK'`; GREEN: `npx vitest run src/modules/whiteboard/whiteboard.lua.spec.ts` → 14/14 pass, không còn key `test:wb:*`. Đã sửa cùng dòng trong `docs/task/whiteboard/whiteboard_sync_plan.md`.
+
+## 2026-11-03 — Whiteboard: Task 3 (WhiteboardService + module, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/whiteboard/whiteboard.service.ts` (`assertCanJoin`, `getSnapshot`, `applyOps` gọi `WB_APPLY_SCRIPT`, `tryPersistInBackground` khoá `SET NX PX 15000`, `persist` ghi gzip element chưa xoá với guard `lastSeq` + upsert, bỏ qua E11000, `finalizeBoard` không ném). `whiteboard.module.ts` đăng ký `Whiteboard`, `Meeting`, import `RoomMembersModule`, export `WhiteboardService`.
+- **Test:** `npx vitest run src/modules/whiteboard/whiteboard.service.spec.ts` → 19/19 pass. RED trước đó: `Failed to resolve import "./whiteboard.service.js"`. Full suite `npx vitest run` → 16 file / 245 ca pass. `npm run build` → exit 0.
+- **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: WhiteboardService — snapshot, áp op qua Lua, lưu Mongo có guard` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 4 (RealtimePublisher whiteboard, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/realtime/realtime-publisher.service.ts` thêm 5 method trước `requireNamespace()`: `sendSnapshot` (emit riêng socket, `meeting:snapshot`), `publishWbOps` (`to('meeting:…').except(sender)`, `wb:ops`), `publishWbPointer` (`volatile`, `seq: null`, `wb:pointer`), `leaveMeeting` (`in('user:…').socketsLeave('meeting:…')`), `closeMeetingChannel` (`in('meeting:…').socketsLeave('meeting:…')`). Inline envelope, không tách helper.
+- **Test:** `npx vitest run src/modules/realtime/realtime-publisher.service.spec.ts` → 8/8 pass. RED trước đó: 5 fail `publisher.<method> is not a function`, 3 test cũ pass. Full suite `npx vitest run` → 16 file / 250 ca pass (Redis `redis-dev` đang chạy, `whiteboard.lua.spec.ts` không bị skip). `npm run build` → exit 0.
+- **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: publisher phát snapshot, wb:ops, wb:pointer và đóng kênh meeting` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 5 (Gateway meeting:join, wb:ops, wb:pointer, branch `feature/whiteboard`)
+
+- **Xong:** `backend/src/modules/whiteboard/dto/whiteboard-events.dto.ts` (`MeetingIdDto`, `WbOpsDto`, `WbPointerDto`). `meeting.gateway.ts`: tham số thứ 6 `WhiteboardService`, thay handler `wb:ops` cũ bằng `handleMeetingJoin` (kiểm quyền → vào kênh → đọc snapshot → gửi riêng socket), `handleMeetingLeave`, `handleWhiteboardOps` (validate → Lua → phát element thắng → lưu nền), `handleWhiteboardPointer` và `assertInMeeting` (kiểm `socket.rooms` trong RAM). `realtime.module.ts` import `WhiteboardModule`.
+- **Test:** `npx vitest run src/modules/realtime` → 2 file / 23 ca pass (gateway 4 chat + 11 whiteboard, publisher 8). RED trước đó: 11 fail `gateway.handleMeetingJoin is not a function`, 4 chat cũ pass. Full suite `npx vitest run` → 16 file / 261 ca pass. `npm run build` → exit 0. `npm run lint` (oxlint) không có cảnh báo ở file đã sửa.
+- **Lệch plan:** không. Test và code chép nguyên văn từ plan, không sửa.
+- **Commit:** `feat: gateway meeting:join, wb:ops, wb:pointer cho whiteboard` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 6 (Meeting đóng kênh + lưu bản cuối, kick rời kênh, branch `feature/whiteboard`)
+
+- **Xong:** `meetings.service.ts` thêm 2 tham số constructor cuối (`WhiteboardService`, `RealtimePublisher`); `endMeeting` gọi `closeBoard` (đóng kênh `closeMeetingChannel` rồi `finalizeBoard`, không ném) giữa `updateOne` và `finalize`; `removeFromActiveMeeting` gọi `realtime.leaveMeeting` trước `media.removeParticipant`. `meetings.module.ts` import `WhiteboardModule`, `RealtimeModule` (không vòng).
+- **Test:** `npx vitest run src/modules/meetings/meetings.service.spec.ts` → 50/50 pass. RED trước đó: 3 fail, 47 pass. Full suite `npx vitest run` → 16 file / 265 ca pass. `npm run lint` không lỗi. `npm run build` → exit 0.
+- **Chạy thật:** `docker compose restart backend` → log có `RealtimeModule dependencies initialized`, `MeetingsModule dependencies initialized`, `Nest application successfully started`, không có `Nest can't resolve dependencies`. node-redis `eval("return {'OK', 1, 0}")` trong backend-dev → `[ 'OK', 1, 0 ]` (chuỗi + số, đúng cách đọc `reply` trong `applyOps`).
+- **Lệch plan:** không. Code và test chép nguyên văn. (Lệnh eval chạy bằng file .cjs tạm đặt trong `/app` của container vì quoting PowerShell; đã xoá.)
+- **Commit:** `feat: kết thúc meeting đóng kênh và lưu bản cuối whiteboard` (user duyệt commit local từng task 2026-11-03).
+
+## 2026-11-03 — Whiteboard: Task 7 (Frontend đồng bộ trong WhiteboardCanvas)
+- **Xong:** tạo `features/whiteboard/hooks/useWhiteboardSync.ts` (socket `/meeting`, snapshot, `wb:ops` throttle 50 ms, con trỏ, reconcile, lọc type/byte trước khi gửi); thay `WhiteboardCanvas.tsx` (props `token`, `meetingId`, thông báo nổi); `MeetingWorkspace.tsx` truyền `token={accessToken}` + `meetingId={meetingData.meeting.id}`; `index.ts` bỏ export types; xoá `types.ts` (grep `WhiteboardElement|WhiteboardState` chỉ còn chính file đó).
+- **Kiểm (a):** `npm run lint` -> "No ESLint warnings or errors". `npm run build` -> exit 0, Compiled successfully, type-check sạch (route `/meetings/[meetingId]` 172 kB). Không lỗi mới, không lỗi có sẵn.
+- **Kiểm (b):** container `frontend-dev` trả HTTP 200 cho `/meetings/000000000000000000000000`; log không có lỗi compile ở file của task (chỉ còn `Watchpack Error (initial scan) EIO` có sẵn do bind-mount Windows).
+- **Kiểm (c):** script tạm ngoài repo `C:\Users\dinht\AppData\Local\Temp\claude\j--HK7-----N-CODE-DATN2627\e89a5293-5b9a-4252-8f32-5ca3ce2a1478\scratchpad\wb-smoke.mjs`, chạy với backend thật: đăng ký 3 user + phòng + meeting PASS; snapshot rỗng PASS; B nhận wb:ops, A không nhận echo PASS; pointer PASS; batch có `embeddable` -> A nhận error 400, B không nhận PASS; tombstone trong snapshot khi B vào lại PASS; C vào muộn thấy đủ PASS; kick 204 + B nhận error 403 PASS; end meeting 204, Mongo `elementCount=1, lastSeq=3` PASS. Redis: sau 1.5 s còn đúng 1 key `wb:persist-lock:<meetingId>` (khoá persist TTL 15 s theo thiết kế); sau 16 s không còn key `wb:*` của meeting -> kết quả đúng, dòng "no redis keys" của script FAIL do chờ chỉ 1.5 s.
+- **Lệch plan:** không (code chép nguyên văn từ brief; tsc không báo khác biệt type).
+- **Chờ user tự thử trên 2 trình duyệt:**
+  - [ ] 1. A vẽ hình chữ nhật -> B thấy.
+  - [ ] 2. A kéo hình liên tục -> B thấy hình di chuyển trong lúc kéo.
+  - [ ] 3. A, B cùng sửa 1 hình -> hai bên ra cùng kết quả.
+  - [ ] 4. Xoá 1 hình; clear board -> bên kia mất theo.
+  - [ ] 5. B tắt mạng (DevTools Offline), A xoá 1 hình, B bật lại -> hình biến mất ở B.
+  - [ ] 6. B vẽ lúc offline, bật lại -> A thấy nét đó.
+  - [ ] 7. A chèn `embeddable` -> thấy thông báo không đồng bộ; hình vẽ cùng lúc vẫn sang B.
+  - [ ] 8. Con trỏ A hiện ở B kèm tên; A dừng 5 s -> con trỏ ẩn.
+  - [ ] 9. Tài khoản C vào giữa buổi -> thấy đủ board.
+  - [ ] 10. HOST kick B -> B vẽ tiếp thì A không thấy (console B có error 403).
+  - [ ] 11. HOST kết thúc meeting -> Mongo `elementCount` đúng, không còn key `wb:*` của meeting.
+- **Commit:** `feat: đồng bộ whiteboard realtime ở frontend`.
+- **Sửa sau review (fix round 1, 2026-11-03):** hook thêm cờ `joined` (chỉ gửi wb:ops / wb:pointer sau khi nhận snapshot; reset khi connect / disconnect, vì server 403 trước khi join xong); `applyRemote` reconcile trước rồi chỉ ghi `synced` cho element remote đã được áp (không nâng version của element local đang sửa dở); chặn batch rỗng khi 1 element đúng bằng WB_MAX_BATCH_BYTES - 2. Plan đã cập nhật khớp. Commit: `fix: whiteboard client chỉ gửi sau khi join, không chặn nét đang sửa`.
+
+
+## 2026-11-03 — Whiteboard: Task 8 — số đo 1 instance
+- **Script:** `tests/load/wb-latency.mjs` (nguyên văn plan, không sửa; `socket.io-client` lấy từ `frontend/node_modules`, không thêm dependency). Mỗi N tạo N tài khoản `bench_*`, 1 phòng, 1 meeting; A gửi 1 element mỗi 50 ms trong 10 s, N-1 người nhận đo (nhận − sentAt).
+- **Lệnh:** chạy thử `WB_SIZES=2` (không lỗi), rồi `node tests/load/wb-latency.mjs` (N = 2, 10, 20). Ngày giờ: 2026-11-03 12:37 (+07:00).
+- **Máy:** AMD Ryzen 7 5700U with Radeon Graphics, 8 nhân; RAM 6.8 GB; Docker Desktop engine 29.3.1. Client đo và server (backend, Redis, Mongo, LiveKit) chạy CÙNG một máy, nên số đo chưa gồm độ trễ mạng thật.
+- **Kết quả:**
+```
+┌─────────┬────┬─────────────────┬─────────┬────────┬────────┬────────┬──────────────────┬────────────────────────┐
+│ (index) │ N  │ scenario        │ samples │ p50_ms │ p95_ms │ max_ms │ lastPayloadBytes │ bytesPerSecPerReceiver │
+├─────────┼────┼─────────────────┼─────────┼────────┼────────┼────────┼──────────────────┼────────────────────────┤
+│ 0       │ 2  │ 'A element nhỏ' │ 162     │ 5      │ 10     │ 22     │ 160              │ 5530                   │
+│ 1       │ 2  │ 'B nét vẽ tay'  │ 161     │ 9      │ 27     │ 45     │ 16231            │ 135542                 │
+│ 2       │ 10 │ 'A element nhỏ' │ 1440    │ 7      │ 18     │ 88     │ 161              │ 5477                   │
+│ 3       │ 10 │ 'B nét vẽ tay'  │ 1440    │ 11     │ 39     │ 186    │ 16149            │ 133916                 │
+│ 4       │ 20 │ 'A element nhỏ' │ 3059    │ 7      │ 12     │ 68     │ 161              │ 5511                   │
+│ 5       │ 20 │ 'B nét vẽ tay'  │ 3059    │ 11     │ 25     │ 48     │ 16232            │ 135558                 │
+└─────────┴────┴─────────────────┴─────────┴────────┴────────┴────────┴──────────────────┴────────────────────────┘
+```
+- **Lần chạy thử đầu, có thể do cold start (N=2, chạy riêng trước lần chạy đủ; số liệu nguyên văn, chưa công bố ở trên):**
+```
+│ (index) │ N  │ scenario        │ samples │ p50_ms │ p95_ms │ max_ms │ lastPayloadBytes │ bytesPerSecPerReceiver │
+│ 0       │ 2  │ 'A element nhỏ' │ 161     │ 6      │ 96     │ 192    │ 160              │ 5495                   │
+│ 1       │ 2  │ 'B nét vẽ tay'  │ 161     │ 9      │ 29     │ 172    │ 16231            │ 135542                 │
+```
+  Cùng N=2 giữa hai lần chạy: p95 của kịch bản A là 96 ms so với 10 ms, max 192 ms so với 22 ms. Biến động giữa các lần chạy ở N=2 lớn hơn chênh lệch giữa các N.
+- **Điều kiện đo thực tế:** vòng gửi chạy ~62 ms/tick trên Windows (không phải 50 ms), tức ~16 tick/s × 3 điểm ≈ 48 điểm/s (các số ~62 ms, ~16 tick/s, ≈48 điểm/s là suy ra từ số mẫu, không đo trực tiếp) thay vì 60 điểm/s (20 tick/s) như thiết kế. `lastPayloadBytes` (~16 KB, ≈480 điểm) và bytes/s (~135 KB/s) của kịch bản B mô tả mức tải nhẹ hơn đó; ở đúng tốc độ thiết kế thì gói và băng thông sẽ cao hơn (ước tính thô ~20 KB và ~200 KB/s (ước tính thô, payload tăng dần theo số điểm) — đây là ước tính, KHÔNG phải số đo). `bytesPerSecPerReceiver` tính trên JSON của envelope, không gồm phần đóng khung Socket.IO trên dây. Node: v22.16.0. Mỗi lần chạy để lại user `bench_*`, phòng và meeting đã kết thúc trong DB dev.
+- **Đọc số:** p50 từ 5 đến 11 ms và p95 từ 10 đến 39 ms ở cả N = 2, 10, 20; max cao nhất 186 ms (N = 10, nét vẽ tay). p50 tăng ~2 ms từ N=2 lên N≥10 (A: 5→7; B: 9→11); đuôi p95/max dao động không theo xu hướng rõ theo N. Xu hướng p50 (tăng ~2 ms) chỉ từ một lần chạy cho mỗi N và nằm trong biên dao động giữa các lần chạy, nên không kết luận được p50 tăng theo N. Nét vẽ tay nặng hơn rõ rệt (gói cuối ~16 KB, ~135 KB/s mỗi người nhận so với ~5.5 KB/s) vì mỗi lần gửi toàn bộ `points`. `samples` (~161 mỗi kịch bản ở N = 2) thấp hơn 200 vì tick thực tế ~62 ms; số mẫu hai kịch bản bằng nhau (và ở N=10, 20 khớp số tick × số người nhận) nên suy ra không mất gói, đây là suy luận chứ không kiểm tra trực tiếp. Mỗi cấu hình chạy một lần trong lần chạy đủ (N=2 có thêm lần chạy thử ở trên), trên một máy, nên chỉ là số đo tham khảo cho 1 instance.
+- **Commit:** `test: script đo độ trễ đồng bộ whiteboard`; sửa ghi chú: `docs: ghi rõ điều kiện đo độ trễ whiteboard`.
+
+## 2026-11-03 — Whiteboard: Task 9 — tài liệu
+- **Xong:** tài liệu khớp code whiteboard đồng bộ realtime. File đã sửa:
+  - `docs/PROJECT_CONTEXT.md` §9 (event catalog, bỏ `wb:resync` / `lastSeq` / ring buffer), §10 (throttle 50 ms, Lua, map version, luật LWW), §11 (khoá `SET NX PX 15000`, 5.000 tính element hiển thị, E11000).
+  - `docs/architecture/whiteboard.md` §1–§5 (bỏ trỏ tới `realtime.md`).
+  - `docs/database/DB_DESIGN.md` §C.8 (ghi chú `elementsGzip`) và Phần E (`wb:{id}` thành Hash, thêm `wb:alive:`, `wb:persist-lock:`, bỏ `wb:ops:`).
+  - `docs/api/endpoint.md` (mục "Socket.IO whiteboard" sau "Socket.IO chat").
+  - `docs/decisions.md` (ADR-014 thêm câu cuối; thêm ADR-028…031).
+  - `docs/task/whiteboard/whiteboard_sync_spec.md` §13 (thêm giới hạn 8, 9), `docs/task/whiteboard/whiteboard_sync_plan.md` Task 2 (13 → 14 test, thêm test còn thiếu).
+  - `docs/progress.md` (bảng "Code hiện có"; sửa mục Task 2 và Task 8).
+- **Lệch text brief (tài liệu mô tả CODE, không mô tả brief):** ADR-028 ghi thêm "batch không thêm gì luôn qua" và "batch trùng id bị validate từ chối". ADR-031 ghi: map ghi version lúc gửi, lúc nhận chỉ ghi khi `reconcileElements` thật sự áp element từ xa; client chỉ gửi sau `meeting:snapshot` (cờ `joined`). Dòng luồng "validate + permission + Redis INCR seq" ở §10 / `whiteboard.md` §2 đổi thành "Redis INCR seq (trong script Lua)" để khỏi trùng với dòng validate mới.
+- **Sửa phụ:** Task 2 "Lệch plan: không" sửa thành có (fix round 1); Task 8: số tick suy ra từ số mẫu, băng thông ~200 KB/s ước tính thô, "có thể do cold start", thêm dòng tiêu đề cho khối lần chạy thử, ghi chú xu hướng p50 nằm trong dao động giữa các lần chạy.
+- **Kiểm:** `git diff --stat` chỉ gồm `docs/*.md`. Grep PROJECT_CONTEXT.md, whiteboard.md, DB_DESIGN.md, endpoint.md (ring buffer, wb:resync, lastSeq, isApplyingRemote, debounce, graceful, realtime.md, security.md, wb:ops:, replay, String (gzip), 150ms) còn lại: `lastSeq` ở guard Mongo (ADR-015, vẫn là thiết kế hiện hành) và câu E11000; "ring buffer" chỉ trong câu "không ring buffer — ADR-029"; "graceful shutdown" ở tiêu đề §7.6 và câu "không ghi khi graceful shutdown" (ADR-030). Fix round 1 đã bỏ dòng ring buffer ở bảng stateless và `wb:resync` ở §7.6.
+- **Commit:** `docs: whiteboard đồng bộ realtime — §9 §10 §11, ADR-028…031`.
+
+## 2026-11-03 — Whiteboard: sửa sau review toàn nhánh
+- **Xong:**
+  - F1 `whiteboard.service.ts`: `getSnapshot` và `persist` sắp element theo fractional index (`byFractionalIndex`, giống `orderByFractionalIndex`) — trước đó thứ tự `HGETALL` ngẫu nhiên làm xáo z-order cho người vào muộn.
+  - F2 `useWhiteboardSync.ts`: `meeting:snapshot` gọi `synced.clear()` trước `applyRemote` → phần chỉ có ở máy mình được gửi lại ở `flush()`.
+  - F3 đóng board nguyên tử: Lua thêm `KEYS[4] = wb:closed:{id}` (có → `{'CLOSED'}`), `applyOps` → 409 "Buổi học đã kết thúc", `finalizeBoard` `SET wb:closed` (EX 86400) → persist → `DEL` 3 key. Sửa comment `closeBoard` / `closeMeetingChannel` (socketsLeave qua adapter là bất đồng bộ).
+  - F4 `applyRemote`: `restoreElements` lỗi → thử từng element, bỏ cái lỗi; `reconcileElements` + `updateScene` trong try/catch, lỗi thì hoàn tác version đã ghi.
+  - F5 `docs/progress.md`: khôi phục 17 dòng `- **Commit:** chưa — chờ user.` bị commit 19d0f46 thay nhầm (đối chiếu `git show 2158a34:docs/progress.md`); dòng trong mục Task 0 giữ nguyên.
+  - F6 (a) validator `Number.isSafeInteger` cho `version` / `versionNonce`; (b) `handleMeetingJoin` rời kênh khi `getSnapshot` lỗi; (c) `removeFromActiveMeeting` bọc `leaveMeeting` riêng; (d) `persist` E11000 → thử lại 1 lần không upsert; (e) cleanup hook gọi `flush()` trước khi huỷ throttle.
+  - F7 docs: spec §4.1 §4.2 §4.3 §5 §7 §13 (1, 2, 4, 8 sửa; thêm 10), DB_DESIGN Phần E, ADR-028 / ADR-030, PROJECT_CONTEXT §11, architecture/whiteboard.md, endpoint.md.
+- **Test:** `npx vitest run` (backend): 16 file, 273 pass (Lua spec trên redis-dev). Test mới: snapshot theo index, persist theo index, `CLOSED` → 409, Lua `CLOSED`, finalize SET trước persist, E11000 thử lại không upsert, version/nonce 2^53, join rời kênh khi snapshot lỗi, `leaveMeeting` lỗi vẫn gọi LiveKit. `npm run lint`, `npm run build` (backend) sạch; frontend `npm run lint` + `npx tsc --noEmit` sạch; `curl /meetings/000…0` → 200.
+- **Chạy thật:** `docker compose restart backend` → "Nest application successfully started". Smoke script (ngoài git): snapshot người vào muộn đúng thứ tự `a0,a1,a2,a9`; sau khi kết thúc Mongo `elementCount=4`, Redis chỉ còn `wb:closed:{id}`; op muộn của socket còn kết nối nhận 403 (socketsLeave đã xong kịp nên chưa chạm nhánh 409 — nhánh `CLOSED` được phủ bởi test Lua trên Redis thật).
+- **Lệch brief:** `applyRemote` ghi version trước `updateScene` (giữ thứ tự cũ để `onChange` không echo lại) và hoàn tác nếu `updateScene` ném, thay vì "không ghi" thuần tuý.
+- **Commit:** `fix: whiteboard backend — z-order snapshot, đóng board nguyên tử, củng cố persist`; `fix: whiteboard client — dựng lại map version từ snapshot, chịu element lỗi`; `docs: whiteboard sửa sau review toàn nhánh`.
