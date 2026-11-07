@@ -40,9 +40,13 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
-  const redisIoAdapter = new RedisIoAdapter(app);
-  await redisIoAdapter.connectToRedis();
-  app.useWebSocketAdapter(redisIoAdapter);
+  // Thí nghiệm E1: SOCKET_REDIS_ADAPTER=off → mỗi instance chỉ phát cho socket của chính nó
+  // (Nest tự dùng IoAdapter thường). Mặc định luôn bật (ADR-005)
+  if (process.env.SOCKET_REDIS_ADAPTER !== 'off') {
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
+  }
 
   const port = process.env.PORT || 3001;
   await app.listen(3001, '0.0.0.0');

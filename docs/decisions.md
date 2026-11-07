@@ -36,13 +36,15 @@ Trạng thái: tất cả **[CONFIRMED]** trừ khi ghi khác. Không quay lại
 **Decision:** Bật `@socket.io/redis-adapter` ngay cả khi dev 1 instance.
 **Reason:** Multi-instance là requirement chứ không phải giả định.
 **Status:** CONFIRMED. *Đây là đảo ngược một quyết định cũ ("chỉ bật khi >1 instance") — không quay lại.*
+**Ngoại lệ duy nhất `[phát sinh kỹ thuật]`:** biến `SOCKET_REDIS_ADAPTER=off` tắt adapter, chỉ để chạy thí nghiệm E1 (chứng minh thiếu adapter thì 2 instance mất đồng bộ). Mặc định `on` — user duyệt 2026-11-07.
 
 ## ADR-006 — Không dùng sticky session
-**Decision:** Client ép `transports: ['websocket']`; NGINX round-robin thuần, **không `ip_hash`**.
+**Decision:** Client ép `transports: ['websocket']`; NGINX chia tải bằng **`least_conn`**, **không `ip_hash`**.
 **Reason:** Sticky session mâu thuẫn tinh thần stateless, giấu vấn đề thay vì giải quyết, và làm mất kết nối hàng loạt khi auto-scale thu hồi instance.
-**Alternatives:** sticky session ở LB để giữ fallback polling.
-**Rejected because:** rủi ro mất polling được bù bằng resync theo `seq` — mất kết nối không mất dữ liệu.
-**Status:** CONFIRMED.
+**Vì sao `least_conn` thay round-robin `[phát sinh kỹ thuật]`:** Socket.IO giữ kết nối lâu, round-robin chỉ chia đều lượt kết nối *mới* chứ không nhìn số kết nối *đang mở*. Instance vừa khởi động lại chỉ nhận 1/N kết nối mới trong khi instance khác vẫn giữ kết nối cũ → lệch tải kéo dài. `least_conn` dồn kết nối mới vào instance đang ít kết nối nhất. Vẫn không gắn client với instance nào nên không phải sticky. Đề cương §5.10, §8 chỉ quy định NGINX làm reverse proxy, không quy định thuật toán chia tải.
+**Alternatives:** sticky session ở LB để giữ fallback polling; round-robin thuần (quyết định cũ).
+**Rejected because:** rủi ro mất polling được bù bằng resync theo `seq` — mất kết nối không mất dữ liệu. Round-robin lệch tải với kết nối dài như trên.
+**Status:** CONFIRMED. `least_conn` — user chốt 2026-11-07.
 
 ## ADR-007 — Không dựng integration event bus riêng
 **Decision:** Domain event trong process bằng `EventEmitter2`; fan-out cross-instance do Socket.IO Redis adapter lo.
@@ -95,6 +97,7 @@ Phần này không nằm trong scope hiện tại
 **Decision:** Khi dev, cả hệ thống chạy bằng một lệnh `docker compose up -d --build`: mongo, redis, livekit, backend (`npm run start:dev`, mount `./backend/src`, config từ `env_file: ./backend/.env`) và frontend (`npm run dev`, mount `./frontend/src` + `./backend/src/shared` chỉ đọc cho alias `@shared` của ADR-024, `WATCHPACK_POLLING=true` để hot reload chạy trên Windows). `npm run start:dev` / `npm run dev` native chỉ dùng khi cần breakpoint trong IDE, và không chạy đồng thời với container tương ứng (trùng cổng 3001 / 3000). Sửa `package.json`, file cấu hình hoặc `public/` → chạy lại `--build`.
 **Reason:** Đề cương §5.10, §7 ("Frontend, Backend, Database, Redis, Media Server… được đóng gói và quản lý bằng Docker"). Một lệnh cho cả hệ thống, môi trường giống nhau giữa 2 máy của nhóm. Frontend thêm sau (2026-10-27) vì trước đó phải chạy 2 thao tác riêng.
 **Phát sinh kỹ thuật:** `[phát sinh kỹ thuật]` Đây là chế độ dev (hot reload). Trang lần đầu compile chậm trong container — đo thật: `/meetings/[id]` (5.574 module, Excalidraw + LiveKit) 118 s lần đầu, 4 s lần sau; hot reload ~25 s. Bản production (`next build` + NGINX + HTTPS) là task deploy riêng.
+**NGINX trước backend (2026-11-07):** service `nginx` giữ cổng 3001 (frontend, webhook LiveKit không đổi URL), chia tải `least_conn` (ADR-006). Backend bỏ `container_name` / `ports` để chạy nhiều bản: `docker compose up -d --scale backend=N`. Upstream dùng `server backend:3001 resolve` + DNS nội bộ Docker → thêm / bớt bản backend NGINX tự cập nhật, không cần reload `[phát sinh kỹ thuật]`.
 **Status:** CONFIRMED — user chốt chế độ dev 2026-10-27.
 
 ## ADR-017 — Ràng buộc dự án được ép bằng hook, không chỉ nằm trong tài liệu

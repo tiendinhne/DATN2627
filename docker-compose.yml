@@ -43,14 +43,13 @@ services:
       - "7881:7881"
       - "7882:7882/udp"
 
+  # Chạy nhiều bản: docker compose up -d --scale backend=2
+  # Không đặt container_name / ports để Compose tạo được nhiều bản; truy cập qua nginx (cổng 3001)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: backend-dev
     restart: unless-stopped
-    ports:
-      - "3001:3001"
     env_file:
       - ./backend/.env
     environment:
@@ -58,6 +57,8 @@ services:
       MONGO_URI: mongodb://mongo:27017/online-group-learning
       REDIS_URL: redis://redis:6379
       LIVEKIT_URL: http://livekit:7880
+      # Thí nghiệm E1: đặt off để tắt Socket.IO Redis adapter (mặc định on)
+      SOCKET_REDIS_ADAPTER: ${SOCKET_REDIS_ADAPTER:-on}
     depends_on:
       mongo:
         condition: service_healthy
@@ -65,6 +66,18 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/src:/app/src
+
+  # Load balancer trước các bản backend (ADR-006: least_conn, không sticky).
+  # Giữ cổng 3001 như backend cũ → frontend và webhook LiveKit không phải đổi URL
+  nginx:
+    image: nginx:1.28.0-alpine
+    container_name: nginx-dev
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    volumes:
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on: [backend]
 
   frontend:
     build: { context: ./frontend }

@@ -24,6 +24,21 @@ Mở http://localhost:3000
 
 - Sửa code trong `backend/src`, `frontend/src` → tự reload. Sửa `package.json`, file cấu hình, `public/` → chạy lại lệnh trên.
 - Lần đầu mở mỗi trang phải chờ compile (trang buổi học ~2 phút, lần sau vài giây). Trước khi demo nên mở trước một lượt.
+- Backend đứng sau NGINX ở cổng 3001 (load balancer). Mặc định 1 bản backend.
+
+### Chạy nhiều bản backend
+
+```powershell
+docker compose up -d --scale backend=2
+docker compose logs -f nginx      # cột upstream= cho biết request vào bản backend nào
+```
+
+Thí nghiệm E1 (tắt Socket.IO Redis adapter — 2 bản backend sẽ mất đồng bộ):
+
+```powershell
+$env:SOCKET_REDIS_ADAPTER = 'off'; docker compose up -d --scale backend=2
+Remove-Item Env:SOCKET_REDIS_ADAPTER; docker compose up -d --scale backend=2   # bật lại
+```
 
 ### Tắt
 

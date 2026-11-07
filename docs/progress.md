@@ -8,6 +8,7 @@ Auth (đăng ký, đăng nhập local, Google OAuth, /auth/me)	Chạy được
 Rooms, room-members	REST đầy đủ + frontend (chạy thật qua Docker 2026-10-01); chưa có realtime
 Meetings, chat, whiteboard	Có service + controller; whiteboard đã có đồng bộ realtime (Redis Hash + Lua, lưu Mongo, 2026-11-03)
 Socket gateway /meeting	Có JWT, validate payload, chat, whiteboard
+NGINX + nhiều bản backend	NGINX least_conn trước backend (cổng 3001), `--scale backend=N`; E1/E2 chạy thật trên 1 máy (2026-11-07)
 AI, files, health, LiveKit	Chưa có
 Frontend	Mới có các trang login, register, dashboard và Google callback. Đã có socket.io-client, LiveKit, Excalidraw đồng bộ realtime
 
@@ -1224,3 +1225,45 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Chạy thật:** `docker compose restart backend` → "Nest application successfully started". Smoke script (ngoài git): snapshot người vào muộn đúng thứ tự `a0,a1,a2,a9`; sau khi kết thúc Mongo `elementCount=4`, Redis chỉ còn `wb:closed:{id}`; op muộn của socket còn kết nối nhận 403 (socketsLeave đã xong kịp nên chưa chạm nhánh 409 — nhánh `CLOSED` được phủ bởi test Lua trên Redis thật).
 - **Lệch brief:** `applyRemote` ghi version trước `updateScene` (giữ thứ tự cũ để `onChange` không echo lại) và hoàn tác nếu `updateScene` ném, thay vì "không ghi" thuần tuý.
 - **Commit:** `fix: whiteboard backend — z-order snapshot, đóng board nguyên tử, củng cố persist`; `fix: whiteboard client — dựng lại map version từ snapshot, chịu element lỗi`; `docs: whiteboard sửa sau review toàn nhánh`.
+
+## 2026-11-07 — NGINX load balancer + nhiều bản backend, thí nghiệm E1/E2 (branch `feature/nginx-lb`)
+
+- **Vì sao:** mục tiêu chung "≥2 backend instance sau load balancer" + "E1 vs E2"; đề cương §5.10, §7 (NGINX reverse proxy). Thiết kế ngắn trong chat, user duyệt, không spec.
+- **Quyết định (user chốt 2026-11-07):** `least_conn` thay round-robin (ADR-006); số bản backend là tham số `--scale`, không đóng cứng; biến `SOCKET_REDIS_ADAPTER=off` chỉ dùng cho E1 (ADR-005). Phạm vi chỉ NGINX — AI và câu "resync theo `seq`" lỗi thời trong ADR-006 để sau.
+- **Đã xong:**
+  - `docker-compose.yml`: service `nginx` (`nginx:1.28.0-alpine`) giữ cổng host 3001 → `NEXT_PUBLIC_API_URL` của frontend và URL webhook LiveKit không đổi. `backend` bỏ `container_name` / `ports`, thêm `SOCKET_REDIS_ADAPTER: ${SOCKET_REDIS_ADAPTER:-on}`.
+  - `infrastructure/nginx/conf.d/default.conf`: upstream `least_conn` + `server backend:3001 resolve` (DNS Docker `127.0.0.11`, `valid=5s`), header WebSocket, access log ghi `upstream=$upstream_addr`.
+  - `backend/src/main.ts`: `SOCKET_REDIS_ADAPTER === 'off'` thì không gắn `RedisIoAdapter` (Nest tự dùng `IoAdapter`).
+  - Docs: ADR-005, ADR-006, ADR-016, README (chạy nhiều bản, E1).
+- **Kiểm tra (chạy thật, Docker):**
+  - Chia tải: 6 request `GET /auth/me` luân phiên `172.18.0.5` / `172.18.0.2`.
+  - E1/E2 (script đồ bỏ ở scratchpad: A, B kết nối tuần tự → `least_conn` đưa vào 2 bản khác nhau, kiểm bằng access log; A gửi 1 `wb:ops` + 1 `chat:send`, B chờ 2 s):
+
+    | Cấu hình | Socket A / B | B nhận `wb:ops` | B nhận `chat:new` |
+    |---|---|---|---|
+    | E2: 2 bản, adapter bật | `.2` / `.5` | true | true |
+    | E1: 2 bản, adapter tắt | `.2` / `.5` | **false** | **false** |
+    | Đối chứng: 1 bản, adapter tắt | `.5` / `.5` | true | true |
+
+  - `resolve`: hạ 2 → 1 bản, ngay sau đó 4/4 request vào bản còn lại, không 502, không reload NGINX.
+  - CORS + cookie qua NGINX: preflight `/auth/refresh` 204 có `Allow-Origin: http://localhost:3000`, `Allow-Credentials: true`; register 201 `Set-Cookie: refresh_token=…; HttpOnly; SameSite=Lax; Path=/auth`; refresh bằng cookie đó 200.
+  - Độ trễ whiteboard `tests/load/wb-latency.mjs` (không sửa script), adapter bật, cả hai cấu hình đi qua NGINX, mỗi cấu hình 3 lượt hợp lệ; bảng là **trung vị của 3 lượt** (trong ngoặc: min–max), ms:
+
+    | N | Kịch bản | 1 bản p50 | 1 bản p95 | 2 bản p50 | 2 bản p95 |
+    |---|---|---|---|---|---|
+    | 2 | A element nhỏ | 9 (7–10) | 21 (18–48) | 10 (9–28) | 111 (18–148) |
+    | 2 | B nét vẽ tay | 11 (10–14) | 18 (17–28) | 15 (13–35) | 39 (20–247) |
+    | 10 | A element nhỏ | 8 (7–9) | 11 (11–17) | 9 (9–14) | 14 (14–30) |
+    | 10 | B nét vẽ tay | 18 (13–18) | 37 (24–95) | 17 (13–19) | 39 (30–42) |
+    | 20 | A element nhỏ | 8 (8–9) | 13 (11–17) | 11 (9–12) | 18 (14–24) |
+    | 20 | B nét vẽ tay | 17 (15–21) | 32 (28–34) | 19 (17–34) | 33 (33–116) |
+
+  - Chia kết nối khi đo 2 bản: 96 WebSocket (3 lượt × 32) → 48 / 48.
+  - Backend `npx vitest run` 16 file 273/273; `npm run build`, `npm run lint` exit 0.
+- **Đọc số:** 2 bản vẫn đồng bộ đúng. p50 ở N = 10, 20 gần như 1 bản (chênh −1 đến +3 ms) — chi phí thêm 1 chặng Redis pub/sub cho người nhận ở bản khác. Đuôi p95 dao động mạnh giữa các lượt (N = 2 chỉ ~160 mẫu, p95 ≈ mẫu thứ 8 tệ nhất) nên không kết luận được p95 tăng theo số bản. Script không tách người nhận cùng bản / khác bản.
+- **Giới hạn:** cả hệ thống + client đo trên **1 máy** (Ryzen 7 5700U 8 nhân, VM Docker 3,3 GB) → 2 bản backend chia nhau cùng CPU; số đo chứng minh **tính đúng + chi phí**, **không** chứng minh tăng năng lực. Đo năng lực 1 → 2 → 3 bản cần VPS + máy sinh tải riêng (§17). `instanceId` trong log ứng dụng chưa có — access log NGINX dùng thay tạm (E3).
+- **Gặp khi chạy:**
+  1. `docker compose up -d --build --scale backend=2` lần đầu: mongo `unhealthy` (healthcheck `mongosh` quá 5 s, 29 lần liên tiếp lúc máy build image) → backend không được khởi động. Máy rảnh: `mongosh` ping ~1,8–2,1 s → `healthy`, `up` lại được. Giống lỗi ghi 2026-10-27; chưa đổi healthcheck (ngoài phạm vi).
+  2. Lượt 1 đo 1 bản (ngay sau khi tạo lại container): `socket.io-client` báo `Error: timeout`; log NGINX khoảng đó không có 5xx / dòng lỗi; nguyên nhân chưa rõ → chạy bù 1 lượt.
+- **Lệch thiết kế đã duyệt:** dùng `server … resolve` (NGINX ≥ 1.27.3) thay cho "đổi N thì `nginx -s reload`" — tự cập nhật IP, đã kiểm ở trên. Ghi trong ADR-016.
+- **Commit:** chưa — chờ user.
