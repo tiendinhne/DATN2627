@@ -1235,4 +1235,5 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra (trên máy, chưa qua GitHub):** backend `npm run lint` exit 0, `npx vitest run` 16 file 273/273, `npm run build` exit 0; frontend `npm run build` exit 0. Bước `npm ci` chỉ kiểm được khi CI chạy trên GitHub.
 - **Còn lại user làm trên GitHub:** đặt default branch = `dev`; branch protection cho `dev` + `main` (bắt buộc PR, 1 approval, status check `backend` + `frontend`, không cho admin bỏ qua).
 - **Đợt 2 (chờ VPS + domain):** Dockerfile production backend, `docker-compose.prod.yml`, deploy tay 1 lần, `deploy.yml`, nối Vercel.
-- **Commit:** `chore: CI GitHub Actions cho PR vào dev / main` (nhánh `chore/ci`).
+- **Commit:** `chore: CI GitHub Actions cho PR vào dev / main` (nhánh `chore/ci`, PR #8).
+- **Gặp khi chạy trên GitHub:** PR #8 job `backend` đỏ — `whiteboard.lua.spec.ts` `beforeAll` quá 10 s vì runner không có Redis (trên máy qua được do `redis-dev` đang chạy). PR vẫn merge được vì lúc đó chưa bắt buộc status check. Sửa: thêm `services: redis` (`redis:7-alpine`, healthcheck) vào job `backend` — commit `fix: CI chạy Redis cho test Lua whiteboard` (nhánh `fix/ci-redis`). User đã bật branch protection: `dev` + `main` bắt buộc `backend` + `frontend`, áp cho cả admin (kiểm qua API 2026-11-10).
