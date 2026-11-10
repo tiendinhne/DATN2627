@@ -1224,3 +1224,15 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Chạy thật:** `docker compose restart backend` → "Nest application successfully started". Smoke script (ngoài git): snapshot người vào muộn đúng thứ tự `a0,a1,a2,a9`; sau khi kết thúc Mongo `elementCount=4`, Redis chỉ còn `wb:closed:{id}`; op muộn của socket còn kết nối nhận 403 (socketsLeave đã xong kịp nên chưa chạm nhánh 409 — nhánh `CLOSED` được phủ bởi test Lua trên Redis thật).
 - **Lệch brief:** `applyRemote` ghi version trước `updateScene` (giữ thứ tự cũ để `onChange` không echo lại) và hoàn tác nếu `updateScene` ném, thay vì "không ghi" thuần tuý.
 - **Commit:** `fix: whiteboard backend — z-order snapshot, đóng board nguyên tử, củng cố persist`; `fix: whiteboard client — dựng lại map version từ snapshot, chịu element lỗi`; `docs: whiteboard sửa sau review toàn nhánh`.
+
+## 2026-11-10 — CI/CD đợt 1: nhánh `dev` + CI GitHub Actions
+
+- **Vì sao:** đề cương §8 (GitHub Actions: kiểm thử, build Docker image, triển khai). Thiết kế ngắn trong chat, user duyệt, không spec. ADR-032.
+- **Quyết định (user chốt 2026-11-10):** `main` = production, không đổi tên; "team check" chỉ trên máy, không staging; frontend deploy trên Vercel `[phát sinh kỹ thuật]`, lệch đề cương §8 — ghi ở ADR-032.
+- **Đã xong:**
+  - Nhánh `dev` (bản local cũ chỉ có 2 commit đầu, đều nằm trong `main`) đưa lên bằng `main` `e957c00`, push lên origin.
+  - `.github/workflows/ci.yml`: 2 job `backend` (Node 20: `npm ci --legacy-peer-deps`, lint, vitest, build) và `frontend` (Node 22: `npm ci`, `next build`), chạy khi có PR vào `dev` / `main`. Xoá `githup-action-demo.yml`.
+- **Kiểm tra (trên máy, chưa qua GitHub):** backend `npm run lint` exit 0, `npx vitest run` 16 file 273/273, `npm run build` exit 0; frontend `npm run build` exit 0. Bước `npm ci` chỉ kiểm được khi CI chạy trên GitHub.
+- **Còn lại user làm trên GitHub:** đặt default branch = `dev`; branch protection cho `dev` + `main` (bắt buộc PR, 1 approval, status check `backend` + `frontend`, không cho admin bỏ qua).
+- **Đợt 2 (chờ VPS + domain):** Dockerfile production backend, `docker-compose.prod.yml`, deploy tay 1 lần, `deploy.yml`, nối Vercel.
+- **Commit:** `chore: CI GitHub Actions cho PR vào dev / main` (nhánh `chore/ci`).
