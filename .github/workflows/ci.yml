@@ -9,6 +9,12 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # whiteboard.lua.spec.ts chạy script Lua trên Redis thật ở localhost:6379
+    services:
+      redis:
+        image: redis:7-alpine # giống docker-compose.yml
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
     defaults:
       run:
         working-directory: backend
