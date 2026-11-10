@@ -1,0 +1,41 @@
+# CI: kiểm code mỗi khi mở / cập nhật PR vào dev hoặc main (ADR-032)
+# Branch protection bắt 2 job "backend" và "frontend" phải xanh mới cho merge
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20 # khớp backend/Dockerfile
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci --legacy-peer-deps # Dockerfile cũng cài với --legacy-peer-deps
+      - run: npm run lint
+      - run: npx vitest run
+      - run: npm run build
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      # Checkout cả repo: alias @shared trỏ ../backend/src/shared (ADR-024)
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22 # khớp frontend/Dockerfile
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build # next build: kiểm type + lint
