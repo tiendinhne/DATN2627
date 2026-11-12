@@ -1321,3 +1321,9 @@ Cập nhật lại các role * đọc file rule/role.md
   - Backend đang chạy mount `./backend/src` nhưng **chưa nạp code mới** (log cuối 2026-11-11 03:17 — `nest --watch` không nhận thay đổi qua mount Windows).
   - Env trong container còn `GEMINI_API_KEY` giá trị mẫu (container tạo trước khi user thêm key; `env_file` chỉ đọc lúc tạo container) → phải tạo lại container, `docker restart` không đủ. Trong container có `elkjs` 0.9.3, `zod` 3.25.76.
   - Lệnh `docker stop nginx-dev` + `docker compose up -d --no-deps --build backend` bị auto mode chặn (can thiệp workload) → chờ user quyết.
+- **Commit:** `567a5d4` `feat: event ai:generate, ai:result, ai:status`.
+
+## 2026-11-12 — Module AI: Task 6 (frontend dựng + chèn sơ đồ)
+
+- **Đã làm:** `features/whiteboard/lib/aiDiagram.ts` (`buildAiElements`: vùng trống bên phải bằng `getCommonBounds`, skeleton khung có nhãn + mũi tên gắn `start` / `end.id`, `convertToExcalidrawElements` mặc định `regenerateIds`). `useWhiteboardSync`: trạng thái `ai` (`idle` / `pending` / `error`) + `generate` trên chính socket bảng vẽ, 1 yêu cầu / tab, hết chờ 40 s, huỷ khi `disconnect`; nhận `ai:result` → dựng xong mới `updateScene` (nối element cũ, `CaptureUpdateAction.IMMEDIATELY`) → `scheduleFlush` (qua `wb:ops`) → `scrollToContent`; nhận `ai:status` → lỗi. Code đúng plan.
+- **Kiểm:** `npm run build` (frontend) exit 0. Chưa chạy trên trình duyệt → plan Task 8.
