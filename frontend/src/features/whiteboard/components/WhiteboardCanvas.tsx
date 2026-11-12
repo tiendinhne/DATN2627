@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 // CSS bắt buộc của Excalidraw (README của thư viện)
 import "@excalidraw/excalidraw/index.css";
 import { useWhiteboardSync } from "../hooks/useWhiteboardSync";
+import type { WhiteboardAi } from "../hooks/useWhiteboardSync";
 
 // Excalidraw dùng window/canvas nên chỉ render ở client → tắt SSR (cách Excalidraw hướng dẫn cho Next.js)
 const Excalidraw = dynamic(
@@ -23,12 +24,19 @@ interface WhiteboardCanvasProps {
   // Có token + meetingId → đồng bộ realtime; thiếu → chạy local
   token?: string | null;
   meetingId?: string;
+  // Báo trạng thái AI + hàm tạo sơ đồ lên MeetingWorkspace — AIPanel nằm ở panel bên, ngoài canvas (spec AI §8.4)
+  onAiChange?: (ai: WhiteboardAi) => void;
 }
 
 // Không đặt langCode="vi-VN": Excalidraw 0.18.1 mới dịch 49% tiếng Việt, dưới ngưỡng 85% nên tự rơi về tiếng Anh
-export function WhiteboardCanvas({ dark = false, hidden = false, token, meetingId }: WhiteboardCanvasProps) {
+export function WhiteboardCanvas({ dark = false, hidden = false, token, meetingId, onAiChange }: WhiteboardCanvasProps) {
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
-  const { onChange, onPointerUpdate, notice, clearNotice } = useWhiteboardSync({ token, meetingId, api });
+  const { onChange, onPointerUpdate, notice, clearNotice, ai } = useWhiteboardSync({ token, meetingId, api });
+
+  // ai chỉ đổi khi trạng thái đổi (useMemo trong hook) → không render lặp
+  useEffect(() => {
+    onAiChange?.(ai);
+  }, [ai, onAiChange]);
 
   return (
     <div className="whiteboard" hidden={hidden}>

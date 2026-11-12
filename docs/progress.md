@@ -1327,3 +1327,9 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Đã làm:** `features/whiteboard/lib/aiDiagram.ts` (`buildAiElements`: vùng trống bên phải bằng `getCommonBounds`, skeleton khung có nhãn + mũi tên gắn `start` / `end.id`, `convertToExcalidrawElements` mặc định `regenerateIds`). `useWhiteboardSync`: trạng thái `ai` (`idle` / `pending` / `error`) + `generate` trên chính socket bảng vẽ, 1 yêu cầu / tab, hết chờ 40 s, huỷ khi `disconnect`; nhận `ai:result` → dựng xong mới `updateScene` (nối element cũ, `CaptureUpdateAction.IMMEDIATELY`) → `scheduleFlush` (qua `wb:ops`) → `scrollToContent`; nhận `ai:status` → lỗi. Code đúng plan.
 - **Kiểm:** `npm run build` (frontend) exit 0. Chưa chạy trên trình duyệt → plan Task 8.
+- **Commit:** `ce00e8d` `feat: frontend dựng và chèn sơ đồ AI vào whiteboard`.
+
+## 2026-11-12 — Module AI: Task 7 (`AIPanel` thật + nối vào meeting)
+
+- **Đã làm:** `AIPanel` nhận `ai` (3 nút chọn loại + câu mẫu, ô nhập tối đa 1000 ký tự, nút "Tạo sơ đồ" tắt khi đang chờ / prompt < 3 ký tự / bảng chưa nối, dòng lỗi); bỏ nút "Ghi chú" của bản mẫu. `WhiteboardCanvas` prop `onAiChange` (báo `ai` lên bằng `useEffect`); `MeetingWorkspace` giữ `wbAi` và truyền xuống `<AIPanel ai={wbAi} />`; `index.ts` export kiểu `WhiteboardAi`; 3 rule CSS. Giữ `aiEnabled={false}`. Code đúng plan.
+- **Kiểm:** `npm run build` (frontend) exit 0, bước lint + kiểm kiểu không cảnh báo.
