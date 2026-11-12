@@ -1211,12 +1211,13 @@ Expected: FAIL — không tìm thấy module `./ai-assistant.service.js`.
 
 - [ ] **Step 3: Tạo `backend/src/modules/ai-assistant/ai-assistant.service.ts`**
 
+> Sửa khi thực thi (2026-11-12): bản đầu inject `Model<AiRequestDocument>` → `tsc` lỗi TS2769 ở `model: this.provider.model` (field `model` trùng hàm `Document.model()`). Đổi sang `Model<AiRequest>`; code dưới đây là bản đã sửa.
+
 ```ts
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AiRequest } from './schemas/ai-request.schema.js';
-import type { AiRequestDocument } from './schemas/ai-request.schema.js';
 import { AI_PROVIDER_PORT, AiProviderError } from './ports/ai-provider.port.js';
 import type { AiFailureStatus, AiProviderPort } from './ports/ai-provider.port.js';
 import { parseDiagramDsl } from './domain/diagram-dsl.js';
@@ -1264,7 +1265,9 @@ export class AiAssistantService {
   private readonly logger = new Logger(AiAssistantService.name);
 
   constructor(
-    @InjectModel(AiRequest.name) private aiRequestModel: Model<AiRequestDocument>,
+    // Model<AiRequest> (không phải Model<AiRequestDocument>): field `model` trùng tên hàm Document.model() của Mongoose
+    // → kiểu AiRequestDocument không nhận chuỗi cho `model` (tsc TS2769)
+    @InjectModel(AiRequest.name) private aiRequestModel: Model<AiRequest>,
     @Inject(AI_PROVIDER_PORT) private provider: AiProviderPort,
     private redis: RedisService,
   ) {}

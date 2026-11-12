@@ -1303,3 +1303,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Đã làm:** `ports/ai-provider.port.ts` (`AI_PROVIDER_PORT`, `AiProviderPort`, `AiProviderError(status, errorCode, retryable)`, `AiFailureStatus`); `adapters/gemini-ai-provider.adapter.ts` (env Zod fail-fast, `systemInstruction` theo loại sơ đồ, `responseSchema` có `enum` + `maxItems`, nối mọi `parts`, map 429 / 5xx / 4xx / mạng / hết hạn / output rỗng). Code đúng plan.
 - **Test:** fail trước → `gemini-ai-provider.adapter.spec.ts` 19/19 (`fetch` + env giả, không gọi mạng). `npm run build` exit 0.
 - **Chưa kiểm:** request thật qua adapter → plan Task 8.
+- **Commit:** `0641fb2` `feat: port ai-provider + adapter Gemini`.
+
+## 2026-11-12 — Module AI: Task 4 (`AiAssistantService` + đăng ký module)
+
+- **Đã làm:** `ai-assistant.service.ts` — giới hạn lượt Redis (người 5/60 s, meeting 20/3.600 s, hệ thống 12/60 s + 450/86.400 s đếm mỗi lần gọi Gemini), một hạn `AbortSignal.timeout` cho cả request, thử lại đúng 1 lần (output hỏng / lỗi retryable), elkjs, ghi đúng 1 dòng `ai_requests` (ghi lỗi chỉ log). `ai-assistant.module.ts` đăng ký service + `AI_PROVIDER_PORT → GeminiAiProviderAdapter`, export service. Sửa 2 comment `errorCode` / `elementCount` trong schema.
+- **Lệch plan:** plan inject `Model<AiRequestDocument>` → `tsc` lỗi TS2769 ở `model: this.provider.model`: field `model` của schema trùng tên hàm `Document.model()` của Mongoose nên kiểu `AiRequestDocument['model']` là `string & hàm`. Sửa: inject `Model<AiRequest>` (kiểu dữ liệu thô), có comment tại chỗ; plan đã chú thích. Không đổi schema.
+- **Test:** fail trước → `ai-assistant.service.spec.ts` 16/16; cả module AI 4 file 64/64. `npm run build` exit 0 (sau khi sửa).
