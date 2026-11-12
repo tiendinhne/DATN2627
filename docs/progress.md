@@ -1237,3 +1237,51 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Đợt 2 (chờ VPS + domain):** Dockerfile production backend, `docker-compose.prod.yml`, deploy tay 1 lần, `deploy.yml`, nối Vercel.
 - **Commit:** `chore: CI GitHub Actions cho PR vào dev / main` (nhánh `chore/ci`, PR #8).
 - **Gặp khi chạy trên GitHub:** PR #8 job `backend` đỏ — `whiteboard.lua.spec.ts` `beforeAll` quá 10 s vì runner không có Redis (trên máy qua được do `redis-dev` đang chạy). PR vẫn merge được vì lúc đó chưa bắt buộc status check. Sửa: thêm `services: redis` (`redis:7-alpine`, healthcheck) vào job `backend` — commit `fix: CI chạy Redis cho test Lua whiteboard` (nhánh `fix/ci-redis`). User đã bật branch protection: `dev` + `main` bắt buộc `backend` + `frontend`, áp cho cả admin (kiểm qua API 2026-11-10).
+
+## 2026-11-11 — Module AI: spike Gemini API free tier (chỉ đo, chưa code)
+
+- **Vì sao:** `docs/task/AI/ai.md` — tiêu chí "API sử dụng free nếu có". Đây là spike: lệnh gọi thử là đồ bỏ, nằm ngoài repo, không có code nào được thêm.
+- **Kết quả đo (key AI Studio của nhóm, gọi thật 2026-11-11):**
+  - `GET /v1beta/models` → HTTP 200, key hợp lệ.
+  - `generateContent`, mỗi model 1 request, cùng một câu hỏi tiếng Việt (n=1, chỉ tham khảo):
+
+    | Model | Thời gian | Token trả lời | Token suy nghĩ |
+    |---|---|---|---|
+    | `gemini-3.5-flash-lite` | 2,1 s | 33 | 0 |
+    | `gemini-3.6-flash` | 5,6 s | 36 | 506 |
+    | `gemini-3.8-flash` | 10,5 s | 43 | 381 |
+
+  - JSON mode trên `gemini-3.5-flash-lite` (`responseMimeType: application/json` + `responseSchema` dạng `nodes` + `edges`, đúng DSL của ADR-011): HTTP 200, 2,1 s, JSON parse được, 7 nodes / 7 edges, không edge nào trỏ tới node không tồn tại.
+- **Giới hạn free tier (user đọc từ trang Rate limit của AI Studio, 2026-11-11):**
+
+  | Model | Request/phút | Token vào/phút | Request/ngày |
+  |---|---|---|---|
+  | `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite` | 15 | 250K | 500 |
+  | `gemini-3.8-flash`, `gemini-3.6-flash`, Gemini 3 Flash, 2.5 Flash | 5 | 250K | 20 |
+  | Gemini 2.5 Flash Lite | 10 | 250K | 20 |
+  | Gemma 4 26B / 31B | 30 | 16K | 14.400 |
+
+- **Đề xuất (chưa thành ADR, chờ user chốt khi thiết kế module):** dùng `gemini-3.5-flash-lite` — model Gemini duy nhất (cùng `gemini-3.1-flash-lite`) có 500 request/ngày; các bản Flash chỉ 20 request/ngày, không đủ cho dev và demo.
+- **Lưu ý cho thiết kế:**
+  - 15 request/phút và 500 request/ngày là trần chung của cả hệ thống (mọi user, mọi backend instance, cả lúc dev) → rate limit AI trong Redis (§15) phải đặt dưới trần này; lỗi 429 phải trả thông báo rõ cho người dùng.
+  - Câu trả lời có thể tách thành nhiều `parts` (flash-lite trả 2 parts cho 1 câu) → adapter phải nối tất cả.
+  - Ở free tier, Google dùng nội dung gửi lên để cải thiện sản phẩm (theo trang giá của Google) → nêu trong báo cáo.
+  - Chưa xác minh: response không cho biết project đang ở free hay paid tier; chỉ chắc là 0 đồng khi project chưa bật billing. → User xác nhận 2026-11-11: project free tier, **không bật billing**.
+- **Commit:** chưa commit.
+
+## 2026-11-12 — Module AI: Task 0 (thiết kế + spec + plan)
+
+- **Vì sao:** module mới → đủ quy trình thiết kế → spec → plan (CLAUDE.md). Thiết kế duyệt từng phần trong chat 2026-11-11, spec duyệt 2026-11-12.
+- **User chốt:**
+  - Giữ ADR-011 (DSL → Zod → elkjs), **không** dùng hộp thoại text-to-diagram có sẵn của Excalidraw (`TTDDialog` sinh Mermaid, bố cục ở trình duyệt; mindmap không có trong danh sách loại được hỗ trợ).
+  - Element dựng ở **trình duyệt người yêu cầu** (cách A), đồng bộ qua `wb:ops` sẵn có → sẽ thành ADR-033. Lệch PROJECT_CONTEXT §12 (backend merge) `[phát sinh kỹ thuật]`.
+  - 5 điểm bắt buộc: không ghi đè canvas; chỉ đi qua `wb:ops`; id / version từ hàm chính thức, không convert lại; kiểm nhãn dài / nhiều dòng / tiếng Việt; lỗi không ảnh hưởng bảng.
+  - Thử lại 1 lần cả khi Gemini 5xx / lỗi mạng; nhãn > 80 ký tự cắt còn 79 + "…"; tối đa 80 cạnh; trần toàn hệ thống 12 lần gọi / phút, 450 / ngày → sẽ thành ADR-034.
+  - Mọi API ngoài phải đối chiếu nguồn chính thức đúng phiên bản đang cài.
+- **Kiểm chứng lúc thiết kế** (lệnh thử ngoài repo, không giữ):
+  - Gemini `gemini-3.5-flash-lite`: `systemInstruction` được tuân theo; `responseSchema` có `enum` + `maxItems` được tuân theo; 1 lần `503 "high demand"`, gọi lại ngay thì được.
+  - `convertToExcalidrawElements` không chạy trong Node: import gói lỗi `Cannot find module ... roughjs/bin/rough`; mã nguồn v0.18.1 đo chữ bằng `document.createElement("canvas")`.
+  - elkjs 0.9.3 trong backend ESM: chạy được; `elk.spacing.nodeNode` / `elk.layered.spacing.nodeNodeBetweenLayers` có tác dụng đúng số. `tsc` (`nodenext`): `new ELK()` lỗi `TS2351`, `new ELK.default()` qua và chạy đúng → spec §6.1 sửa theo.
+- **Tài liệu:** `docs/task/AI/ai_module_spec.md`, `docs/task/AI/ai_module_plan.md` (Task 0–9).
+- **Còn mở:** hằng số `CHAR_PX = 12` là ước lượng, chốt ở plan Task 8 bằng đo thật.
+- **Commit:** chưa — plan Task 0 commit spec + plan + progress.
