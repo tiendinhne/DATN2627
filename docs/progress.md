@@ -1290,3 +1290,9 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Đã làm:** `backend/src/shared/ai.ts` (giới hạn prompt / node / cạnh / nhãn, `AI_SHAPES`, kiểu `AiDiagram`); `modules/ai-assistant/domain/diagram-dsl.ts` (`normalizeLabel`, `diagramDslSchema`, `parseDiagramDsl` → `BAD_JSON` / `BAD_DSL`). Code đúng plan, không lệch.
 - **Test:** chạy trước → fail (chưa có module); sau → `diagram-dsl.spec.ts` 20/20. `npm run build` exit 0 (thêm so với plan: vitest không kiểm kiểu).
+- **Commit:** `a563eb1` `feat: DSL sơ đồ AI + hằng số dùng chung`.
+
+## 2026-11-12 — Module AI: Task 2 (bố cục bằng elkjs)
+
+- **Đã làm:** `modules/ai-assistant/adapters/elk-layout.ts` — `nodeSize` (rộng cố định theo hình, cao theo số dòng ước lượng, `CHAR_PX = 12` chưa đo), `layoutDiagram` (elkjs 0.9.3 `layered`, `DOWN` cho flowchart / sơ đồ, `RIGHT` cho mindmap, khoảng cách 60 / 80 px). Code đúng plan.
+- **Test:** fail trước → `elk-layout.spec.ts` 9/9 (elkjs thật: không node nào chồng nhau ở cả 3 loại, cạnh ≥ 2 điểm). `npm run build` exit 0 → `new ELK.default()` qua cả `tsc` lẫn lúc chạy.
