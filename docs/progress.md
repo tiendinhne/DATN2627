@@ -1333,3 +1333,9 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Đã làm:** `AIPanel` nhận `ai` (3 nút chọn loại + câu mẫu, ô nhập tối đa 1000 ký tự, nút "Tạo sơ đồ" tắt khi đang chờ / prompt < 3 ký tự / bảng chưa nối, dòng lỗi); bỏ nút "Ghi chú" của bản mẫu. `WhiteboardCanvas` prop `onAiChange` (báo `ai` lên bằng `useEffect`); `MeetingWorkspace` giữ `wbAi` và truyền xuống `<AIPanel ai={wbAi} />`; `index.ts` export kiểu `WhiteboardAi`; 3 rule CSS. Giữ `aiEnabled={false}`. Code đúng plan.
 - **Kiểm:** `npm run build` (frontend) exit 0, bước lint + kiểm kiểu không cảnh báo.
+- **Commit:** `579f433` `feat: AIPanel gọi AI thật`.
+
+## 2026-11-12 — Module AI: Task 9 Step 1–6 (tài liệu) — làm trước Task 8
+
+- **Vì sao làm trước:** Task 8 (chạy thật) cần Docker + 2 trình duyệt có người thao tác; phần tài liệu chỉ mô tả code đã viết nên không phải chờ. Step 7 (tổng kết module) để sau Task 8.
+- **Đã sửa:** PROJECT_CONTEXT §9 (`ai:generate` thêm `meetingId`; `ai:result`, `ai:status`) và §12 (pipeline: convert ở trình duyệt, Gemini + `responseSchema`, retry cả 5xx / lỗi mạng, trần toàn hệ thống, cắt nhãn, `edges ≤ 80`); `decisions.md` thêm **ADR-033**, **ADR-034**; DB_DESIGN §C.10 (2 comment khớp schema); `endpoint.md` mục "Socket.IO AI"; `architecture.md` dòng `ai-assistant/` theo tên file thật.

@@ -172,7 +172,7 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `chat:send` | `{ roomId, clientMsgId, content, fileId?, meetingId? }` |
 | `wb:ops` | `{ meetingId, elements[] }` |
 | `wb:pointer` | `{ meetingId, x, y }` |
-| `ai:generate` | `{ requestId, prompt, kind }` |
+| `ai:generate` | `{ meetingId, requestId, prompt, kind }` — `meetingId` `[phát sinh kỹ thuật]` (spec AI §1 câu 8) |
 
 | Server → Client | Payload |
 |---|---|
@@ -183,7 +183,8 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `room:access_revoked` | envelope chuẩn, `data: { reason: 'LEFT' \| 'KICKED' \| 'DISSOLVED' }`; server phát trước khi ép socket rời kênh Room |
 | `wb:ops` | envelope, `data: { elements[] }` — chỉ element thắng, kênh `meeting:{id}` trừ người gửi |
 | `wb:pointer` | envelope `seq` null, `data: { userId, displayName, x, y }` — volatile |
-| `ai:status` / `ai:result` | `{ requestId, ... }` |
+| `ai:result` | envelope `seq: null`, `data: { requestId, diagram }` — chỉ socket người yêu cầu |
+| `ai:status` | envelope `seq: null`, `data: { requestId, status: 'failed', code, message }` — chỉ socket người yêu cầu |
 | `server:draining` | `{}` |
 | `error` | `{ statusCode, error, message, details? }` |
 
@@ -268,40 +269,42 @@ Filter không khớp vì đã có `lastSeq` ≥ seq → upsert ném E11000 → b
 **Kiến trúc 3 lớp.** LLM sinh toạ độ rất tệ — nếu bắt model trả thẳng element Excalidraw kèm `x, y, width, height` và arrow binding thì kết quả chồng chéo, mũi tên lệch, trông như bug. Phải tách sinh **cấu trúc** khỏi tính **vị trí**.
 
 ```
-User prompt
- → AiService
- → LLM (JSON mode) ── trả DSL: CHỈ nodes + edges, KHÔNG toạ độ
- → Validate schema (Zod)
- → Layout engine (elkjs) → tính x, y, w, h
- → convertToExcalidrawElements() → gán version/versionNonce hợp lệ
- → Redis INCR seq, merge live state
- → broadcast qua Redis adapter
+User prompt (AIPanel)
+ → ai:generate { meetingId, requestId, prompt, kind } — gateway validate, socket phải ở kênh meeting
+ → AiAssistantService: rate limit Redis (người / meeting / toàn hệ thống)
+ → LLM Gemini (JSON mode + responseSchema) ── trả DSL: CHỈ nodes + edges, KHÔNG toạ độ
+ → Validate schema (Zod) — hỏng thì thử lại đúng 1 lần
+ → Layout engine (elkjs) → x, y, w, h cho node, đường cho cạnh
+ → ai:result chỉ tới socket người yêu cầu
+ → [trình duyệt người yêu cầu] convertToExcalidrawElements() → updateScene (giữ element cũ)
+ → wb:ops như nét vẽ thường → Lua LWW → broadcast qua Redis adapter
 ```
 
-**DSL trung gian:**
+`[phát sinh kỹ thuật]` Bước dựng element chạy ở trình duyệt, không ở backend: `convertToExcalidrawElements` đo chữ bằng canvas, không chạy trong Node (ADR-033). Model + giới hạn: ADR-034. Chi tiết: `docs/task/AI/ai_module_spec.md`.
+
+**DSL trung gian** — LLM chỉ trả `nodes` + `edges`; `kind` lấy từ request, hướng bố cục suy từ `kind`:
 
 ```jsonc
 {
-  "kind": "flowchart",        // flowchart | mindmap | diagram
-  "direction": "TB",
-  "nodes": [ { "id": "n1", "label": "Bắt đầu", "shape": "ellipse" } ],
+  "nodes": [ { "id": "n1", "label": "Bắt đầu", "shape": "ellipse" } ],   // shape: rectangle | ellipse | diamond
   "edges": [ { "from": "n1", "to": "n2", "label": "" } ]
 }
 ```
 
-Ràng buộc validate: `nodes ≤ 40`, `label ≤ 80 ký tự`, mọi `edge.from/to` phải tồn tại, `id` unique, không node mồ côi.
+Ràng buộc validate: `nodes ≤ 40`, `edges ≤ 80`, nhãn chuẩn hoá NFC + gộp khoảng trắng, `label ≤ 80 ký tự` (dài hơn thì cắt còn 79 + "…"), mọi `edge.from/to` phải tồn tại, không cạnh tự vòng, `id` unique, không node mồ côi.
 
-**Điểm dễ hỏng nhất:** element do layout engine sinh ra **bắt buộc mang `version` và `versionNonce` hợp lệ**. Nếu sinh element "sạch" không có hai field này thì sẽ merge sai hoặc không sync sang client khác.
+**Điểm dễ hỏng nhất:** element phải mang `id` / `version` / `versionNonce` hợp lệ và **giống nhau trên mọi client**. Vì vậy chỉ trình duyệt người yêu cầu gọi `convertToExcalidrawElements`, một lần mỗi `requestId`; người khác nhận nguyên JSON qua `wb:ops`, không convert lại.
 
 **Xử lý lỗi:**
 
 | Rủi ro | Xử lý |
 |---|---|
-| JSON hỏng | JSON mode + retry **đúng 1 lần**; lần 2 fail → báo user |
-| Timeout | 30s → `ai:status: failed` |
-| Prompt injection | System prompt cố định ở backend; user input là **data**, không nối vào phần instruction |
-| Spam / chi phí | Rate limit **trong Redis**: 5 req/user/phút, 20 req/meeting/giờ |
-| Đè lên board | Đặt content vào vùng trống bên phải bounding box hiện tại |
+| JSON hỏng / DSL sai | JSON mode + retry **đúng 1 lần**; lần 2 fail → `ai:status` `INVALID_OUTPUT` |
+| Gemini quá tải (5xx) / lỗi mạng | Dùng chung lần retry ở trên |
+| Timeout | 30 s cho **cả** request → `ai:status` `TIMEOUT` |
+| Prompt injection | System prompt cố định ở backend (`systemInstruction`); user input là **data** trong `contents`, không nối vào instruction |
+| Spam / chi phí | Rate limit **trong Redis**: 5 req/user/phút, 20 req/meeting/giờ + 12 lần gọi Gemini/phút, 450/ngày cho cả hệ thống (ADR-034) |
+| Đè lên board | Client đặt sơ đồ vào vùng trống bên phải bounding box hiện tại (`getCommonBounds`); không thay element cũ |
 | Lộ API key | Chỉ ở backend env |
 
 AI content là element bình thường — user sửa/xoá/di chuyển như mọi element khác.

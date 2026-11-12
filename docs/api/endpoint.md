@@ -298,6 +298,20 @@ Cùng namespace `/meeting`. Spec: `docs/task/whiteboard/whiteboard_sync_spec.md`
 
 Kick / rời phòng / meeting kết thúc → server ép socket rời kênh `meeting:{id}` trên mọi instance; `wb:*` sau đó trả 403.
 
+### Socket.IO AI
+Cùng namespace `/meeting`, cùng kết nối whiteboard (socket phải đã `meeting:join`). Spec: `docs/task/AI/ai_module_spec.md` §3.
+
+| Client → Server | Payload | Lỗi (`error`) |
+|---|---|---|
+| `ai:generate` | `{ meetingId, requestId, prompt, kind }` — `requestId` khớp `^[A-Za-z0-9-]{8,64}$` (client dùng `crypto.randomUUID()`), `prompt` 3–1000 ký tự sau khi cắt khoảng trắng, `kind` ∈ `FLOWCHART` · `MINDMAP` · `DIAGRAM` | 400 sai payload · 403 chưa join meeting |
+
+| Server → Client | `data` | Gửi tới |
+|---|---|---|
+| `ai:result` | `{ requestId, diagram: { nodes[], edges[] } }` — node: `id, label, shape, x, y, width, height`; cạnh: `from, to, label?, points[]` | riêng socket gửi yêu cầu |
+| `ai:status` | `{ requestId, status: 'failed', code, message }` — `code` ∈ `RATE_LIMITED` · `TIMEOUT` · `INVALID_OUTPUT` · `PROVIDER_ERROR` | riêng socket gửi yêu cầu |
+
+Envelope `seq: null`. Sơ đồ tới thành viên khác qua `wb:ops` sau khi trình duyệt người yêu cầu chèn vào bảng. Giới hạn: 5 lượt/người/phút, 20 lượt/meeting/giờ; cả hệ thống 12 lần gọi Gemini/phút, 450/ngày.
+
 ### Cấu hình Object Storage
 Tạo bucket Amazon S3 riêng và đặt `AWS_REGION` cùng `S3_BUCKET` trong `backend/.env` (giá trị thật phụ thuộc AWS account; không dùng các placeholder trong `.env.example`). Bucket phải private. Adapter dùng AWS SDK for JavaScript v3 với credential provider chain mặc định; không cấu hình endpoint hay key/secret trong source.
 

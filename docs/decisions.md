@@ -211,3 +211,19 @@ Phần này không nằm trong scope hiện tại
 **Alternatives:** đổi tên `main` → `production`; staging `dev.<domain>` trên cùng VPS; frontend chạy container trên VPS.
 **Rejected because:** đổi tên phải sửa mọi bản clone / worktree mà không thêm gì; staging tốn gấp đôi tài nguyên; frontend trên VPS — user chọn Vercel.
 **Status:** CONFIRMED — user chốt 2026-11-10. CI xong; CD chờ VPS + domain.
+
+## ADR-033 — Element sơ đồ AI dựng ở trình duyệt người yêu cầu, đồng bộ qua `wb:ops` `[phát sinh kỹ thuật]`
+**Decision:** Backend dừng ở DSL đã có toạ độ (Gemini → Zod → elkjs) và chỉ trả `ai:result` cho socket người yêu cầu. Trình duyệt người đó gọi `convertToExcalidrawElements` (Excalidraw 0.18.1) đúng 1 lần mỗi `requestId`, chèn bằng `updateScene` (giữ mọi element cũ, `CaptureUpdateAction.IMMEDIATELY`), rồi element mới đi qua `wb:ops` như nét vẽ thường. Không có luồng broadcast riêng cho AI.
+**Reason:** `convertToExcalidrawElements` đo chữ bằng canvas (`element/textMeasurements.ts`, `document.createElement("canvas")`); import gói trong Node thuần lỗi — không chạy ở backend. Dựng ở 1 trình duyệt → mọi client cùng `id` / `version` / `versionNonce`; tái dùng LWW + Lua + lưu Mongo đã test.
+**Alternatives:** backend tự viết JSON element rồi merge + broadcast (đúng chữ PROJECT_CONTEXT §12 cũ); backend chỉ trả DSL, trình duyệt chạy cả elkjs.
+**Rejected because:** tự viết JSON element là đoán cấu trúc nội bộ của Excalidraw (không có hàm chính thức chạy được trong Node); chạy elkjs ở trình duyệt thêm dependency frontend.
+**Giới hạn đã biết:** backend không đo chữ → chiều cao node là ước lượng (`CHAR_PX`, chốt bằng đo thật); người yêu cầu rớt mạng trước khi chèn thì mất kết quả; 2 sơ đồ chèn gần như cùng lúc có thể chồng nhau.
+**Status:** CONFIRMED — user chốt 2026-11-11. Spec: `docs/task/AI/ai_module_spec.md` §1 câu 3–5.
+
+## ADR-034 — Gemini `gemini-3.5-flash-lite` free tier; trần toàn hệ thống; thử lại cả 5xx `[phát sinh kỹ thuật]`
+**Decision:** Gemini API REST v1beta gọi bằng `fetch` (không SDK), model `gemini-3.5-flash-lite`, project free tier không bật billing. Rate limit Redis: 5 lượt/người/phút, 20 lượt/meeting/giờ (§12) + 12 lần gọi Gemini/phút và 450/ngày cho cả hệ thống. Thử lại đúng 1 lần khi output hỏng, Gemini 5xx hoặc lỗi mạng; hạn 30 s cho cả request. Nhãn dài hơn 80 ký tự cắt còn 79 + "…"; tối đa 80 cạnh.
+**Reason:** Quota free tier tính theo project, chung cho mọi user / instance / lúc dev (AI Studio, 2026-11-11): flash-lite 15 RPM / 500 RPD; các bản Flash 5 RPM / 20 RPD. Đo thật: ~2 s/request, không tốn token suy nghĩ, JSON mode + `responseSchema` (`enum`, `maxItems`) chạy đúng. Ngày 2026-11-11 gặp `503 "high demand"`, gọi lại ngay thì được. Đề cương §7 chỉ ghi "Generative AI API"; `docs/task/AI/ai.md` yêu cầu API free.
+**Alternatives:** `gemini-3.8-flash` / `gemini-3.6-flash`; SDK chính thức của Google; từ chối cả sơ đồ khi có nhãn quá dài.
+**Rejected because:** 20 request/ngày không đủ dev + demo; SDK thêm dependency; từ chối tốn thêm 1 lượt Gemini chỉ vì 1 nhãn.
+**Lưu ý báo cáo:** ở free tier, Google dùng nội dung gửi lên để cải thiện sản phẩm (trang giá Gemini API).
+**Status:** CONFIRMED — user chốt 2026-11-11 / 2026-11-12. Spec: `docs/task/AI/ai_module_spec.md` §1 câu 1, 10–12.

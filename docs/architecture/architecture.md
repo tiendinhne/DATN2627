@@ -63,7 +63,7 @@ backend/src/
     ├── meetings/        [hexagonal]  + ports/media.port.ts, adapters/livekit-media.adapter.ts, media-webhook.controller.ts
     ├── whiteboard/      [hexagonal]  + domain/lww-merge, ports/state, adapters/redis
     ├── chat/            [layered]    dto, schemas
-    ├── ai-assistant/    [hexagonal]  + domain/dsl, ports/ai-provider, adapters/{gemini,elk}
+    ├── ai-assistant/    [hexagonal]  + domain/diagram-dsl, ports/ai-provider.port, adapters/{gemini-ai-provider.adapter, elk-layout}
     ├── files/           [hexagonal]  + ports/object-storage, adapters/{s3}
     ├── realtime/        gateways, adapters (Redis IO adapter), dto
     └── health/          liveness + readiness cho LB/ASG
