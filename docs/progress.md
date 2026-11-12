@@ -1284,4 +1284,9 @@ Cập nhật lại các role * đọc file rule/role.md
   - elkjs 0.9.3 trong backend ESM: chạy được; `elk.spacing.nodeNode` / `elk.layered.spacing.nodeNodeBetweenLayers` có tác dụng đúng số. `tsc` (`nodenext`): `new ELK()` lỗi `TS2351`, `new ELK.default()` qua và chạy đúng → spec §6.1 sửa theo.
 - **Tài liệu:** `docs/task/AI/ai_module_spec.md`, `docs/task/AI/ai_module_plan.md` (Task 0–9).
 - **Còn mở:** hằng số `CHAR_PX = 12` là ước lượng, chốt ở plan Task 8 bằng đo thật.
-- **Commit:** chưa — plan Task 0 commit spec + plan + progress.
+- **Commit:** `a00682b` `docs: spec + plan module AI`.
+
+## 2026-11-12 — Module AI: Task 1 (hằng số dùng chung + DSL Zod)
+
+- **Đã làm:** `backend/src/shared/ai.ts` (giới hạn prompt / node / cạnh / nhãn, `AI_SHAPES`, kiểu `AiDiagram`); `modules/ai-assistant/domain/diagram-dsl.ts` (`normalizeLabel`, `diagramDslSchema`, `parseDiagramDsl` → `BAD_JSON` / `BAD_DSL`). Code đúng plan, không lệch.
+- **Test:** chạy trước → fail (chưa có module); sau → `diagram-dsl.spec.ts` 20/20. `npm run build` exit 0 (thêm so với plan: vitest không kiểm kiểu).
