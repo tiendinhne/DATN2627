@@ -1296,3 +1296,10 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Đã làm:** `modules/ai-assistant/adapters/elk-layout.ts` — `nodeSize` (rộng cố định theo hình, cao theo số dòng ước lượng, `CHAR_PX = 12` chưa đo), `layoutDiagram` (elkjs 0.9.3 `layered`, `DOWN` cho flowchart / sơ đồ, `RIGHT` cho mindmap, khoảng cách 60 / 80 px). Code đúng plan.
 - **Test:** fail trước → `elk-layout.spec.ts` 9/9 (elkjs thật: không node nào chồng nhau ở cả 3 loại, cạnh ≥ 2 điểm). `npm run build` exit 0 → `new ELK.default()` qua cả `tsc` lẫn lúc chạy.
+- **Commit:** `ea1867c` `feat: bố cục sơ đồ AI bằng elkjs`.
+
+## 2026-11-12 — Module AI: Task 3 (port `ai-provider` + adapter Gemini)
+
+- **Đã làm:** `ports/ai-provider.port.ts` (`AI_PROVIDER_PORT`, `AiProviderPort`, `AiProviderError(status, errorCode, retryable)`, `AiFailureStatus`); `adapters/gemini-ai-provider.adapter.ts` (env Zod fail-fast, `systemInstruction` theo loại sơ đồ, `responseSchema` có `enum` + `maxItems`, nối mọi `parts`, map 429 / 5xx / 4xx / mạng / hết hạn / output rỗng). Code đúng plan.
+- **Test:** fail trước → `gemini-ai-provider.adapter.spec.ts` 19/19 (`fetch` + env giả, không gọi mạng). `npm run build` exit 0.
+- **Chưa kiểm:** request thật qua adapter → plan Task 8.
