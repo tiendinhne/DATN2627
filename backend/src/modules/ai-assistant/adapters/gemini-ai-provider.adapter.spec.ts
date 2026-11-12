@@ -88,7 +88,8 @@ describe('GeminiAiProviderAdapter', () => {
     expect(body.generationConfig.responseMimeType).toBe('application/json');
     const schema = body.generationConfig.responseSchema;
     expect(schema.properties.nodes.maxItems).toBe(40);
-    expect(schema.properties.edges.maxItems).toBe(80);
+    // Gọi thật 2026-11-12: thêm maxItems 80 cho edges → Gemini trả 400 INVALID_ARGUMENT → không gửi; Zod vẫn chặn > 80
+    expect(schema.properties.edges.maxItems).toBeUndefined();
     expect(schema.properties.nodes.items.properties.shape.enum).toEqual(['rectangle', 'ellipse', 'diamond']);
   });
 

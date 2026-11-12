@@ -775,6 +775,8 @@ export class AiProviderError extends Error {
 
 - [ ] **Step 4: Tạo `backend/src/modules/ai-assistant/adapters/gemini-ai-provider.adapter.ts`**
 
+> Sửa sau khi chạy thật (2026-11-12): `maxItems: AI_MAX_EDGES` ở `edges` làm Gemini trả `400 INVALID_ARGUMENT` cho mọi request → bỏ dòng đó (và import `AI_MAX_EDGES`); test đổi thành `expect(schema.properties.edges.maxItems).toBeUndefined()`. Code dưới đây là bản gốc của plan, bản đúng nằm trong repo (commit `fix: bỏ maxItems của edges trong responseSchema Gemini`).
+
 ```ts
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';

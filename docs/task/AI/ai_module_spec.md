@@ -133,7 +133,7 @@ export class AiProviderError extends Error { /* code, retryable, httpStatus? */ 
 - `POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent`, header `x-goog-api-key`, `Content-Type: application/json`.
 - `systemInstruction.parts[0].text` = system prompt cố định theo `kind` (§5.3). Đo: model tuân theo, bỏ qua câu hỏi của người dùng.
 - `contents: [{ role: 'user', parts: [{ text: prompt }] }]` — **chỉ** văn bản người dùng; không nối vào system prompt (chống prompt injection, §12).
-- `generationConfig.responseMimeType = 'application/json'` + `responseSchema` (dạng `type: 'OBJECT' | 'ARRAY' | 'STRING'`): `nodes` có `maxItems: 40`, `shape` có `enum` 3 giá trị; `edges` có `maxItems: 80`. Đo: model tuân theo `enum` và `maxItems`.
+- `generationConfig.responseMimeType = 'application/json'` + `responseSchema` (dạng `type: 'OBJECT' | 'ARRAY' | 'STRING'`): `nodes` có `maxItems: 40`, `shape` có `enum` 3 giá trị; `edges` **không** đặt `maxItems` (gọi thật 2026-11-12: `maxItems: 80` ở `edges` làm Gemini trả `400 INVALID_ARGUMENT`; giới hạn 80 cạnh do Zod kiểm). Đo: model tuân theo `enum` và `maxItems`.
 - Tài liệu Google (structured-output): `minLength` / `maxLength` **không** được Gemini áp dụng → độ dài nhãn chỉ do Zod kiểm (§4).
 - Hạn: `signal` do service truyền (§7), đưa thẳng vào `fetch`.
 

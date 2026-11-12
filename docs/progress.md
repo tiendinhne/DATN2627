@@ -1339,3 +1339,12 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Vì sao làm trước:** Task 8 (chạy thật) cần Docker + 2 trình duyệt có người thao tác; phần tài liệu chỉ mô tả code đã viết nên không phải chờ. Step 7 (tổng kết module) để sau Task 8.
 - **Đã sửa:** PROJECT_CONTEXT §9 (`ai:generate` thêm `meetingId`; `ai:result`, `ai:status`) và §12 (pipeline: convert ở trình duyệt, Gemini + `responseSchema`, retry cả 5xx / lỗi mạng, trần toàn hệ thống, cắt nhãn, `edges ≤ 80`); `decisions.md` thêm **ADR-033**, **ADR-034**; DB_DESIGN §C.10 (2 comment khớp schema); `endpoint.md` mục "Socket.IO AI"; `architecture.md` dòng `ai-assistant/` theo tên file thật.
+- **Commit:** `a190342` `docs: tài liệu module AI`.
+
+## 2026-11-12 — Module AI: Task 5 Step 10 (khởi động thật) + lỗi AI khi user test trình duyệt
+
+- **Khởi động thật:** user tự chạy `docker stop nginx-dev` + `docker compose up -d --no-deps --build backend` → `backend-dev` (cổng 3001, env có key thật dài 53). Log: `AiAssistantModule dependencies initialized`, `MeetingGateway subscribed to the "ai:generate" message`, `Nest application successfully started` → DI + env đúng.
+- **Lỗi AI (user báo "lỗi nhiều"):** log `Gemini HTTP 400 INVALID_ARGUMENT`; `ai_requests` 2 dòng `PROVIDER_ERROR` / `GEMINI_HTTP_400`.
+  - Nguyên nhân (gọi thật từng biến thể body bằng script đồ bỏ): `maxItems: 80` ở mảng `edges` trong `responseSchema` → 400. Bỏ riêng nó → 200 (giữ `nodes` `maxItems: 40`, `minItems`, `enum`). Unit test không bắt được vì `fetch` giả; lần gọi thật lúc thiết kế không có `maxItems` ở `edges`.
+  - Sửa: bỏ `maxItems` của `edges` (Zod vẫn chặn > 80); test đổi trước → fail (`expected 80 to be undefined`) → sửa → module AI 64/64, `lint` + `build` exit 0; gọi thật với schema mới → HTTP 200. Spec §5.2 + plan Task 3 đã chú thích.
+- **Chat:** user báo lỗi chat, chưa rõ triệu chứng. Đã kiểm: log backend không có lỗi chat; 1 tin nhắn được lưu trong 2 giờ gần nhất; đủ biến AWS; frontend `NEXT_PUBLIC_API_URL=http://localhost:3001`. Nhánh này không sửa file chat nào. Chờ user mô tả.

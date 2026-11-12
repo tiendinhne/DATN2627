@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { AiRequestKind, AiRequestStatus } from '../../../shared/enums.js';
-import { AI_MAX_EDGES, AI_MAX_NODES, AI_SHAPES } from '../../../shared/ai.js';
+import { AI_MAX_NODES, AI_SHAPES } from '../../../shared/ai.js';
 import { AiProviderError } from '../ports/ai-provider.port.js';
 import type { AiProviderPort } from '../ports/ai-provider.port.js';
 
@@ -36,8 +36,9 @@ const RESPONSE_SCHEMA = {
       },
     },
     edges: {
+      // KHÔNG đặt maxItems: gọi thật 2026-11-12, maxItems 80 ở đây làm Gemini trả 400 INVALID_ARGUMENT.
+      // Giới hạn AI_MAX_EDGES do Zod kiểm (domain/diagram-dsl.ts)
       type: 'ARRAY',
-      maxItems: AI_MAX_EDGES,
       items: {
         type: 'OBJECT',
         properties: { from: { type: 'STRING' }, to: { type: 'STRING' }, label: { type: 'STRING' } },
