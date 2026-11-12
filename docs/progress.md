@@ -1310,3 +1310,14 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Đã làm:** `ai-assistant.service.ts` — giới hạn lượt Redis (người 5/60 s, meeting 20/3.600 s, hệ thống 12/60 s + 450/86.400 s đếm mỗi lần gọi Gemini), một hạn `AbortSignal.timeout` cho cả request, thử lại đúng 1 lần (output hỏng / lỗi retryable), elkjs, ghi đúng 1 dòng `ai_requests` (ghi lỗi chỉ log). `ai-assistant.module.ts` đăng ký service + `AI_PROVIDER_PORT → GeminiAiProviderAdapter`, export service. Sửa 2 comment `errorCode` / `elementCount` trong schema.
 - **Lệch plan:** plan inject `Model<AiRequestDocument>` → `tsc` lỗi TS2769 ở `model: this.provider.model`: field `model` của schema trùng tên hàm `Document.model()` của Mongoose nên kiểu `AiRequestDocument['model']` là `string & hàm`. Sửa: inject `Model<AiRequest>` (kiểu dữ liệu thô), có comment tại chỗ; plan đã chú thích. Không đổi schema.
 - **Test:** fail trước → `ai-assistant.service.spec.ts` 16/16; cả module AI 4 file 64/64. `npm run build` exit 0 (sau khi sửa).
+- **Commit:** `b01a263` `feat: AiAssistantService — giới hạn lượt, thử lại, ghi ai_requests`.
+
+## 2026-11-12 — Module AI: Task 5 (event `ai:generate` / `ai:result` / `ai:status`)
+
+- **Đã làm:** `dto/ai-generate.dto.ts` (meetingId, requestId `^[A-Za-z0-9-]{8,64}$`, prompt cắt khoảng trắng rồi 3–1000, kind enum); `RealtimePublisher.sendAiResult` / `sendAiStatus` (envelope `seq: null`, `socket.emit` riêng người yêu cầu); `MeetingGateway.handleAiGenerate` (validate → `assertInMeeting` → service → result / status); `RealtimeModule` import `AiAssistantModule`. Code đúng plan.
+- **Test:** 10 test mới fail trước (`is not a function`) → realtime 34/34. Toàn backend: 20 file **347/347**, `npm run lint` exit 0, `npm run build` exit 0.
+- **Step 10 (khởi động thật trong Docker) — CHƯA CHẠY:**
+  - Stack đang chạy là compose của nhánh `feature/nginx-lb` (`nginx-dev` giữ cổng 3001 → `datn2627-backend-1`, backend không mở cổng ra host). Compose nhánh này có `backend-dev` cổng 3001 → chạy `docker compose up backend` sẽ trùng cổng với `nginx-dev`.
+  - Backend đang chạy mount `./backend/src` nhưng **chưa nạp code mới** (log cuối 2026-11-11 03:17 — `nest --watch` không nhận thay đổi qua mount Windows).
+  - Env trong container còn `GEMINI_API_KEY` giá trị mẫu (container tạo trước khi user thêm key; `env_file` chỉ đọc lúc tạo container) → phải tạo lại container, `docker restart` không đủ. Trong container có `elkjs` 0.9.3, `zod` 3.25.76.
+  - Lệnh `docker stop nginx-dev` + `docker compose up -d --no-deps --build backend` bị auto mode chặn (can thiệp workload) → chờ user quyết.

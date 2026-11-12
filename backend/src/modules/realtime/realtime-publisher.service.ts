@@ -139,6 +139,38 @@ export class RealtimePublisher {
     await this.requireNamespace().in(channel).socketsLeave(channel);
   }
 
+  // AI: kết quả chỉ gửi riêng socket người yêu cầu — sơ đồ tới người khác qua wb:ops khi client chèn (spec AI §3.2)
+  sendAiResult(
+    socket: Socket,
+    input: { actorId: string; roomId: string; meetingId: string; requestId: string; diagram: unknown },
+  ) {
+    socket.emit('ai:result', {
+      v: 1,
+      seq: null,
+      ts: new Date().toISOString(),
+      actorId: input.actorId,
+      roomId: input.roomId,
+      meetingId: input.meetingId,
+      data: { requestId: input.requestId, diagram: input.diagram },
+    });
+  }
+
+  // AI thất bại: code là AiRequestStatus (trừ SUCCESS), message là câu hiển thị cho người dùng
+  sendAiStatus(
+    socket: Socket,
+    input: { actorId: string; roomId: string; meetingId: string; requestId: string; code: string; message: string },
+  ) {
+    socket.emit('ai:status', {
+      v: 1,
+      seq: null,
+      ts: new Date().toISOString(),
+      actorId: input.actorId,
+      roomId: input.roomId,
+      meetingId: input.meetingId,
+      data: { requestId: input.requestId, status: 'failed', code: input.code, message: input.message },
+    });
+  }
+
   private requireNamespace(): Namespace {
     if (!this.namespace)
       throw new Error('Socket.IO namespace chưa được khởi tạo');

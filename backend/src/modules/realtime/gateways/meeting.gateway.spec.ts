@@ -30,6 +30,7 @@ function build() {
     applyOps: vi.fn().mockResolvedValue(null),
     tryPersistInBackground: vi.fn(),
   };
+  const ai = { generate: vi.fn() };
   const publisher = new RealtimePublisher();
   const gateway = new MeetingGateway(
     jwt as any,
@@ -38,6 +39,7 @@ function build() {
     chat as any,
     publisher,
     whiteboard as any,
+    ai as any,
   );
   const emit = vi.fn();
   const except = vi.fn().mockReturnValue({ emit });
@@ -56,7 +58,7 @@ function build() {
     }),
     emit: vi.fn(),
   };
-  return { gateway, jwt, users, roomAccess, chat, whiteboard, socket, emit, except, to };
+  return { gateway, jwt, users, roomAccess, chat, whiteboard, ai, socket, emit, except, to };
 }
 
 describe('MeetingGateway chat events', () => {
@@ -277,5 +279,72 @@ describe('MeetingGateway whiteboard events', () => {
 
     expect(socket.leave).toHaveBeenCalledWith(`meeting:${meetingId}`);
     expect(socket.rooms.has(`meeting:${meetingId}`)).toBe(false);
+  });
+});
+
+describe('MeetingGateway ai:generate', () => {
+  const requestId = '4bf92f30-7f38-4d71-9e7c-8f3b18d4f1b3';
+  const payload = { meetingId, requestId, prompt: 'Quy trình đăng nhập', kind: 'FLOWCHART' };
+  const diagram = { nodes: [], edges: [] };
+
+  it('chưa vào meeting → 403, không gọi AI', async () => {
+    const { gateway, ai, socket } = build();
+
+    await gateway.handleAiGenerate(socket as any, payload);
+
+    expect(ai.generate).not.toHaveBeenCalled();
+    expect(socket.emit).toHaveBeenCalledWith('error', expect.objectContaining({ statusCode: 403 }));
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['kind lạ', { ...payload, kind: 'TABLE' }],
+    ['prompt dưới 3 ký tự sau khi cắt khoảng trắng', { ...payload, prompt: '  ab  ' }],
+    ['prompt quá 1000 ký tự', { ...payload, prompt: 'a'.repeat(1001) }],
+    ['requestId có ký tự lạ', { ...payload, requestId: 'abc def ghi' }],
+    ['thừa field', { ...payload, model: 'gemini-pro' }],
+  ])('payload sai (%s) → 400, không gọi AI', async (_name, data) => {
+    const { gateway, ai, socket } = await joined();
+
+    await gateway.handleAiGenerate(socket as any, data);
+
+    expect(ai.generate).not.toHaveBeenCalled();
+    expect(socket.emit).toHaveBeenCalledWith('error', expect.objectContaining({ statusCode: 400 }));
+  });
+
+  it('thành công → gọi AI với prompt đã cắt khoảng trắng; ai:result chỉ tới socket gửi, seq null', async () => {
+    const { gateway, ai, socket, to } = await joined();
+    ai.generate.mockResolvedValue({ ok: true, diagram });
+
+    await gateway.handleAiGenerate(socket as any, { ...payload, prompt: '  Quy trình đăng nhập  ' });
+
+    expect(ai.generate).toHaveBeenCalledWith({
+      userId,
+      roomId,
+      meetingId,
+      requestId,
+      prompt: 'Quy trình đăng nhập',
+      kind: 'FLOWCHART',
+    });
+    expect(socket.emit).toHaveBeenCalledWith(
+      'ai:result',
+      expect.objectContaining({ v: 1, seq: null, actorId: userId, roomId, meetingId, data: { requestId, diagram } }),
+    );
+    expect(to).not.toHaveBeenCalled();
+  });
+
+  it('thất bại → ai:status failed kèm code + message, chỉ tới socket gửi', async () => {
+    const { gateway, ai, socket, to } = await joined();
+    ai.generate.mockResolvedValue({ ok: false, code: 'TIMEOUT', message: 'AI phản hồi quá lâu, hãy thử lại.' });
+
+    await gateway.handleAiGenerate(socket as any, payload);
+
+    expect(socket.emit).toHaveBeenCalledWith(
+      'ai:status',
+      expect.objectContaining({
+        seq: null,
+        data: { requestId, status: 'failed', code: 'TIMEOUT', message: 'AI phản hồi quá lâu, hãy thử lại.' },
+      }),
+    );
+    expect(to).not.toHaveBeenCalled();
   });
 });

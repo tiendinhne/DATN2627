@@ -145,3 +145,43 @@ describe('RealtimePublisher whiteboard', () => {
     expect(socketsLeave).toHaveBeenCalledWith('meeting:meeting-id');
   });
 });
+
+describe('RealtimePublisher AI', () => {
+  const input = { actorId: 'user-id', roomId: 'room-id', meetingId: 'meeting-id', requestId: 'req-12345678' };
+
+  it('sendAiResult gửi riêng socket người yêu cầu, seq null', () => {
+    const publisher = new RealtimePublisher();
+    const socket = { emit: vi.fn() };
+    const diagram = { nodes: [], edges: [] };
+
+    publisher.sendAiResult(socket as any, { ...input, diagram });
+
+    expect(socket.emit).toHaveBeenCalledWith(
+      'ai:result',
+      expect.objectContaining({
+        v: 1,
+        seq: null,
+        actorId: 'user-id',
+        roomId: 'room-id',
+        meetingId: 'meeting-id',
+        data: { requestId: 'req-12345678', diagram },
+      }),
+    );
+  });
+
+  it('sendAiStatus gửi riêng socket, status failed kèm code + message', () => {
+    const publisher = new RealtimePublisher();
+    const socket = { emit: vi.fn() };
+
+    publisher.sendAiStatus(socket as any, { ...input, code: 'TIMEOUT', message: 'AI phản hồi quá lâu, hãy thử lại.' });
+
+    expect(socket.emit).toHaveBeenCalledWith(
+      'ai:status',
+      expect.objectContaining({
+        v: 1,
+        seq: null,
+        data: { requestId: 'req-12345678', status: 'failed', code: 'TIMEOUT', message: 'AI phản hồi quá lâu, hãy thử lại.' },
+      }),
+    );
+  });
+});
