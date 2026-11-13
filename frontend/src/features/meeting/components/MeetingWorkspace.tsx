@@ -521,7 +521,16 @@ export function MeetingWorkspace({
           <h2 className="mb-2 text-xl font-bold text-red-400">Không thể vào cuộc họp</h2>
           <p className="mb-6 text-sm text-slate-400">{joinError}</p>
           <div className="flex justify-center gap-3">
-            <button className="button primary" onClick={retry} type="button">
+            {/* Buổi đã kết thúc → xem lại bảng đã lưu (chỉ xem); trước đây nút này gọi lại join → 409 lặp */}
+            <button
+              className="button primary"
+              onClick={() =>
+                router.push(
+                  `/meetings/${meetingId}/board${roomId ? `?roomId=${encodeURIComponent(roomId)}` : ""}`
+                )
+              }
+              type="button"
+            >
               Xem bản vẽ
             </button>
             <button className="button secondary" onClick={handleBack} type="button">
