@@ -1378,3 +1378,9 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Test:** sửa / thêm test trước → 2 fail → realtime 37/37 (thêm ca `tool` / `button` lạ, thiếu `tool` → 400). Backend build exit 0, frontend `next build` exit 0.
 - **Sự cố:** chạy `npm run build` khi user đang chạy `next dev` native (cổng 3000) → ghi đè `.next` của dev server, phải nhờ user khởi động lại. Từ nay kiểm frontend bằng `tsc --noEmit` + `next lint` khi dev server đang chạy.
 - **Chưa kiểm trên trình duyệt:** cần backend-dev restart (watch không nhận đổi qua mount Windows) + user test 2 máy.
+- **Commit:** `f93799a` `fix: laser của người cùng cuộc gọi hiện realtime trên whiteboard`.
+
+## 2026-11-13 — Whiteboard: thông báo đồng bộ dùng `setToast` của Excalidraw
+
+- **Đã làm:** bỏ nút thông báo tự viết ở đáy bảng; `WhiteboardCanvas` gọi `api.setToast({ message, closable: true })` mỗi khi hook đặt `notice`, rồi xoá `notice` để thông báo lặp lại vẫn hiện lại (vd "Mất kết nối bảng vẽ, đang thử lại..." ở mỗi lần thử nối). Toast tự tắt sau 5 s (`DEFAULT_TOAST_TIMEOUT` trong `Toast.tsx` v0.18.1). Phạm vi: chỉ thông báo đồng bộ bảng vẽ (user chốt); lỗi AI vẫn ở panel AI.
+- **Kiểm:** `npx tsc --noEmit` exit 0, `next lint` không cảnh báo (không chạy `next build` vì dev server native đang chạy).
