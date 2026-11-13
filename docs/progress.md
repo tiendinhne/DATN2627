@@ -1369,3 +1369,12 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Quyết định:** dev chạy `docker compose up -d --build mongo redis livekit backend` + frontend `npm run dev` native. Không sửa code / compose.
 - **Đã sửa tài liệu:** `docs/decisions.md` ADR-016 thêm mục "Sửa đổi 2026-11-12" (nguyên nhân, số đo, phương án khác, truy vết §7); `CLAUDE.md` mục "Lệnh" + dòng ADR-016. README do user tự cập nhật.
 - **Chưa đo:** thời gian compile khi chạy native.
+
+## 2026-11-13 — Whiteboard: laser hiện ở máy người cùng cuộc gọi (nhánh `feature/whiteboard-extras`)
+
+- **Vì sao:** user test thấy laser không hiện realtime cho người khác. Thiết kế ngắn, user duyệt 2026-11-13 (đổi contract §9 nhỏ — không viết spec riêng). Nhánh tách từ `feature/ai` vì cùng sửa `useWhiteboardSync.ts`.
+- **Nguyên nhân:** client chỉ gửi `{x, y}`; máy nhận gắn cứng `tool: "pointer"` và không có `button`. Excalidraw 0.18.1 (`laser-trails.ts` dòng 100–114) chỉ vẽ vệt laser của collaborator khi `pointer.tool === "laser"` và có `button` `down` / `up`.
+- **Đã làm:** `wb:pointer` thêm `tool` (`pointer` · `laser`) + `button` (`down` · `up`): `WbPointerDto` kiểm `IsIn`, gateway + `RealtimePublisher.publishWbPointer` chuyển tiếp; hook gửi đúng payload `onPointerUpdate` của Excalidraw và gán `pointer.tool` + `button` cho collaborator. Vẫn throttle 50 ms, `volatile`, không lưu. Cập nhật PROJECT_CONTEXT §9 + `endpoint.md` `[phát sinh kỹ thuật]`.
+- **Test:** sửa / thêm test trước → 2 fail → realtime 37/37 (thêm ca `tool` / `button` lạ, thiếu `tool` → 400). Backend build exit 0, frontend `next build` exit 0.
+- **Sự cố:** chạy `npm run build` khi user đang chạy `next dev` native (cổng 3000) → ghi đè `.next` của dev server, phải nhờ user khởi động lại. Từ nay kiểm frontend bằng `tsc --noEmit` + `next lint` khi dev server đang chạy.
+- **Chưa kiểm trên trình duyệt:** cần backend-dev restart (watch không nhận đổi qua mount Windows) + user test 2 máy.

@@ -252,22 +252,30 @@ describe('MeetingGateway whiteboard events', () => {
     expect(socket.emit).toHaveBeenCalledWith('error', expect.objectContaining({ statusCode: 403 }));
   });
 
-  it('wb:pointer phát volatile kèm tên hiển thị, seq null', async () => {
+  it('wb:pointer phát volatile kèm tên hiển thị, công cụ + nút chuột (laser), seq null', async () => {
     const { gateway, socket, except, emit } = await joined();
 
-    await gateway.handleWhiteboardPointer(socket as any, { meetingId, x: 10, y: -5.5 });
+    await gateway.handleWhiteboardPointer(socket as any, { meetingId, x: 10, y: -5.5, tool: 'laser', button: 'down' });
 
     expect(except).toHaveBeenCalledWith('socket-1');
     expect(emit).toHaveBeenCalledWith(
       'wb:pointer',
-      expect.objectContaining({ seq: null, data: { userId, displayName: 'Student', x: 10, y: -5.5 } }),
+      expect.objectContaining({
+        seq: null,
+        data: { userId, displayName: 'Student', x: 10, y: -5.5, tool: 'laser', button: 'down' },
+      }),
     );
   });
 
-  it('wb:pointer toạ độ ngoài ±1e7 → 400', async () => {
+  it.each<[string, Record<string, unknown>]>([
+    ['toạ độ ngoài ±1e7', { x: 1e9 }],
+    ['tool lạ', { tool: 'pen' }],
+    ['button lạ', { button: 'left' }],
+    ['thiếu tool', { tool: undefined }],
+  ])('wb:pointer %s → 400', async (_name, patch) => {
     const { gateway, socket } = await joined();
 
-    await gateway.handleWhiteboardPointer(socket as any, { meetingId, x: 1e9, y: 0 });
+    await gateway.handleWhiteboardPointer(socket as any, { meetingId, x: 0, y: 0, tool: 'pointer', button: 'up', ...patch });
 
     expect(socket.emit).toHaveBeenCalledWith('error', expect.objectContaining({ statusCode: 400 }));
   });

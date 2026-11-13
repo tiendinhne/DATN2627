@@ -1,4 +1,4 @@
-import { IsArray, IsMongoId, IsNumber, Max, Min } from 'class-validator';
+import { IsArray, IsIn, IsMongoId, IsNumber, Max, Min } from 'class-validator';
 
 // meeting:join, meeting:leave
 export class MeetingIdDto {
@@ -29,4 +29,12 @@ export class WbPointerDto {
   @Min(-1e7)
   @Max(1e7)
   y!: number;
+
+  // Công cụ đang cầm: 'laser' thì máy khác vẽ vệt laser (CollaboratorPointer.tool của Excalidraw 0.18.1)
+  @IsIn(['pointer', 'laser'])
+  tool!: 'pointer' | 'laser';
+
+  // Trạng thái nút chuột — Excalidraw chỉ vẽ vệt laser của người khác khi có 'down' / 'up' (laser-trails.ts)
+  @IsIn(['down', 'up'])
+  button!: 'down' | 'up';
 }

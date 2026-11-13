@@ -111,13 +111,16 @@ describe('RealtimePublisher whiteboard', () => {
     const publisher = new RealtimePublisher();
     publisher.setNamespace({ volatile: { to } } as any);
 
-    publisher.publishWbPointer('socket-1', { ...input, displayName: 'An', x: 1, y: 2 });
+    publisher.publishWbPointer('socket-1', { ...input, displayName: 'An', x: 1, y: 2, tool: 'laser', button: 'down' });
 
     expect(to).toHaveBeenCalledWith('meeting:meeting-id');
     expect(except).toHaveBeenCalledWith('socket-1');
     expect(emit).toHaveBeenCalledWith(
       'wb:pointer',
-      expect.objectContaining({ seq: null, data: { userId: 'user-id', displayName: 'An', x: 1, y: 2 } }),
+      expect.objectContaining({
+        seq: null,
+        data: { userId: 'user-id', displayName: 'An', x: 1, y: 2, tool: 'laser', button: 'down' },
+      }),
     );
   });
 

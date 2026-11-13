@@ -171,7 +171,7 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `meeting:leave` | `{ meetingId }` |
 | `chat:send` | `{ roomId, clientMsgId, content, fileId?, meetingId? }` |
 | `wb:ops` | `{ meetingId, elements[] }` |
-| `wb:pointer` | `{ meetingId, x, y }` |
+| `wb:pointer` | `{ meetingId, x, y, tool, button }` — `tool` ∈ `pointer` · `laser`, `button` ∈ `down` · `up` (laser hiện ở máy khác) `[phát sinh kỹ thuật]` |
 | `ai:generate` | `{ meetingId, requestId, prompt, kind }` — `meetingId` `[phát sinh kỹ thuật]` (spec AI §1 câu 8) |
 
 | Server → Client | Payload |
@@ -182,7 +182,7 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `chat:new` | envelope chuẩn, `data: { message }` — emit tới `room:{roomId}`; client lọc theo `meetingId` cho khung chat meeting |
 | `room:access_revoked` | envelope chuẩn, `data: { reason: 'LEFT' \| 'KICKED' \| 'DISSOLVED' }`; server phát trước khi ép socket rời kênh Room |
 | `wb:ops` | envelope, `data: { elements[] }` — chỉ element thắng, kênh `meeting:{id}` trừ người gửi |
-| `wb:pointer` | envelope `seq` null, `data: { userId, displayName, x, y }` — volatile |
+| `wb:pointer` | envelope `seq` null, `data: { userId, displayName, x, y, tool, button }` — volatile |
 | `ai:result` | envelope `seq: null`, `data: { requestId, diagram }` — chỉ socket người yêu cầu |
 | `ai:status` | envelope `seq: null`, `data: { requestId, status: 'failed', code, message }` — chỉ socket người yêu cầu |
 | `server:draining` | `{}` |
