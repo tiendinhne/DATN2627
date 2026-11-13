@@ -25,6 +25,8 @@ import { WhiteboardService } from '../../whiteboard/whiteboard.service.js';
 import { MeetingIdDto, WbOpsDto, WbPointerDto } from '../../whiteboard/dto/whiteboard-events.dto.js';
 import { validateElementsBatch } from '../../whiteboard/element.validator.js';
 import type { WbElement } from '../../whiteboard/element.validator.js';
+import { AiAssistantService } from '../../ai-assistant/ai-assistant.service.js';
+import { AiGenerateDto } from '../../ai-assistant/dto/ai-generate.dto.js';
 
 class RoomIdDto {
   @IsMongoId()
@@ -51,6 +53,7 @@ export class MeetingGateway
     private readonly chat: ChatService,
     private readonly publisher: RealtimePublisher,
     private readonly whiteboard: WhiteboardService,
+    private readonly ai: AiAssistantService,
   ) {}
 
   afterInit(namespace: Namespace) {
@@ -225,6 +228,29 @@ export class MeetingGateway
         x: dto.x,
         y: dto.y,
       });
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  // AI sinh sơ đồ (spec AI §3): thành viên đang ở kênh meeting → service → trả RIÊNG socket này.
+  // Không broadcast: sơ đồ tới người khác qua wb:ops khi trình duyệt người yêu cầu chèn vào bảng
+  @SubscribeMessage('ai:generate')
+  async handleAiGenerate(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(AiGenerateDto, data);
+      const roomId = this.assertInMeeting(socket, dto.meetingId);
+      const outcome = await this.ai.generate({
+        userId: socket.data.userId,
+        roomId,
+        meetingId: dto.meetingId,
+        requestId: dto.requestId,
+        prompt: dto.prompt,
+        kind: dto.kind,
+      });
+      const target = { actorId: socket.data.userId, roomId, meetingId: dto.meetingId, requestId: dto.requestId };
+      if (outcome.ok) this.publisher.sendAiResult(socket, { ...target, diagram: outcome.diagram });
+      else this.publisher.sendAiStatus(socket, { ...target, code: outcome.code, message: outcome.message });
     } catch (error) {
       this.sendExpectedError(socket, error);
     }

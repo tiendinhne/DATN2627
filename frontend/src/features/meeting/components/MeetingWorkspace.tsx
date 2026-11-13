@@ -33,6 +33,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { MeetingChat } from "@/features/chat";
 import { getAvatarColor, getInitials } from "@/features/meeting/services/meeting.service";
 import { AIPanel, WhiteboardCanvas } from "@/features/whiteboard";
+import type { WhiteboardAi } from "@/features/whiteboard";
 import { endMeeting, joinMeeting } from "@/services/meeting.service";
 import { getRoom } from "@/services/room.service";
 import type { JoinMeetingResponse } from "@/types/backend";
@@ -105,6 +106,8 @@ function LiveMeetingContent({
   onPinContent: (content: MeetingPin) => void;
 }) {
   const [sideTab, setSideTab] = useState<"chat" | "people" | "ai">("chat");
+  // Trạng thái AI của bảng (WhiteboardCanvas báo lên) → AIPanel ở panel bên
+  const [wbAi, setWbAi] = useState<WhiteboardAi | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [endConfirm, setEndConfirm] = useState(false);
   const tracks = useTracks(
@@ -267,6 +270,7 @@ function LiveMeetingContent({
             hidden={pinnedContent?.type === "track"}
             token={accessToken}
             meetingId={meetingData.meeting.id}
+            onAiChange={setWbAi}
           />
         </main>
 
@@ -314,7 +318,7 @@ function LiveMeetingContent({
                 currentUserId={currentUserId}
               />
             ) : sideTab === "ai" ? (
-              <AIPanel />
+              <AIPanel ai={wbAi} />
             ) : (
               <LiveParticipantPanel isHost={isHost} />
             )}

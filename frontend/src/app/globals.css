@@ -1830,6 +1830,25 @@ button.brand {
   font-size: 7px
 }
 
+.suggestions button.active {
+  border-color: #6c79eb;
+  color: #dce1ea
+}
+
+.ai-error,
+.ai-note {
+  margin: 0;
+  font-size: 9px
+}
+
+.ai-error {
+  color: #f87171
+}
+
+.ai-note {
+  color: #858e9e
+}
+
 .people-panel {
   padding: 15px
 }

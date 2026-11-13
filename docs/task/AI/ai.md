@@ -1,0 +1,1 @@
+tuần này bắt đầu làm module AI. tiêu chí xong phần tích hợp, api sử dụng free nếu có. Cần tìm hiểu key api free

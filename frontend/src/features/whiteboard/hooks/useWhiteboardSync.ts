@@ -1,17 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import type { Collaborator, ExcalidrawImperativeAPI, SocketId } from "@excalidraw/excalidraw/types";
 import type { OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { RemoteExcalidrawElement } from "@excalidraw/excalidraw/data/reconcile";
 import { API_BASE_URL } from "@/services/api";
 import { WB_ELEMENT_TYPES, WB_MAX_BATCH_BYTES, WB_MAX_BATCH_ELEMENTS } from "@shared/whiteboard";
+import type { AiDiagram } from "@shared/ai";
+import type { AiRequestKind } from "@shared/enums";
+import { buildAiElements } from "../lib/aiDiagram";
 
 // Chu kỳ gửi nét vẽ / con trỏ — throttle, KHÔNG debounce: đang kéo hình vẫn gửi đều (spec §1 câu 7)
 const SEND_INTERVAL_MS = 50;
 // Con trỏ người khác im quá 5 s thì ẩn
 const POINTER_IDLE_MS = 5000;
+// Chờ kết quả AI tối đa 40 s (server hết hạn ở 30 s) — quá thì báo lỗi, kết quả tới muộn bị bỏ (spec AI §8.2)
+const AI_CLIENT_TIMEOUT_MS = 40_000;
 
 type ExcalidrawLib = typeof import("@excalidraw/excalidraw");
 
@@ -19,6 +24,13 @@ type ExcalidrawLib = typeof import("@excalidraw/excalidraw");
 interface Envelope<T> {
   meetingId: string | null;
   data: T;
+}
+
+// Trạng thái AI của bảng + hàm gửi yêu cầu — WhiteboardCanvas báo lên MeetingWorkspace → AIPanel (spec AI §8.4)
+export interface WhiteboardAi {
+  status: "idle" | "pending" | "error";
+  message: string;
+  generate: (prompt: string, kind: AiRequestKind) => void;
 }
 
 // Throttle tối giản: lần đầu chạy ngay, các lần gọi trong chu kỳ gộp thành 1 lần chạy cuối chu kỳ
@@ -56,10 +68,24 @@ export function useWhiteboardSync({
   api: ExcalidrawImperativeAPI | null;
 }) {
   const [notice, setNotice] = useState("");
-  // Hàm thật gắn vào onChange / onPointerUpdate — đổi mỗi khi socket đổi
-  const handlersRef = useRef<{ onChange: () => void; onPointer: (x: number, y: number) => void }>({
+  const [aiState, setAiState] = useState<{ status: WhiteboardAi["status"]; message: string }>({
+    status: "idle",
+    message: "",
+  });
+  // Bảng chưa nối socket (chạy local / đang tải) → không gửi được yêu cầu AI
+  const notConnected = useCallback(
+    () => setAiState({ status: "error", message: "Bảng vẽ chưa kết nối, hãy thử lại." }),
+    []
+  );
+  // Hàm thật gắn vào onChange / onPointerUpdate / AI — đổi mỗi khi socket đổi
+  const handlersRef = useRef<{
+    onChange: () => void;
+    onPointer: (x: number, y: number) => void;
+    generate: (prompt: string, kind: AiRequestKind) => void;
+  }>({
     onChange: noop,
     onPointer: noop,
+    generate: notConnected,
   });
   // id → version đã gửi đi hoặc nhận về gần nhất: chỉ gửi phần đổi + chống echo (spec §9)
   const syncedVersions = useRef(new Map<string, number>());
@@ -77,6 +103,13 @@ export function useWhiteboardSync({
     let pointer: { x: number; y: number } | null = null;
     // Server từ chối 403 mọi wb:ops / wb:pointer trước khi join xong → chỉ gửi sau khi nhận snapshot
     let joined = false;
+    // Yêu cầu AI đang chờ của tab này (mỗi tab tối đa 1) — biến cục bộ của effect, không phải state server
+    let pendingAi: { requestId: string; timer: ReturnType<typeof setTimeout> } | null = null;
+    const endAi = (status: "idle" | "error", message = "") => {
+      if (pendingAi) clearTimeout(pendingAi.timer);
+      pendingAi = null;
+      setAiState({ status, message });
+    };
 
     // Kết nối sau khi tải xong thư viện → snapshot không bao giờ tới trước reconcileElements
     const socket = io(`${API_BASE_URL}/meeting`, {
@@ -172,6 +205,8 @@ export function useWhiteboardSync({
     });
     socket.on("disconnect", () => {
       joined = false;
+      // Đang chờ AI mà mất kết nối → kết quả không tới được socket mới (spec AI §9)
+      if (pendingAi) endAi("error", "Mất kết nối, hãy thử lại.");
     });
     socket.on("meeting:snapshot", (envelope: Envelope<{ elements: unknown[] }>) => {
       if (envelope.meetingId !== meetingId) return;
@@ -206,6 +241,47 @@ export function useWhiteboardSync({
     });
     socket.on("connect_error", () => setNotice("Mất kết nối bảng vẽ, đang thử lại..."));
 
+    // AI: gửi yêu cầu trên chính socket bảng vẽ (đã meeting:join) — server chỉ trả về socket này
+    const generate = (prompt: string, kind: AiRequestKind) => {
+      if (pendingAi) return; // mỗi tab 1 yêu cầu
+      // Không để Socket.IO xếp hàng gửi sau khi mất mạng (spec AI §8.2)
+      if (!socket.connected || !joined) {
+        endAi("error", "Bảng vẽ chưa kết nối, hãy thử lại.");
+        return;
+      }
+      const requestId = crypto.randomUUID();
+      pendingAi = {
+        requestId,
+        timer: setTimeout(() => endAi("error", "AI phản hồi quá lâu, hãy thử lại."), AI_CLIENT_TIMEOUT_MS),
+      };
+      setAiState({ status: "pending", message: "" });
+      socket.emit("ai:generate", { meetingId, requestId, prompt, kind });
+    };
+
+    // Kết quả AI: dựng element → chèn 1 lần, giữ element cũ → gửi qua wb:ops như nét vẽ thường
+    socket.on("ai:result", (envelope: Envelope<{ requestId: string; diagram: AiDiagram }>) => {
+      // Kết quả cũ (đã hết chờ) / của yêu cầu khác → bỏ
+      if (!lib || envelope.data.requestId !== pendingAi?.requestId) return;
+      try {
+        // Dựng xong mới đụng tới bảng: lỗi ở đây thì bảng không đổi (spec AI §8.3)
+        const created = buildAiElements(lib, envelope.data.diagram, api.getSceneElementsIncludingDeleted());
+        // updateScene thay CẢ mảng → nối element cũ (gồm tombstone); IMMEDIATELY → Ctrl+Z gỡ cả sơ đồ một bước
+        api.updateScene({
+          elements: [...api.getSceneElementsIncludingDeleted(), ...created],
+          captureUpdate: lib.CaptureUpdateAction.IMMEDIATELY,
+        });
+        scheduleFlush(); // element mới đi qua wb:ops
+        api.scrollToContent(created, { fitToContent: true, animate: true });
+        endAi("idle");
+      } catch (error) {
+        console.error(error);
+        endAi("error", "Không chèn được sơ đồ vào bảng.");
+      }
+    });
+    socket.on("ai:status", (envelope: Envelope<{ requestId: string; message: string }>) => {
+      if (envelope.data.requestId === pendingAi?.requestId) endAi("error", envelope.data.message);
+    });
+
     // Ẩn con trỏ người im lâu
     const idleTimer = setInterval(() => {
       let changed = false;
@@ -225,6 +301,7 @@ export function useWhiteboardSync({
         pointer = { x, y };
         sendPointer();
       },
+      generate,
     };
 
     // Next.js SSR: chỉ tải thư viện ở trình duyệt (giống WhiteboardCanvas dùng next/dynamic)
@@ -235,7 +312,8 @@ export function useWhiteboardSync({
 
     return () => {
       disposed = true;
-      handlersRef.current = { onChange: noop, onPointer: noop };
+      handlersRef.current = { onChange: noop, onPointer: noop, generate: notConnected };
+      if (pendingAi) endAi("idle"); // huỷ hẹn giờ, bỏ yêu cầu đang chờ
       flush(); // gửi nốt phần ≤ 50 ms chưa kịp gửi, trước khi huỷ throttle và rời kênh
       scheduleFlush.cancel();
       sendPointer.cancel();
@@ -243,7 +321,7 @@ export function useWhiteboardSync({
       if (socket.connected) socket.emit("meeting:leave", { meetingId });
       socket.disconnect();
     };
-  }, [api, token, meetingId]);
+  }, [api, token, meetingId, notConnected]);
 
   const onChange = useCallback(() => handlersRef.current.onChange(), []);
   const onPointerUpdate = useCallback(
@@ -252,6 +330,12 @@ export function useWhiteboardSync({
     []
   );
   const clearNotice = useCallback(() => setNotice(""), []);
+  const generateDiagram = useCallback(
+    (prompt: string, kind: AiRequestKind) => handlersRef.current.generate(prompt, kind),
+    []
+  );
+  // useMemo: chỉ tạo object mới khi trạng thái AI đổi — WhiteboardCanvas báo object này lên cha (tránh render lặp)
+  const ai = useMemo<WhiteboardAi>(() => ({ ...aiState, generate: generateDiagram }), [aiState, generateDiagram]);
 
-  return { onChange, onPointerUpdate, notice, clearNotice };
+  return { onChange, onPointerUpdate, notice, clearNotice, ai };
 }

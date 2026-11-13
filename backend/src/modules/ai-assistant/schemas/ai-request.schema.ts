@@ -31,7 +31,7 @@ export class AiRequest {
   @Prop({ type: String, enum: AiRequestStatus, required: true })
   status!: AiRequestStatus;
 
-  // Mã lỗi ngắn, không lưu stack trace
+  // Mã lỗi ngắn, không lưu stack trace (danh sách mã: spec AI §7.2)
   @Prop({ type: String, default: null, maxlength: 64 })
   errorCode?: string | null;
 
@@ -48,7 +48,7 @@ export class AiRequest {
   @Prop({ type: Number, default: null })
   outputTokens?: number | null;
 
-  // Số element sinh ra; 0 nếu thất bại
+  // Số node + số cạnh của DSL (backend không biết số element Excalidraw thật — spec AI §1 câu 13); 0 nếu thất bại
   @Prop({ default: 0, min: 0 })
   elementCount?: number;
 }
