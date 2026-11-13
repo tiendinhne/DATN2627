@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { promisify } from 'node:util';
-import { gzip } from 'node:zlib';
+import { gunzip, gzip } from 'node:zlib';
 import { Whiteboard } from './schemas/whiteboard.schema.js';
 import type { WhiteboardDocument } from './schemas/whiteboard.schema.js';
 import { Meeting } from '../meetings/schemas/meeting.schema.js';
@@ -16,6 +16,7 @@ import type { WbElement } from './element.validator.js';
 
 // gzip chạy ở thread pool — không chặn event loop (board lớn vài MB), giữ độ trễ realtime
 const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
 
 // TTL key Redis của board (DB_DESIGN Phần E) — làm mới mỗi op
 const BOARD_TTL_SECONDS = 24 * 60 * 60;
@@ -64,6 +65,34 @@ export class WhiteboardService {
     await this.access.assertRoomAccess(userId, String(meeting.roomId));
     if (meeting.status !== MeetingStatus.ACTIVE) throw new ConflictException('Buổi học đã kết thúc');
     return { roomId: String(meeting.roomId) };
+  }
+
+  // GET /meetings/:meetingId/whiteboard — xem lại bảng của buổi ĐÃ kết thúc (đề cương §5.8). Mọi thành viên phòng (role.md)
+  async getEndedBoard(
+    userId: string,
+    meetingId: string,
+  ): Promise<{ meetingId: string; elements: unknown[]; elementCount: number; lastPersistedAt: Date | null }> {
+    if (!Types.ObjectId.isValid(meetingId)) throw new BadRequestException('meetingId không hợp lệ');
+    const meeting = await this.meetingModel.findById(meetingId).select('roomId status').lean().exec();
+    if (!meeting) throw new NotFoundException('Buổi học không tồn tại');
+    await this.access.assertRoomAccess(userId, String(meeting.roomId));
+    // Buổi đang diễn ra: bảng live nằm ở Redis, xem qua meeting:join
+    if (meeting.status !== MeetingStatus.ENDED) throw new ConflictException('Buổi học chưa kết thúc');
+
+    // Không dùng lean: lấy elementsGzip dạng Buffer qua Mongoose
+    const board = await this.whiteboardModel
+      .findOne({ meetingId })
+      .select('elementsGzip elementCount lastPersistedAt')
+      .exec();
+    // Buổi học không ai vẽ → chưa từng lưu → bảng rỗng
+    if (!board) return { meetingId, elements: [], elementCount: 0, lastPersistedAt: null };
+    const elements = JSON.parse((await gunzipAsync(board.elementsGzip)).toString('utf8')) as unknown[];
+    return {
+      meetingId,
+      elements,
+      elementCount: board.elementCount ?? elements.length,
+      lastPersistedAt: board.lastPersistedAt ?? null,
+    };
   }
 
   // Snapshot gửi người vừa join / reconnect: toàn bộ Hash, GỒM tombstone (để người reconnect xoá được element đã bị xoá)

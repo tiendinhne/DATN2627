@@ -241,7 +241,7 @@ Excalidraw onChange (throttle 50 ms)
 | Tầng | Nơi lưu | Mục đích |
 |---|---|---|
 | Live state | Redis `wb:{meetingId}` | Nguồn đọc snapshot khi join |
-| Persisted snapshot | Mongo `whiteboards` | Lưu lâu dài để xem lại / clone (task sau); chưa có đường nạp lại Mongo → Redis |
+| Persisted snapshot | Mongo `whiteboards` | Lưu lâu dài; **xem lại** buổi đã kết thúc qua `GET /meetings/:meetingId/whiteboard` (chỉ xem, 2026-11-13); clone vẫn là task sau; chưa có đường nạp lại Mongo → Redis |
 | Historical | Mongo, gắn meeting ENDED | Review sau meeting |
 
 **Không ghi Mongo mỗi op.** Sau op có thay đổi: `SET wb:persist-lock:{id} NX PX 15000`, instance giành được khoá ghi nền; `endMeeting` ghi bản cuối rồi xoá key Redis (ADR-030). Không timer RAM, không cron, không ghi khi graceful shutdown (state ở Redis).

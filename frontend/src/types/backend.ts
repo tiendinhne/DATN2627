@@ -68,6 +68,14 @@ export interface JoinMeetingResponse {
   meeting: Meeting;
 }
 
+// GET /meetings/:meetingId/whiteboard — bảng đã lưu của buổi đã kết thúc (element Excalidraw, chỉ để xem)
+export interface MeetingWhiteboard {
+  meetingId: string;
+  elements: unknown[];
+  elementCount: number;
+  lastPersistedAt: string | null;
+}
+
 // GET /auth/me (docs/api/endpoint.md)
 export interface MyProfile {
   id: string;

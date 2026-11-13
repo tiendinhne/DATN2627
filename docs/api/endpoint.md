@@ -197,6 +197,11 @@ Kết thúc buổi học cho mọi người: chốt `ENDED` (`HOST_ENDED`), đó
 - Response `204`. **Idempotent**: buổi đã kết thúc vẫn trả `204` (không ghi đè `endedAt`) — dùng được khi meeting bị kẹt.
 - `403`: không phải HOST. `404`: meeting không tồn tại. `502`: không đóng được room LiveKit — bấm lại.
 
+### GET /meetings/:meetingId/whiteboard
+Xem lại bảng vẽ của buổi **đã kết thúc** (đề cương §5.8), chỉ để xem. Quyền: mọi thành viên phòng. Frontend: trang `/meetings/:meetingId/board`, Excalidraw `viewModeEnabled`.
+- Response `200`: `{ meetingId, elements[], elementCount, lastPersistedAt }` — `elements` là element Excalidraw còn hiển thị (giải nén từ `whiteboards.elementsGzip`, không gồm tombstone). Buổi không ai vẽ → `elements: []`, `lastPersistedAt: null`.
+- `400`: `meetingId` sai định dạng. `401`: chưa đăng nhập. `403`: không phải thành viên phòng. `404`: meeting không tồn tại. `409`: buổi học chưa kết thúc (bảng live đi qua `meeting:join`).
+
 ### POST /webhooks/livekit
 Webhook của LiveKit (không dành cho client). Không dùng JWT — xác thực bằng chữ ký: header `Authorization` là JWT chứa sha256 của raw body; `Content-Type: application/webhook+json`.
 

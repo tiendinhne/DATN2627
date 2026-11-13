@@ -1384,3 +1384,13 @@ Cập nhật lại các role * đọc file rule/role.md
 
 - **Đã làm:** bỏ nút thông báo tự viết ở đáy bảng; `WhiteboardCanvas` gọi `api.setToast({ message, closable: true })` mỗi khi hook đặt `notice`, rồi xoá `notice` để thông báo lặp lại vẫn hiện lại (vd "Mất kết nối bảng vẽ, đang thử lại..." ở mỗi lần thử nối). Toast tự tắt sau 5 s (`DEFAULT_TOAST_TIMEOUT` trong `Toast.tsx` v0.18.1). Phạm vi: chỉ thông báo đồng bộ bảng vẽ (user chốt); lỗi AI vẫn ở panel AI.
 - **Kiểm:** `npx tsc --noEmit` exit 0, `next lint` không cảnh báo (không chạy `next build` vì dev server native đang chạy).
+- **Commit:** `2ebb50e` `feat: thông báo đồng bộ bảng vẽ dùng toast của Excalidraw`.
+
+## 2026-11-13 — Whiteboard: xem lại bảng của buổi đã kết thúc (đề cương §5.8)
+
+- **Vì sao:** đề cương §5.8 "xem lại hoặc khôi phục nội dung sau khi phiên học kết thúc"; nút "Xem lại" ở tab Buổi học đã có nhưng mở trang meeting → `joinMeeting` 409. Thiết kế ngắn, user duyệt 2026-11-13. Không làm clone (`clonedFrom`).
+- **Backend:** `WhiteboardService.getEndedBoard` + `WhiteboardController` `GET /meetings/:meetingId/whiteboard` (module whiteboard thêm `PassportModule` cho `JwtAuthGuard`): 400 id sai → 404 → 403 (thành viên phòng theo `roomId` của meeting) → 409 nếu chưa `ENDED` → giải nén `elementsGzip` (đọc không `lean` để có `Buffer`); chưa có bản lưu → bảng rỗng. Response `meetingId`, không `_id`.
+- **Frontend:** trang `/meetings/[meetingId]/board` + `WhiteboardReview` (tải bản lưu, Excalidraw `viewModeEnabled` + `initialData { elements, scrollToContent }`, về `/login` nếu chưa đăng nhập, nút quay lại phòng); `MeetingsTab` prop `onReview` — nút "Xem lại" của buổi đã kết thúc mở trang này, buổi đang diễn ra vẫn "Tham gia".
+- **Test:** 6 test service viết trước → fail → module whiteboard 77/77; backend `build` + `lint` exit 0. **Chạy thật** (script đồ bỏ, backend + Redis + Mongo thật, sau `docker restart backend-dev`): 12/12 — 409 khi đang diễn ra; HOST + thành viên xem lại 200, đúng 2 element còn hiển thị (tombstone không lưu), tiếng Việt + `version` giữ nguyên; người ngoài 403; chưa đăng nhập 401; id sai 400; không tồn tại 404; buổi không vẽ → bảng rỗng. Laser ở tầng socket: B nhận `tool: "laser"`, `button: "down"`.
+- **Frontend kiểm:** `tsc --noEmit` exit 0, `next lint` sạch. Trang `/meetings/[id]/board` trên dev server trả **500** (body rỗng) trong khi trang cũ 200: `.next` đang lẫn sản phẩm `next build` lúc 21:48 (do tôi chạy build khi dev server native đang chạy) → chờ user xoá `.next` + chạy lại `npm run dev` rồi kiểm lại.
+- **Tài liệu:** `endpoint.md` thêm endpoint; PROJECT_CONTEXT dòng "Persisted snapshot".

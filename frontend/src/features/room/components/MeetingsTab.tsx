@@ -6,6 +6,8 @@ import type { Meeting } from "@/types";
 interface MeetingsTabProps {
   meetings?: Meeting[];
   onMeeting: (meetingId?: string) => void;
+  // Buổi đã kết thúc: mở bảng vẽ đã lưu ở chế độ chỉ xem
+  onReview?: (meetingId: string) => void;
   onStartMeeting?: () => void;
   isHost?: boolean;
   onEndMeeting?: (meetingId: string) => void;
@@ -20,6 +22,7 @@ const END_REASON_LABEL: Record<string, string> = {
 export function MeetingsTab({
   meetings: propMeetings,
   onMeeting,
+  onReview,
   onStartMeeting,
   isHost,
   onEndMeeting,
@@ -129,7 +132,10 @@ export function MeetingsTab({
               </span>
               <button
                 className="button secondary small"
-                onClick={() => onMeeting(meeting.id)}
+                // Đang diễn ra → vào buổi học; đã kết thúc → xem lại bảng (trang meeting sẽ bị 409 nếu buổi đã kết thúc)
+                onClick={() =>
+                  meeting.status === "Live" || !onReview ? onMeeting(meeting.id) : onReview(meeting.id)
+                }
                 type="button"
               >
                 {meeting.status === "Live" ? "Tham gia" : "Xem lại"}
