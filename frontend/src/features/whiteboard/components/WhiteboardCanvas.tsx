@@ -38,6 +38,14 @@ export function WhiteboardCanvas({ dark = false, hidden = false, token, meetingI
     onAiChange?.(ai);
   }, [ai, onAiChange]);
 
+  // Thông báo đồng bộ bảng vẽ hiện bằng toast có sẵn của Excalidraw (tự tắt sau 5 s, có nút đóng).
+  // Hiện xong thì xoá notice → cùng một thông báo lặp lại (vd mỗi lần thử nối lại) vẫn hiện lại được
+  useEffect(() => {
+    if (!api || !notice) return;
+    api.setToast({ message: notice, closable: true });
+    clearNotice();
+  }, [api, notice, clearNotice]);
+
   return (
     <div className="whiteboard" hidden={hidden}>
       <Excalidraw
@@ -50,15 +58,6 @@ export function WhiteboardCanvas({ dark = false, hidden = false, token, meetingI
         aiEnabled={false}
         UIOptions={UI_OPTIONS}
       />
-      {notice && (
-        <button
-          type="button"
-          onClick={clearNotice}
-          className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-md bg-slate-900/90 px-3 py-1.5 text-sm text-white"
-        >
-          {notice}
-        </button>
-      )}
     </div>
   );
 }

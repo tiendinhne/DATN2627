@@ -329,6 +329,9 @@ export function RoomView({
         <MeetingsTab
           meetings={meetings}
           onMeeting={handleJoinExistingMeeting}
+          onReview={(meetingId) =>
+            router.push(`/meetings/${meetingId}/board?roomId=${encodeURIComponent(roomId)}`)
+          }
           onStartMeeting={() => setDialog("start")}
           isHost={role === "owner"}
           onEndMeeting={() => setDialog("end")}

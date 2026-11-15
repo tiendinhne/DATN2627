@@ -1,4 +1,4 @@
-import type { JoinMeetingResponse, Meeting, MeetingListResponse } from '@/types/backend';
+import type { JoinMeetingResponse, Meeting, MeetingListResponse, MeetingWhiteboard } from '@/types/backend';
 import { request } from './api';
 
 export const startMeeting = (token: string, roomId: string, title: string) =>
@@ -13,3 +13,7 @@ export const joinMeeting = (token: string, meetingId: string) =>
 
 export const endMeeting = (token: string, meetingId: string) =>
   request<void>(token, `/meetings/${meetingId}/end`, { method: 'POST' });
+
+// Bảng đã lưu của buổi đã kết thúc — 409 nếu buổi còn đang diễn ra
+export const getMeetingWhiteboard = (token: string, meetingId: string) =>
+  request<MeetingWhiteboard>(token, `/meetings/${meetingId}/whiteboard`);

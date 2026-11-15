@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { WhiteboardService } from './whiteboard.service.js';
 import { WB_APPLY_SCRIPT } from './whiteboard.lua.js';
 import { MeetingStatus, RoomRole } from '../../shared/enums.js';
@@ -249,5 +249,76 @@ describe('finalizeBoard', () => {
     vi.spyOn(service, 'persist').mockRejectedValue(new Error('mongo down'));
     await expect(service.finalizeBoard(meetingId)).resolves.toBeUndefined();
     expect(client.del).not.toHaveBeenCalled();
+  });
+});
+
+describe('getEndedBoard — xem lại bảng của buổi đã kết thúc (đề cương §5.8)', () => {
+  const endedMeeting = {
+    _id: new Types.ObjectId(meetingId),
+    roomId: new Types.ObjectId(roomId),
+    status: MeetingStatus.ENDED,
+  };
+
+  // meeting / board giả trả về từ Mongo
+  function setup(meeting: unknown, board: unknown) {
+    const ctx = build();
+    ctx.meetingModel.findById = q(meeting);
+    (ctx.whiteboardModel as any).findOne = q(board);
+    return ctx;
+  }
+
+  it('meetingId sai định dạng → 400, không query Mongo', async () => {
+    const { service, meetingModel } = setup(endedMeeting, null);
+    await expect(service.getEndedBoard(userId, 'abc')).rejects.toBeInstanceOf(BadRequestException);
+    expect(meetingModel.findById).not.toHaveBeenCalled();
+  });
+
+  it('meeting không tồn tại → 404', async () => {
+    const { service } = setup(null, null);
+    await expect(service.getEndedBoard(userId, meetingId)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('không phải thành viên phòng → 403, kiểm theo roomId của meeting, không đọc board', async () => {
+    const ctx = setup(endedMeeting, null);
+    ctx.access.assertRoomAccess.mockRejectedValue(new ForbiddenException('Không phải thành viên'));
+    await expect(ctx.service.getEndedBoard(userId, meetingId)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(ctx.access.assertRoomAccess).toHaveBeenCalledWith(userId, roomId);
+    expect((ctx.whiteboardModel as any).findOne).not.toHaveBeenCalled();
+  });
+
+  it('buổi học còn ACTIVE → 409 (bảng live đi qua meeting:join)', async () => {
+    const { service } = setup({ ...endedMeeting, status: MeetingStatus.ACTIVE }, null);
+    await expect(service.getEndedBoard(userId, meetingId)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('đã kết thúc nhưng chưa có bản lưu → bảng rỗng', async () => {
+    const { service } = setup(endedMeeting, null);
+    await expect(service.getEndedBoard(userId, meetingId)).resolves.toEqual({
+      meetingId,
+      elements: [],
+      elementCount: 0,
+      lastPersistedAt: null,
+    });
+  });
+
+  it('đã kết thúc → giải nén bản lưu gzip, trả element đúng thứ tự', async () => {
+    const elements = [
+      { id: 'a', type: 'rectangle', version: 3, versionNonce: 1, isDeleted: false, index: 'a0' },
+      { id: 'b', type: 'text', version: 2, versionNonce: 2, isDeleted: false, index: 'a1', text: 'Tiếng Việt có dấu' },
+    ];
+    const lastPersistedAt = new Date('2026-11-13T13:54:25.000Z');
+    const { service, whiteboardModel } = setup(endedMeeting, {
+      elementsGzip: gzipSync(JSON.stringify(elements)),
+      elementCount: 2,
+      lastPersistedAt,
+    });
+
+    await expect(service.getEndedBoard(userId, meetingId)).resolves.toEqual({
+      meetingId,
+      elements,
+      elementCount: 2,
+      lastPersistedAt,
+    });
+    expect((whiteboardModel as any).findOne).toHaveBeenCalledWith({ meetingId });
   });
 });

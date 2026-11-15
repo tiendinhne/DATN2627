@@ -95,8 +95,8 @@ Phần này không nằm trong scope hiện tại
 **Decision:** Khi dev, cả hệ thống chạy bằng một lệnh `docker compose up -d --build`: mongo, redis, livekit, backend (`npm run start:dev`, mount `./backend/src`, config từ `env_file: ./backend/.env`) và frontend (`npm run dev`, mount `./frontend/src` + `./backend/src/shared` chỉ đọc cho alias `@shared` của ADR-024, `WATCHPACK_POLLING=true` để hot reload chạy trên Windows). `npm run start:dev` / `npm run dev` native chỉ dùng khi cần breakpoint trong IDE, và không chạy đồng thời với container tương ứng (trùng cổng 3001 / 3000). Sửa `package.json`, file cấu hình hoặc `public/` → chạy lại `--build`.
 **Reason:** Đề cương §5.10, §7 ("Frontend, Backend, Database, Redis, Media Server… được đóng gói và quản lý bằng Docker"). Một lệnh cho cả hệ thống, môi trường giống nhau giữa 2 máy của nhóm. Frontend thêm sau (2026-10-27) vì trước đó phải chạy 2 thao tác riêng.
 **Phát sinh kỹ thuật:** `[phát sinh kỹ thuật]` Đây là chế độ dev (hot reload). Trang lần đầu compile chậm trong container — đo thật: `/meetings/[id]` (5.574 module, Excalidraw + LiveKit) 118 s lần đầu, 4 s lần sau; hot reload ~25 s. Bản production (`next build` + NGINX + HTTPS) là task deploy riêng.
-**Status:** CONFIRMED — user chốt chế độ dev 2026-10-27.
-
+**Sửa đổi 2026-11-12 — frontend dev chạy native, không chạy trong Docker** `[phát sinh kỹ thuật]`
+- **Quyết định mới:** khi dev, Docker chỉ chạy `mongo redis livekit backend` (`docker compose up -d --build mongo redis livekit backend`); frontend chạy `npm run dev` native trên Windows (cổng 3000). Service `frontend` trong `docker-compose.yml` và `frontend/Dockerfile` 
 ## ADR-017 — Ràng buộc dự án được ép bằng hook, không chỉ nằm trong tài liệu
 
 ## ADR-018 — Room lâu dài, kết thúc phiên chỉ kết thúc meeting

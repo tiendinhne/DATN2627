@@ -227,6 +227,8 @@ export class MeetingGateway
         meetingId: dto.meetingId,
         x: dto.x,
         y: dto.y,
+        tool: dto.tool,
+        button: dto.button,
       });
     } catch (error) {
       this.sendExpectedError(socket, error);

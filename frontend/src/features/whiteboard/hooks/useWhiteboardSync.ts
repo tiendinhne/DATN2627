@@ -26,6 +26,14 @@ interface Envelope<T> {
   data: T;
 }
 
+// Con trỏ gửi qua wb:pointer: công cụ (pointer / laser) + nút chuột — Excalidraw cần cả hai để vẽ vệt laser của người khác
+interface PointerState {
+  x: number;
+  y: number;
+  tool: "pointer" | "laser";
+  button: "down" | "up";
+}
+
 // Trạng thái AI của bảng + hàm gửi yêu cầu — WhiteboardCanvas báo lên MeetingWorkspace → AIPanel (spec AI §8.4)
 export interface WhiteboardAi {
   status: "idle" | "pending" | "error";
@@ -80,7 +88,7 @@ export function useWhiteboardSync({
   // Hàm thật gắn vào onChange / onPointerUpdate / AI — đổi mỗi khi socket đổi
   const handlersRef = useRef<{
     onChange: () => void;
-    onPointer: (x: number, y: number) => void;
+    onPointer: (pointer: PointerState) => void;
     generate: (prompt: string, kind: AiRequestKind) => void;
   }>({
     onChange: noop,
@@ -100,7 +108,7 @@ export function useWhiteboardSync({
     const warned = new Set<string>();
     const collaborators = new Map<SocketId, Collaborator>();
     const lastSeen = new Map<SocketId, number>();
-    let pointer: { x: number; y: number } | null = null;
+    let pointer: PointerState | null = null;
     // Server từ chối 403 mọi wb:ops / wb:pointer trước khi join xong → chỉ gửi sau khi nhận snapshot
     let joined = false;
     // Yêu cầu AI đang chờ của tab này (mỗi tab tối đa 1) — biến cục bộ của effect, không phải state server
@@ -223,13 +231,15 @@ export function useWhiteboardSync({
     });
     socket.on(
       "wb:pointer",
-      (envelope: Envelope<{ userId: string; displayName: string; x: number; y: number }>) => {
+      (envelope: Envelope<{ userId: string; displayName: string } & PointerState>) => {
         if (envelope.meetingId !== meetingId) return;
         const id = envelope.data.userId as SocketId;
         collaborators.set(id, {
           id: envelope.data.userId,
           username: envelope.data.displayName,
-          pointer: { x: envelope.data.x, y: envelope.data.y, tool: "pointer" },
+          // tool + button đúng như máy gửi → Excalidraw tự vẽ vệt laser (laser-trails.ts v0.18.1)
+          pointer: { x: envelope.data.x, y: envelope.data.y, tool: envelope.data.tool },
+          button: envelope.data.button,
         });
         lastSeen.set(id, Date.now());
         showCollaborators();
@@ -297,8 +307,8 @@ export function useWhiteboardSync({
 
     handlersRef.current = {
       onChange: scheduleFlush,
-      onPointer: (x, y) => {
-        pointer = { x, y };
+      onPointer: (next) => {
+        pointer = next;
         sendPointer();
       },
       generate,
@@ -325,8 +335,9 @@ export function useWhiteboardSync({
 
   const onChange = useCallback(() => handlersRef.current.onChange(), []);
   const onPointerUpdate = useCallback(
-    (payload: { pointer: { x: number; y: number } }) =>
-      handlersRef.current.onPointer(payload.pointer.x, payload.pointer.y),
+    // Payload onPointerUpdate của Excalidraw 0.18.1: pointer { x, y, tool } + button
+    (payload: { pointer: { x: number; y: number; tool: "pointer" | "laser" }; button: "down" | "up" }) =>
+      handlersRef.current.onPointer({ ...payload.pointer, button: payload.button }),
     []
   );
   const clearNotice = useCallback(() => setNotice(""), []);

@@ -108,10 +108,19 @@ export class RealtimePublisher {
       });
   }
 
-  // Whiteboard: con trỏ — volatile (gói cũ bỏ, không xếp hàng), không seq, không lưu
+  // Whiteboard: con trỏ / laser — volatile (gói cũ bỏ, không xếp hàng), không seq, không lưu
   publishWbPointer(
     senderSocketId: string,
-    input: { actorId: string; displayName: string; roomId: string; meetingId: string; x: number; y: number },
+    input: {
+      actorId: string;
+      displayName: string;
+      roomId: string;
+      meetingId: string;
+      x: number;
+      y: number;
+      tool: 'pointer' | 'laser';
+      button: 'down' | 'up';
+    },
   ) {
     this.requireNamespace()
       .volatile.to(`meeting:${input.meetingId}`)
@@ -123,7 +132,14 @@ export class RealtimePublisher {
         actorId: input.actorId,
         roomId: input.roomId,
         meetingId: input.meetingId,
-        data: { userId: input.actorId, displayName: input.displayName, x: input.x, y: input.y },
+        data: {
+          userId: input.actorId,
+          displayName: input.displayName,
+          x: input.x,
+          y: input.y,
+          tool: input.tool,
+          button: input.button,
+        },
       });
   }
 

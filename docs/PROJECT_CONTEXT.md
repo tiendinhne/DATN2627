@@ -171,7 +171,7 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `meeting:leave` | `{ meetingId }` |
 | `chat:send` | `{ roomId, clientMsgId, content, fileId?, meetingId? }` |
 | `wb:ops` | `{ meetingId, elements[] }` |
-| `wb:pointer` | `{ meetingId, x, y }` |
+| `wb:pointer` | `{ meetingId, x, y, tool, button }` — `tool` ∈ `pointer` · `laser`, `button` ∈ `down` · `up` (laser hiện ở máy khác) `[phát sinh kỹ thuật]` |
 | `ai:generate` | `{ meetingId, requestId, prompt, kind }` — `meetingId` `[phát sinh kỹ thuật]` (spec AI §1 câu 8) |
 
 | Server → Client | Payload |
@@ -182,7 +182,7 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `chat:new` | envelope chuẩn, `data: { message }` — emit tới `room:{roomId}`; client lọc theo `meetingId` cho khung chat meeting |
 | `room:access_revoked` | envelope chuẩn, `data: { reason: 'LEFT' \| 'KICKED' \| 'DISSOLVED' }`; server phát trước khi ép socket rời kênh Room |
 | `wb:ops` | envelope, `data: { elements[] }` — chỉ element thắng, kênh `meeting:{id}` trừ người gửi |
-| `wb:pointer` | envelope `seq` null, `data: { userId, displayName, x, y }` — volatile |
+| `wb:pointer` | envelope `seq` null, `data: { userId, displayName, x, y, tool, button }` — volatile |
 | `ai:result` | envelope `seq: null`, `data: { requestId, diagram }` — chỉ socket người yêu cầu |
 | `ai:status` | envelope `seq: null`, `data: { requestId, status: 'failed', code, message }` — chỉ socket người yêu cầu |
 | `server:draining` | `{}` |
@@ -241,7 +241,7 @@ Excalidraw onChange (throttle 50 ms)
 | Tầng | Nơi lưu | Mục đích |
 |---|---|---|
 | Live state | Redis `wb:{meetingId}` | Nguồn đọc snapshot khi join |
-| Persisted snapshot | Mongo `whiteboards` | Lưu lâu dài để xem lại / clone (task sau); chưa có đường nạp lại Mongo → Redis |
+| Persisted snapshot | Mongo `whiteboards` | Lưu lâu dài; **xem lại** buổi đã kết thúc qua `GET /meetings/:meetingId/whiteboard` (chỉ xem, 2026-11-13); clone vẫn là task sau; chưa có đường nạp lại Mongo → Redis |
 | Historical | Mongo, gắn meeting ENDED | Review sau meeting |
 
 **Không ghi Mongo mỗi op.** Sau op có thay đổi: `SET wb:persist-lock:{id} NX PX 15000`, instance giành được khoá ghi nền; `endMeeting` ghi bản cuối rồi xoá key Redis (ADR-030). Không timer RAM, không cron, không ghi khi graceful shutdown (state ở Redis).
