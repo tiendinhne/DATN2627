@@ -61,6 +61,11 @@ export interface MeetingListResponse {
   hasMore: boolean;
 }
 
+export interface MyMeetingStats {
+  meetingCount: number;
+  totalDurationSeconds: number;
+}
+
 export interface JoinMeetingResponse {
   token: string;
   livekitUrl: string;

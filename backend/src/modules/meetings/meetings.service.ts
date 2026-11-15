@@ -152,6 +152,53 @@ export class MeetingsService {
     };
   }
 
+  // GET /meetings/me/stats — tính theo tuần lịch giờ Việt Nam, chỉ meeting đã kết thúc
+  async getMyStats(userId: string) {
+    const nowInVietnam = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const daysSinceMonday = (nowInVietnam.getUTCDay() + 6) % 7;
+    const weekStart = new Date(
+      Date.UTC(
+        nowInVietnam.getUTCFullYear(),
+        nowInVietnam.getUTCMonth(),
+        nowInVietnam.getUTCDate() - daysSinceMonday,
+      ) - 7 * 60 * 60 * 1000,
+    );
+    const nextWeekStart = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const [stats] = await this.participantModel
+      .aggregate([
+        { $match: { userId: new Types.ObjectId(userId) } },
+        {
+          $lookup: {
+            from: 'meetings',
+            localField: 'meetingId',
+            foreignField: '_id',
+            as: 'meeting',
+          },
+        },
+        { $unwind: '$meeting' },
+        {
+          $match: {
+            'meeting.status': MeetingStatus.ENDED,
+            'meeting.endedAt': { $gte: weekStart, $lt: nextWeekStart },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            meetingCount: { $sum: 1 },
+            totalDurationSeconds: { $sum: { $ifNull: ['$totalDurationSeconds', 0] } },
+          },
+        },
+      ])
+      .exec();
+
+    return {
+      meetingCount: stats?.meetingCount ?? 0,
+      totalDurationSeconds: stats?.totalDurationSeconds ?? 0,
+    };
+  }
+
   // POST /meetings/:meetingId/join — thành viên, meeting ACTIVE. Token cấp lại mỗi lần vào (webrtc.md §2)
   async joinMeeting(userId: string, displayName: string, meetingId: string) {
     const meeting = await this.findMeeting(meetingId);

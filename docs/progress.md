@@ -1395,3 +1395,10 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Frontend kiểm:** `tsc --noEmit` exit 0, `next lint` sạch. Trang `/meetings/[id]/board` trên dev server trả **500** (body rỗng) trong khi trang cũ 200: `.next` đang lẫn sản phẩm `next build` lúc 21:48 (do tôi chạy build khi dev server native đang chạy) → chờ user xoá `.next` + chạy lại `npm run dev` rồi kiểm lại.
 - **Tài liệu:** `endpoint.md` thêm endpoint; PROJECT_CONTEXT dòng "Persisted snapshot".
 - **Sửa sau khi user test (2026-11-13):** user mở buổi đã kết thúc qua trang meeting (`/meetings/:id`) → màn "Không thể vào cuộc họp"; nút **"Xem bản vẽ"** (code có từ trước) thực ra gọi `retry` → `joinMeeting` → 409 lặp mỗi lần bấm. Sửa: nút này chuyển sang `/meetings/:id/board` (không thêm nút "Thử lại" — user không muốn). Chưa commit (user tự commit). `tsc` + lint sạch; trang board của buổi đó trả 200, Mongo có bản lưu 3 element.
+
+## 2026-11-16 — Thống kê cuộc họp theo tuần trên dashboard
+
+- **Đã làm:** `GET /meetings/me/stats` trả số cuộc họp user đã tham gia và tổng thời gian tham gia trong tuần lịch hiện tại (Thứ Hai–Chủ Nhật, giờ Việt Nam). Chỉ tính meeting đã `ENDED`, lọc theo `endedAt`; dashboard hiển thị số buổi và tổng thời lượng. Dùng `meeting_participants.totalDurationSeconds` đã được chốt khi meeting kết thúc nên không cộng thời gian cuộc họp đang mở.
+- **Kiểm tra:** test `meetings.service.spec.ts` 53/53 pass; backend build + lint pass; frontend `tsc --noEmit` + lint pass.
+- **Lệch khỏi tài liệu:** `[phát sinh kỹ thuật]` thống kê cá nhân theo tuần phục vụ dashboard, không được nêu trực tiếp trong đề cương đã duyệt.
+- **Commit:** chưa.

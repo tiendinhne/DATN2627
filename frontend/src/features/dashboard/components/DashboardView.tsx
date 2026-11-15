@@ -14,8 +14,9 @@ import {
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/common/Modal";
 import { useAuth } from '@/context/auth.context';
+import { getMyMeetingStats } from "@/services/meeting.service";
 import { createRoom, joinRoom, listMyRooms } from "@/services/room.service";
-import type { Room as BackendRoom } from "@/types/backend";
+import type { MyMeetingStats, Room as BackendRoom } from "@/types/backend";
 import { useNow } from "./hooks/useNow";
 import { getGreeting, formatEyebrow } from "./utils/greeting";
 
@@ -32,6 +33,7 @@ export function DashboardView({
 
   const [modal, setModal] = useState<"create" | "join" | null>(null);
   const [rooms, setRooms] = useState<BackendRoom[]>([]);
+  const [weeklyStats, setWeeklyStats] = useState<MyMeetingStats | null>(null);
   const [isFetchingRooms, setIsFetchingRooms] = useState(false);
   const [modalError, setModalError] = useState("");
   const [modalBusy, setModalBusy] = useState(false);
@@ -63,6 +65,15 @@ export function DashboardView({
       });
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    getMyMeetingStats(token)
+      .then(setWeeklyStats)
+      .catch((err) => {
+        console.error("Lỗi tải thống kê cuộc họp:", err);
+      });
+  }, [token]);
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -79,6 +90,11 @@ export function DashboardView({
   }
 
   const displayName = user.displayName || user.username || "bạn";
+  const weeklyDuration = weeklyStats
+    ? weeklyStats.totalDurationSeconds < 3600
+      ? `${Math.floor(weeklyStats.totalDurationSeconds / 60)} phút`
+      : `${Math.floor(weeklyStats.totalDurationSeconds / 3600)} giờ ${Math.floor((weeklyStats.totalDurationSeconds % 3600) / 60)} phút`
+    : "—";
 
   const navigateToRoom = (roomId: string) => {
     if (onNavigate) {
@@ -185,9 +201,8 @@ export function DashboardView({
           </span>
           <div>
             <p>Cuộc họp</p>
-            {/* Chưa có API thống kê theo user (small_task #2, phần C) */}
-            <strong>—</strong>
-            <small>Chưa có dữ liệu</small>
+            <strong>{weeklyStats?.meetingCount ?? "—"}</strong>
+            <small>Tuần này</small>
           </div>
         </div>
         <div className="stat-card">
@@ -196,8 +211,8 @@ export function DashboardView({
           </span>
           <div>
             <p>Thời gian học</p>
-            <strong>—</strong>
-            <small>Chưa có dữ liệu</small>
+            <strong>{weeklyDuration}</strong>
+            <small>Tuần này</small>
           </div>
         </div>
       </section>
