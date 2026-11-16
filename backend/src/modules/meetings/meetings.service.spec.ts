@@ -65,6 +65,7 @@ function build() {
     updateOne: q({ modifiedCount: 1 }),
   };
   const participantModel = {
+    aggregate: q([]),
     find: q([]),
     updateOne: q({ modifiedCount: 1 }),
     updateMany: q({ modifiedCount: 0 }),
@@ -234,6 +235,46 @@ describe('listMeetings', () => {
     expect(chain.limit).toHaveBeenCalledWith(3);
     expect(res.items).toHaveLength(2);
     expect(res).toMatchObject({ page: 2, limit: 2, hasMore: true });
+  });
+});
+
+describe('getMyStats', () => {
+  it('tính tổng theo tuần Thứ Hai–Chủ Nhật giờ Việt Nam và bỏ meeting đang mở', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-15T17:00:00.000Z'));
+
+    try {
+      const { service, participantModel } = build();
+      participantModel.aggregate.mockReturnValue(
+        query([{ meetingCount: 2, totalDurationSeconds: 5400 }]),
+      );
+
+      const stats = await service.getMyStats(userId);
+      const pipeline = participantModel.aggregate.mock.calls[0][0];
+
+      expect(pipeline[0]).toEqual({ $match: { userId: new Types.ObjectId(userId) } });
+      expect(pipeline[3]).toEqual({
+        $match: {
+          'meeting.status': MeetingStatus.ENDED,
+          'meeting.endedAt': {
+            $gte: new Date('2026-11-15T17:00:00.000Z'),
+            $lt: new Date('2026-11-22T17:00:00.000Z'),
+          },
+        },
+      });
+      expect(stats).toEqual({ meetingCount: 2, totalDurationSeconds: 5400 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('không có meeting đã kết thúc trong tuần → trả thống kê bằng 0', async () => {
+    const { service } = build();
+
+    await expect(service.getMyStats(userId)).resolves.toEqual({
+      meetingCount: 0,
+      totalDurationSeconds: 0,
+    });
   });
 });
 

@@ -185,6 +185,10 @@ Lịch sử buổi học, mới nhất trước (buổi đang diễn ra đứng 
 
 Response `200`: `{ items: MeetingResponse[], page, limit, hasMore }`.
 
+### GET /meetings/me/stats
+[phát sinh kỹ thuật] Thống kê các cuộc họp user đã tham gia trong tuần lịch hiện tại (Thứ Hai–Chủ Nhật, giờ Việt Nam). Chỉ tính meeting đã kết thúc; tổng thời gian là thời lượng tham gia của user đó.
+- Response `200`: `{ meetingCount, totalDurationSeconds }`.
+
 ### POST /meetings/:meetingId/join
 Vào buổi học — cấp token LiveKit mới mỗi lần gọi. Quyền: thành viên phòng của meeting.
 

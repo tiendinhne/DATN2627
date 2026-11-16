@@ -1,4 +1,10 @@
-import type { JoinMeetingResponse, Meeting, MeetingListResponse, MeetingWhiteboard } from '@/types/backend';
+import type {
+  JoinMeetingResponse,
+  Meeting,
+  MeetingListResponse,
+  MeetingWhiteboard,
+  MyMeetingStats,
+} from '@/types/backend';
 import { request } from './api';
 
 export const startMeeting = (token: string, roomId: string, title: string) =>
@@ -7,6 +13,9 @@ export const startMeeting = (token: string, roomId: string, title: string) =>
 // 20 buổi gần nhất — theo backend spec §11.2
 export const listMeetings = (token: string, roomId: string) =>
   request<MeetingListResponse>(token, `/rooms/${roomId}/meetings?page=1&limit=20`);
+
+export const getMyMeetingStats = (token: string) =>
+  request<MyMeetingStats>(token, '/meetings/me/stats');
 
 export const joinMeeting = (token: string, meetingId: string) =>
   request<JoinMeetingResponse>(token, `/meetings/${meetingId}/join`, { method: 'POST' });

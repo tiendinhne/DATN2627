@@ -23,6 +23,12 @@ export class MeetingsController {
     return this.meetings.listMeetings(req.user.id, roomId, query.page, query.limit);
   }
 
+  // GET /meetings/me/stats — thống kê các buổi user đã tham gia
+  @Get('meetings/me/stats')
+  stats(@Req() req: any) {
+    return this.meetings.getMyStats(req.user.id);
+  }
+
   // POST /meetings/:meetingId/join — trả { token, livekitUrl, myRole, meeting }
   @Post('meetings/:meetingId/join')
   @HttpCode(200)
