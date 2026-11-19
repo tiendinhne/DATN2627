@@ -7,6 +7,7 @@ export interface ChatMessage {
   text: string;
   color: string;
   meeting?: string;
+  meetingId: string | null;
   file?: ChatFileMetadata | null;
   isOwn: boolean;
   createdAt: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, X } from "lucide-react";
+import { AlertCircle, Check, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { io } from "socket.io-client";
 import { useAuth } from "@/context/auth.context";
@@ -66,15 +66,17 @@ export function RoomView({
   const [removeTarget, setRemoveTarget] = useState<{ name: string; userId?: string }>({ name: "" });
   const [removedMembers, setRemovedMembers] = useState<string[]>([]);
   const [toast, setToast] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
   const [copied, setCopied] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const reload = () => setReloadKey((k) => k + 1);
 
-  const notify = (message: string) => {
+  const notify = (message: string, type: "success" | "error" = "success") => {
     setDialog(null);
     setActionsOpen(false);
     setToast(message);
+    setToastType(type);
     window.setTimeout(() => setToast(""), 2800);
   };
 
@@ -240,14 +242,17 @@ export function RoomView({
         router.push(`/meetings/${newMeeting.id}?roomId=${encodeURIComponent(roomId)}`);
         return;
       } catch (err) {
-        notify(err instanceof Error ? err.message : "Không thể bắt đầu cuộc họp");
+        notify(
+          err instanceof Error ? err.message : "Không thể bắt đầu cuộc họp",
+          "error",
+        );
         reload();
         return;
       }
     }
 
     // Chưa tải xong phòng / chưa đăng nhập → không có meeting thật để mở
-    notify("Phòng chưa tải xong, thử lại sau giây lát");
+    notify("Phòng chưa tải xong, thử lại sau giây lát", "error");
   };
 
   // Tham gia cuộc họp đã có
@@ -557,9 +562,13 @@ export function RoomView({
       )}
 
       {toast && (
-        <div className="room-toast">
+        <div className={`room-toast${toastType === "error" ? " error" : ""}`}>
           <span>
-            <Check size={16} />
+            {toastType === "error" ? (
+              <AlertCircle size={16} />
+            ) : (
+              <Check size={16} />
+            )}
           </span>
           {toast}
           <button onClick={() => setToast("")} type="button" aria-label="Đóng">

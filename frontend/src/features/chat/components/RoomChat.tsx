@@ -18,8 +18,11 @@ interface RoomChatProps {
   currentUserId?: string;
 }
 
+type RoomChatFilter = "all" | "room" | "meeting";
+
 export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
   const [inputText, setInputText] = useState("");
+  const [messageFilter, setMessageFilter] = useState<RoomChatFilter>("all");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
   const [showError, setShowError] = useState(false);
@@ -46,6 +49,12 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
     roomId,
     token,
     currentUserId,
+  });
+  const visibleMessages = messages.filter((message) => {
+    if (messageFilter === "all") return true;
+    return messageFilter === "meeting"
+      ? message.meetingId !== null
+      : message.meetingId === null;
   });
 
   useEffect(() => {
@@ -177,6 +186,7 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
   const handleOpenSearchResult = async (result: ChatSearchResult) => {
     pendingJumpIdRef.current = result.id;
     setHighlightedMessageId(result.id);
+    setMessageFilter("all");
     try {
       await loadMessagesAround(result.id);
       setSearchOpen(false);
@@ -278,14 +288,35 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
           )}
         </div>
       )}
+      <div className="room-chat-filters" role="group" aria-label="Lọc tin nhắn">
+        {(
+          [
+            ["all", "Tất cả"],
+            ["room", "Chat phòng"],
+            ["meeting", "Cuộc họp"],
+          ] as const
+        ).map(([filter, label]) => (
+          <button
+            key={filter}
+            className={`room-chat-filter${messageFilter === filter ? " active" : ""}`}
+            type="button"
+            aria-pressed={messageFilter === filter}
+            onClick={() => setMessageFilter(filter)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="room-chat-list" ref={messageListRef}>
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-400">
-            Chưa có tin nhắn trong phòng.
+            {messages.length === 0
+              ? "Chưa có tin nhắn trong phòng."
+              : "Không có tin nhắn phù hợp với bộ lọc."}
           </p>
         ) : (
-          messages.map((message, index) => {
-            const previousMessage = messages[index - 1];
+          visibleMessages.map((message, index) => {
+            const previousMessage = visibleMessages[index - 1];
             const timeSincePrevious = previousMessage
               ? new Date(message.createdAt).getTime() -
                 new Date(previousMessage.createdAt).getTime()

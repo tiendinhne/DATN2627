@@ -169,6 +169,7 @@ export function toChatMessage(
     text: message.content,
     color: colors[colorIndex],
     ...(message.meetingTitle ? { meeting: message.meetingTitle } : {}),
+    meetingId: message.meetingId,
     ...(message.file ? { file: message.file } : {}),
     isOwn: message.senderId === currentUserId,
     createdAt: message.createdAt,

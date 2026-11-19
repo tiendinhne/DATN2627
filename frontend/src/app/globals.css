@@ -2682,6 +2682,30 @@ button.brand {
   font-size: 9px
 }
 
+.room-chat-filters {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid #eef0f4;
+  padding: 8px 20px
+}
+
+.room-chat-filter {
+  border: 1px solid #e5e8ef;
+  border-radius: 999px;
+  background: transparent;
+  padding: 5px 10px;
+  color: #737d90;
+  font-size: 10px;
+  cursor: pointer
+}
+
+.room-chat-filter.active {
+  border-color: #d7dcff;
+  background: #f0f2ff;
+  color: #5967cc;
+  font-weight: 600
+}
+
 .room-chat-search {
   position: relative;
   display: flex;
@@ -3445,6 +3469,17 @@ button.brand {
   border-radius: 8px;
   background: #e2f4eb;
   color: #31906d
+}
+
+.room-toast.error {
+  border-color: #f2caca;
+  background: #fffafa;
+  color: #a93636
+}
+
+.room-toast.error>span {
+  background: #fde8e8;
+  color: #d14343
 }
 
 .room-toast button {
@@ -4268,6 +4303,7 @@ button.brand {
 }
 
 .dark-app .room-chat-header,
+.dark-app .room-chat-filters,
 .dark-app .room-chat-search,
 .dark-app .room-chat-input,
 .dark-app .meeting-table-head,
@@ -4276,6 +4312,17 @@ button.brand {
 .dark-app .member-row,
 .dark-app .settings-row {
   border-color: #303641
+}
+
+.dark-app .room-chat-filter {
+  border-color: #3a424f;
+  color: #b9c1cf
+}
+
+.dark-app .room-chat-filter.active {
+  border-color: #505aa0;
+  background: #30364a;
+  color: #cbd1ff
 }
 
 .dark-app .room-chat-search > input {

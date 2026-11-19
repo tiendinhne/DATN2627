@@ -33,6 +33,7 @@ function isBackendChatMessage(value: unknown): value is BackendChatMessage {
     typeof message.senderName === "string" &&
     typeof message.content === "string" &&
     typeof message.createdAt === "string" &&
+    (typeof message.meetingId === "string" || message.meetingId === null) &&
     (message.file === null || isChatFileMetadata(message.file))
   );
 }
