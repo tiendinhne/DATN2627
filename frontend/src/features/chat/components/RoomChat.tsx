@@ -92,7 +92,7 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
     setIsSearching(true);
     const timer = setTimeout(() => {
       chatService
-        .searchRoomMessages(token, roomId, query)
+        .searchRoomMessages(token, roomId, query, undefined, messageFilter)
         .then((page) => {
           if (requestId !== searchRequestIdRef.current) return;
           setSearchResults(page.items);
@@ -119,7 +119,7 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
         searchRequestIdRef.current += 1;
       }
     };
-  }, [searchOpen, searchQuery, token, roomId]);
+  }, [searchOpen, searchQuery, token, roomId, messageFilter]);
 
   useEffect(() => {
     if (!error && !fileError) {
@@ -164,6 +164,7 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
         roomId,
         query,
         searchCursor,
+        messageFilter,
       );
       if (requestId !== searchRequestIdRef.current) return;
       setSearchResults((current) => [...current, ...page.items]);
@@ -186,7 +187,6 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
   const handleOpenSearchResult = async (result: ChatSearchResult) => {
     pendingJumpIdRef.current = result.id;
     setHighlightedMessageId(result.id);
-    setMessageFilter("all");
     try {
       await loadMessagesAround(result.id);
       setSearchOpen(false);

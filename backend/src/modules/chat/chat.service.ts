@@ -484,7 +484,12 @@ export class ChatService {
   async searchMessages(
     userId: string,
     roomId: string,
-    query: { q: string; before?: string; limit: number },
+    query: {
+      q: string;
+      before?: string;
+      limit: number;
+      scope?: 'all' | 'room' | 'meeting';
+    },
   ) {
     await this.roomAccess.assertRoomAccess(userId, roomId);
     const term = query.q.trim();
@@ -497,6 +502,7 @@ export class ChatService {
       roomId: Types.ObjectId;
       deletedAt: null;
       content: { $regex: string; $options: string };
+      meetingId?: null | { $ne: null };
       $or?: Array<
         | { createdAt: { $lt: Date } }
         | { createdAt: Date; _id: { $lt: Types.ObjectId } }
@@ -505,6 +511,11 @@ export class ChatService {
       roomId: new Types.ObjectId(roomId),
       deletedAt: null,
       content: { $regex: escapeRegex(term), $options: 'i' },
+      ...(query.scope === 'room'
+        ? { meetingId: null }
+        : query.scope === 'meeting'
+          ? { meetingId: { $ne: null } }
+          : {}),
     };
     if (query.before) {
       const cursor = await this.messageModel

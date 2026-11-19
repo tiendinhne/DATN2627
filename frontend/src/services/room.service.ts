@@ -1,8 +1,20 @@
-import type { Room, RoomListResponse, RoomMember, RoomUserSearchResult } from '@/types/backend';
+import type {
+  Room,
+  RoomListResponse,
+  RoomMeetingSearchResponse,
+  RoomMember,
+  RoomUserSearchResult,
+} from '@/types/backend';
 import { request } from './api';
 
 export const listMyRooms = (token: string, page = 1) =>
   request<RoomListResponse>(token, `/rooms?page=${page}&limit=20`);
+
+export const searchMyRoomsAndMeetings = (token: string, query: string) =>
+  request<RoomMeetingSearchResponse>(
+    token,
+    `/rooms/search?q=${encodeURIComponent(query)}`,
+  );
 
 export const createRoom = (token: string, data: { name: string; description?: string }) =>
   request<Room>(token, '/rooms', { method: 'POST', body: JSON.stringify(data) });

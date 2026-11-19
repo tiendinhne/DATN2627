@@ -144,8 +144,16 @@ export class MeetingsService {
       .limit(limit + 1)
       .lean()
       .exec();
+    const items = rows.slice(0, limit);
+    const meetingsWithBoards = await this.whiteboard.listMeetingIdsWithElements(
+      items.map((meeting) => String(meeting._id)),
+    );
+    const meetingsWithBoardsSet = new Set(meetingsWithBoards);
     return {
-      items: rows.slice(0, limit).map(toMeetingResponse),
+      items: items.map((meeting) => ({
+        ...toMeetingResponse(meeting),
+        hasWhiteboard: meetingsWithBoardsSet.has(String(meeting._id)),
+      })),
       page,
       limit,
       hasMore: rows.length > limit,

@@ -383,6 +383,7 @@ describe('listMyRooms', () => {
     const rows = [1, 2, 3].map(() => ({
       role: RoomRole.MEMBER,
       room: fakeRoom({ _id: new Types.ObjectId() }),
+      activeMeetings: [],
     }));
     memberModel.aggregate.mockReturnValue(query(rows));
 
@@ -393,19 +394,105 @@ describe('listMyRooms', () => {
     expect(pipeline).toContainEqual({ $match: { 'room.status': RoomStatus.ACTIVE, 'room.deletedAt': null } });
     expect(pipeline).toContainEqual({ $skip: 2 });
     expect(pipeline).toContainEqual({ $limit: 3 });
+    expect(pipeline).toContainEqual(
+      expect.objectContaining({
+        $lookup: expect.objectContaining({
+          from: 'meetings',
+          as: 'activeMeetings',
+        }),
+      }),
+    );
     expect(res).toMatchObject({ page: 2, limit: 2, hasMore: true });
     expect(res.items).toHaveLength(2);
     expect(res.items[0].myRole).toBe(RoomRole.MEMBER);
+    expect(res.items[0].hasActiveMeeting).toBe(false);
   });
 
   it('trang cuối → hasMore false', async () => {
     const { service, memberModel } = build();
-    memberModel.aggregate.mockReturnValue(query([{ role: RoomRole.HOST, room: fakeRoom() }]));
+    memberModel.aggregate.mockReturnValue(
+      query([
+        {
+          role: RoomRole.HOST,
+          room: fakeRoom(),
+          activeMeetings: [{ _id: new Types.ObjectId() }],
+        },
+      ]),
+    );
 
     const res = await service.listMyRooms(userId, 1, 20);
 
     expect(res.hasMore).toBe(false);
-    expect(res.items[0]).toMatchObject({ id: roomId, myRole: RoomRole.HOST });
+    expect(res.items[0]).toMatchObject({
+      id: roomId,
+      myRole: RoomRole.HOST,
+      hasActiveMeeting: true,
+    });
+  });
+});
+
+describe('searchMyRoomsAndMeetings', () => {
+  it('returns empty results when the user has no active rooms', async () => {
+    const { service, memberModel } = build();
+    memberModel.aggregate.mockReturnValue(query([]));
+
+    await expect(
+      service.searchMyRoomsAndMeetings(userId, 'Toán'),
+    ).resolves.toEqual({ rooms: [], meetings: [] });
+  });
+
+  it('searches only joined rooms and returns matching room and meeting links', async () => {
+    const { service, memberModel } = build();
+    const meetingId = new Types.ObjectId();
+    memberModel.aggregate.mockReturnValue(
+      query([
+        {
+          rooms: [{ _id: new Types.ObjectId(roomId), name: 'Nhóm Toán' }],
+          meetings: [
+            {
+              _id: meetingId,
+              title: 'Ôn tập Toán',
+              roomId: new Types.ObjectId(roomId),
+              roomName: 'Nhóm Toán',
+            },
+          ],
+        },
+      ]),
+    );
+
+    const result = await service.searchMyRoomsAndMeetings(userId, 'Toán');
+    const pipeline = memberModel.aggregate.mock.calls[0][0];
+
+    expect(pipeline[0]).toEqual({
+      $match: { userId: new Types.ObjectId(userId) },
+    });
+    expect(result).toEqual({
+      rooms: [{ id: roomId, name: 'Nhóm Toán' }],
+      meetings: [
+        {
+          id: String(meetingId),
+          title: 'Ôn tập Toán',
+          roomId,
+          roomName: 'Nhóm Toán',
+        },
+      ],
+    });
+  });
+
+  it('escapes search text before matching room names and meeting titles', async () => {
+    const { service, memberModel } = build();
+    memberModel.aggregate.mockReturnValue(query([{ rooms: [], meetings: [] }]));
+
+    await service.searchMyRoomsAndMeetings(userId, 'a+b');
+
+    const pipeline = memberModel.aggregate.mock.calls[0][0];
+    expect(pipeline[4].$facet.rooms).toContainEqual({
+      $match: { 'room.name': { $regex: 'a\\+b', $options: 'i' } },
+    });
+    expect(pipeline[4].$facet.meetings[0].$lookup.pipeline[0].$match).toEqual({
+      $expr: { $eq: ['$roomId', '$$roomId'] },
+      title: { $regex: 'a\\+b', $options: 'i' },
+    });
   });
 });
 

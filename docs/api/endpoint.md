@@ -97,7 +97,16 @@ Phòng của tôi (chỉ phòng đang hoạt động), mới tham gia trước.
 | page | number | 1 | 1–1000 |
 | limit | number | 20 | 1–50 |
 
-Response `200`: `{ items: RoomResponse[], page, limit, hasMore }`.
+Response `200`: `{ items: (RoomResponse & { hasActiveMeeting: boolean })[], page, limit, hasMore }`. `hasActiveMeeting` phản ánh phòng có meeting đang `ACTIVE` hay không.
+
+### GET /rooms/search?q=... `[phát sinh kỹ thuật]`
+Tìm phòng và cuộc họp trong các phòng user là thành viên.
+
+| Query | Kiểu | Ràng buộc |
+|---|---|---|
+| q | string | trim, 1–100 ký tự |
+
+Response `200`: `{ rooms: [{ id, name }], meetings: [{ id, title, roomId, roomName }] }`; mỗi nhóm tối đa 5 kết quả, tìm không phân biệt hoa/thường theo chuỗi con. Meeting bao gồm cả buổi đang diễn ra và lịch sử.
 
 ### GET /rooms/:roomId
 Chi tiết phòng. Quyền: thành viên. Mọi thành viên đều thấy `joinCode` để chia sẻ.
@@ -183,7 +192,7 @@ Lịch sử buổi học, mới nhất trước (buổi đang diễn ra đứng 
 | page | number | 1 | 1–1000 |
 | limit | number | 20 | 1–50 |
 
-Response `200`: `{ items: MeetingResponse[], page, limit, hasMore }`.
+Response `200`: `{ items: (MeetingResponse & { hasWhiteboard: boolean })[], page, limit, hasMore }`. `hasWhiteboard` chỉ true khi snapshot có ít nhất một element hiển thị (`elementCount > 0`).
 
 ### GET /meetings/me/stats
 [phát sinh kỹ thuật] Thống kê các cuộc họp user đã tham gia trong tuần lịch hiện tại (Thứ Hai–Chủ Nhật, giờ Việt Nam). Chỉ tính meeting đã kết thúc; tổng thời gian là thời lượng tham gia của user đó.
@@ -244,6 +253,7 @@ Tìm nội dung tin nhắn trong toàn bộ lịch sử Room. Tìm chuỗi con, 
 | Query | Kiểu | Mặc định | Ghi chú |
 |---|---|---|---|
 | q | string | bắt buộc | trim, 1–100 ký tự |
+| scope | `all` \| `room` \| `meeting` | `all` | lọc tất cả tin, tin chat phòng không gắn meeting, hoặc tin được gửi trong meeting |
 | before | messageId | — | cursor để lấy trang kết quả cũ hơn |
 | limit | number | 20 | tối đa 50 |
 

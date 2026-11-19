@@ -11,6 +11,7 @@ export interface Room {
   memberCount: number;
   createdAt: string;
   myRole: RoomRole;
+  hasActiveMeeting?: boolean;
 }
 
 export interface RoomListResponse {
@@ -18,6 +19,16 @@ export interface RoomListResponse {
   page: number;
   limit: number;
   hasMore: boolean;
+}
+
+export interface RoomMeetingSearchResponse {
+  rooms: Array<{ id: string; name: string }>;
+  meetings: Array<{
+    id: string;
+    title: string;
+    roomId: string;
+    roomName: string;
+  }>;
 }
 
 export interface RoomMember {
@@ -53,6 +64,7 @@ export interface Meeting {
   totalParticipants: number;
   messageCount: number;
   durationSeconds: number;
+  hasWhiteboard?: boolean;
 }
 
 export interface MeetingListResponse {

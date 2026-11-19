@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsInt,
+  IsIn,
   IsMongoId,
   IsOptional,
   IsString,
@@ -39,6 +40,10 @@ export class SearchMessagesQueryDto {
   @MinLength(1)
   @MaxLength(100)
   q!: string;
+
+  @IsOptional()
+  @IsIn(['all', 'room', 'meeting'])
+  scope: 'all' | 'room' | 'meeting' = 'all';
 
   @IsOptional()
   @IsMongoId()

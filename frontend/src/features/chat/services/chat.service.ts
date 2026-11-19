@@ -63,8 +63,9 @@ export const chatService = {
     roomId: string,
     search: string,
     before?: string,
+    scope: "all" | "room" | "meeting" = "all",
   ): Promise<ChatSearchPage> {
-    const query = new URLSearchParams({ q: search, limit: "20" });
+    const query = new URLSearchParams({ q: search, limit: "20", scope });
     if (before) query.set("before", before);
     return request<ChatSearchPage>(
       token,

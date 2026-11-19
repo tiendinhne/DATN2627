@@ -418,6 +418,9 @@ export function RoomView({
           }
           recentMeetings={meetings}
           onJoinMeeting={handleJoinExistingMeeting}
+          onReviewMeeting={(meetingId) =>
+            router.push(`/meetings/${meetingId}/board?roomId=${encodeURIComponent(roomId)}`)
+          }
           onEndMeeting={() => setDialog("end")}
           onShowAllMeetings={() => setTab("Cuộc họp")}
         />

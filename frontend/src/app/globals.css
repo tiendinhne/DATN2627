@@ -153,6 +153,7 @@ button.brand {
 }
 
 .search-box {
+  position: relative;
   width: min(440px, 42vw);
   height: 40px;
   display: flex;
@@ -453,6 +454,71 @@ button.brand {
   margin: 0 0 2px;
   color: #80889a;
   font-size: 11px;
+}
+
+.global-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 80;
+  width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid #e5e8ef;
+  border-radius: 11px;
+  background: white;
+  box-shadow: 0 12px 30px #17203324;
+}
+
+.global-search-status {
+  margin: 0;
+  padding: 12px 14px;
+  color: #858d9d;
+  font-size: 11px;
+}
+
+.global-search-status.error {
+  color: #d14343;
+}
+
+.global-search-result {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid #eef0f4;
+  background: transparent;
+  padding: 10px 12px;
+  color: #737d90;
+  text-align: left;
+  cursor: pointer;
+}
+
+.global-search-result:last-child {
+  border-bottom: 0;
+}
+
+.global-search-result:hover {
+  background: #f5f6fa;
+}
+
+.global-search-result span {
+  min-width: 0;
+  display: grid;
+}
+
+.global-search-result strong {
+  overflow: hidden;
+  color: #354056;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-search-result small {
+  color: #9299a9;
+  font-size: 9px;
 }
 
 .stat-card strong {
@@ -1050,6 +1116,11 @@ button.brand {
   color: #6d72a5;
   background: #f3f2fa;
   font-size: 8px;
+}
+
+.board-badge.empty {
+  color: #858d9d;
+  background: #f0f1f5;
 }
 
 .info-card h2 {
@@ -4259,6 +4330,24 @@ button.brand {
 .dark-app .search-box {
   border-color: #343b47;
   background: #262c36
+}
+
+.dark-app .global-search-results {
+  border-color: #343b47;
+  background: #1f242e;
+}
+
+.dark-app .global-search-result {
+  border-color: #303641;
+  color: #b9c1cf;
+}
+
+.dark-app .global-search-result:hover {
+  background: #292f39;
+}
+
+.dark-app .global-search-result strong {
+  color: #e2e6ee;
 }
 
 .dark-app .search-box input {

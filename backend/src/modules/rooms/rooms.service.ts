@@ -20,7 +20,7 @@ import type { UserDocument } from '../users/schemas/user.schema.js';
 import { RoomAccessService } from '../room-members/room-access.service.js';
 import { MeetingsService } from '../meetings/meetings.service.js';
 import { RedisService } from '../../common/services/redis.service.js';
-import { RoomRole, RoomStatus } from '../../shared/enums.js';
+import { MeetingStatus, RoomRole, RoomStatus } from '../../shared/enums.js';
 import { RoomAction } from '../../shared/permissions.js';
 import { CreateRoomDto } from './dto/create-room.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
@@ -159,14 +159,128 @@ export class RoomsService {
         { $skip: (page - 1) * limit },
         // Lấy dư 1 bản ghi để biết còn trang sau, khỏi phải đếm tổng
         { $limit: limit + 1 },
+        {
+          $lookup: {
+            from: 'meetings',
+            let: { roomId: '$room._id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$roomId', '$$roomId'] },
+                      { $eq: ['$status', MeetingStatus.ACTIVE] },
+                    ],
+                  },
+                },
+              },
+              { $limit: 1 },
+            ],
+            as: 'activeMeetings',
+          },
+        },
       ])
       .exec();
 
     return {
-      items: rows.slice(0, limit).map((row) => toRoomResponse(row.room, row.role)),
+      items: rows.slice(0, limit).map((row) => ({
+        ...toRoomResponse(row.room, row.role),
+        hasActiveMeeting: Boolean(row.activeMeetings?.length),
+      })),
       page,
       limit,
       hasMore: rows.length > limit,
+    };
+  }
+
+  async searchMyRoomsAndMeetings(userId: string, query: string) {
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const [matches] = await this.memberModel
+      .aggregate([
+        { $match: { userId: new Types.ObjectId(userId) } },
+        {
+          $lookup: {
+            from: 'rooms',
+            localField: 'roomId',
+            foreignField: '_id',
+            as: 'room',
+          },
+        },
+        { $unwind: '$room' },
+        {
+          $match: {
+            'room.status': RoomStatus.ACTIVE,
+            'room.deletedAt': null,
+          },
+        },
+        {
+          $facet: {
+            rooms: [
+              {
+                $match: {
+                  'room.name': { $regex: escapedQuery, $options: 'i' },
+                },
+              },
+              { $sort: { 'room.name': 1 } },
+              { $limit: 5 },
+              { $project: { _id: '$room._id', name: '$room.name' } },
+            ],
+            meetings: [
+              {
+                $lookup: {
+                  from: 'meetings',
+                  let: { roomId: '$room._id' },
+                  pipeline: [
+                    {
+                      $match: {
+                        $expr: { $eq: ['$roomId', '$$roomId'] },
+                        title: { $regex: escapedQuery, $options: 'i' },
+                      },
+                    },
+                    { $sort: { startedAt: -1 } },
+                    { $limit: 5 },
+                    { $project: { _id: 1, title: 1, startedAt: 1 } },
+                  ],
+                  as: 'meeting',
+                },
+              },
+              { $unwind: '$meeting' },
+              { $sort: { 'meeting.startedAt': -1 } },
+              { $limit: 5 },
+              {
+                $project: {
+                  _id: '$meeting._id',
+                  title: '$meeting.title',
+                  roomId: '$room._id',
+                  roomName: '$room.name',
+                },
+              },
+            ],
+          },
+        },
+      ])
+      .exec();
+
+    if (!matches) return { rooms: [], meetings: [] };
+
+    return {
+      rooms: matches.rooms.map((room: { _id: Types.ObjectId; name: string }) => ({
+        id: String(room._id),
+        name: room.name,
+      })),
+      meetings: matches.meetings.map(
+        (meeting: {
+          _id: Types.ObjectId;
+          title: string;
+          roomId: Types.ObjectId;
+          roomName: string;
+        }) => ({
+          id: String(meeting._id),
+          title: meeting.title,
+          roomId: String(meeting.roomId),
+          roomName: meeting.roomName,
+        }),
+      ),
     };
   }
 

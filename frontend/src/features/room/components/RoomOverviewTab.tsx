@@ -28,6 +28,7 @@ interface RoomOverviewTabProps {
   } | null;
   recentMeetings?: Meeting[];
   onJoinMeeting: (meetingId?: string) => void;
+  onReviewMeeting: (meetingId: string) => void;
   onEndMeeting: () => void;
   onShowAllMeetings: () => void;
 }
@@ -38,6 +39,7 @@ export function RoomOverviewTab({
   activeMeeting,
   recentMeetings,
   onJoinMeeting,
+  onReviewMeeting,
   onEndMeeting,
   onShowAllMeetings,
 }: RoomOverviewTabProps) {
@@ -136,7 +138,11 @@ export function RoomOverviewTab({
             <button
               className="history-row"
               key={meeting.id}
-              onClick={() => onJoinMeeting(meeting.id)}
+              onClick={() =>
+                meeting.status === "Completed"
+                  ? onReviewMeeting(meeting.id)
+                  : onJoinMeeting(meeting.id)
+              }
               type="button"
             >
               <span className="history-icon">
@@ -148,8 +154,11 @@ export function RoomOverviewTab({
                   {meeting.date} · {meeting.duration}
                 </small>
               </span>
-              <span className="board-badge">
-                <FileText size={14} /> Có bảng vẽ
+              <span
+                className={`board-badge${meeting.hasWhiteboard ? "" : " empty"}`}
+              >
+                {meeting.hasWhiteboard && <FileText size={14} />}
+                {meeting.hasWhiteboard ? "Có bảng vẽ" : "Không có bảng vẽ"}
               </span>
               <MoreHorizontal size={19} />
             </button>

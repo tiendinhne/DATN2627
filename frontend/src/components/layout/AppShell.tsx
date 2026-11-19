@@ -14,12 +14,15 @@ import {
   Sun,
   UserRound,
   UsersRound,
+  Video,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/auth.context";
+import { searchMyRoomsAndMeetings } from "@/services/room.service";
+import type { RoomMeetingSearchResponse } from "@/types/backend";
 
 export type NavPage = "dashboard" | "room" | "profile" | "settings";
 
@@ -48,8 +51,14 @@ export function AppShell({
   const router = useRouter();
   const pathname = usePathname();
   const { dark: contextDark, toggleTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] =
+    useState<RoomMeetingSearchResponse | null>(null);
+  const [searchError, setSearchError] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const searchRequestIdRef = useRef(0);
 
   const isDark = propDark !== undefined ? propDark : contextDark;
   const handleThemeChange = propOnThemeChange || toggleTheme;
@@ -91,6 +100,58 @@ export function AppShell({
     } else {
       router.push("/dashboard");
     }
+  };
+
+  useEffect(() => {
+    const requestId = ++searchRequestIdRef.current;
+    const query = searchQuery.trim();
+    if (!token || !query) {
+      setSearchResults(null);
+      setSearchError("");
+      setIsSearching(false);
+      return;
+    }
+
+    setSearchResults(null);
+    setSearchError("");
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      searchMyRoomsAndMeetings(token, query)
+        .then((results) => {
+          if (requestId === searchRequestIdRef.current) {
+            setSearchResults(results);
+          }
+        })
+        .catch((error: unknown) => {
+          if (requestId === searchRequestIdRef.current) {
+            setSearchError(
+              error instanceof Error ? error.message : "Không thể tìm kiếm.",
+            );
+          }
+        })
+        .finally(() => {
+          if (requestId === searchRequestIdRef.current) {
+            setIsSearching(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      if (requestId === searchRequestIdRef.current) {
+        searchRequestIdRef.current += 1;
+      }
+    };
+  }, [searchQuery, token]);
+
+  const openRoom = (roomId: string) => {
+    setSearchQuery("");
+    router.push(`/rooms/${roomId}`);
+  };
+
+  const openMeeting = (meetingId: string, roomId: string) => {
+    setSearchQuery("");
+    router.push(`/meetings/${meetingId}?roomId=${encodeURIComponent(roomId)}`);
   };
 
   return (
@@ -154,7 +215,59 @@ export function AppShell({
           </button>
           <div className="search-box">
             <Search size={18} />
-            <input aria-label="Tìm kiếm" placeholder="Tìm phòng học, cuộc họp..." />
+            <input
+              aria-label="Tìm kiếm phòng học và cuộc họp"
+              placeholder="Tìm phòng học, cuộc họp..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+            {searchQuery.trim() && (
+              <div className="global-search-results">
+                {isSearching && (
+                  <p className="global-search-status">Đang tìm kiếm...</p>
+                )}
+                {searchError && (
+                  <p className="global-search-status error">{searchError}</p>
+                )}
+                {!isSearching &&
+                  !searchError &&
+                  searchResults &&
+                  searchResults.rooms.length === 0 &&
+                  searchResults.meetings.length === 0 && (
+                    <p className="global-search-status">
+                      Không tìm thấy phòng học hoặc cuộc họp.
+                    </p>
+                  )}
+                {searchResults?.rooms.map((room) => (
+                  <button
+                    className="global-search-result"
+                    key={`room-${room.id}`}
+                    type="button"
+                    onClick={() => openRoom(room.id)}
+                  >
+                    <UsersRound size={15} />
+                    <span>
+                      <strong>{room.name}</strong>
+                      <small>Phòng học</small>
+                    </span>
+                  </button>
+                ))}
+                {searchResults?.meetings.map((meeting) => (
+                  <button
+                    className="global-search-result"
+                    key={`meeting-${meeting.id}`}
+                    type="button"
+                    onClick={() => openMeeting(meeting.id, meeting.roomId)}
+                  >
+                    <Video size={15} />
+                    <span>
+                      <strong>{meeting.title}</strong>
+                      <small>Cuộc họp · {meeting.roomName}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button className="icon-button" onClick={handleThemeChange} aria-label="Đổi giao diện">

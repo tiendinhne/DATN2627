@@ -237,7 +237,8 @@ export function DashboardView({
                     <h3>{room.name}</h3>
                     {room.status === "ACTIVE" && (
                       <div className="live-pill">
-                        <Radio size={12} /> SẴN SÀNG
+                        <Radio size={12} />{" "}
+                        {room.hasActiveMeeting ? "ĐANG HỌP" : "SẴN SÀNG"}
                       </div>
                     )}
                   </div>

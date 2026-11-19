@@ -400,6 +400,44 @@ describe('searchMessages', () => {
       }),
     ]);
   });
+
+  it('limits meeting search results to messages tagged with a meeting', async () => {
+    const { service, messageModel } = build();
+    messageModel.find.mockReturnValue(query([]));
+
+    await service.searchMessages(userId, roomId, {
+      q: 'review',
+      limit: 20,
+      scope: 'meeting',
+    });
+
+    expect(messageModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: new Types.ObjectId(roomId),
+        deletedAt: null,
+        meetingId: { $ne: null },
+      }),
+    );
+  });
+
+  it('limits room chat search results to messages without a meeting tag', async () => {
+    const { service, messageModel } = build();
+    messageModel.find.mockReturnValue(query([]));
+
+    await service.searchMessages(userId, roomId, {
+      q: 'review',
+      limit: 20,
+      scope: 'room',
+    });
+
+    expect(messageModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: new Types.ObjectId(roomId),
+        deletedAt: null,
+        meetingId: null,
+      }),
+    );
+  });
 });
 
 describe('listMessages around a match', () => {

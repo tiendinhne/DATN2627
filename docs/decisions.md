@@ -241,3 +241,17 @@ Phần này không nằm trong scope hiện tại
 **Alternatives:** MongoDB text index hoặc Atlas Search.
 **Rejected because:** text index tìm theo từ/ngôn ngữ, không đúng yêu cầu chuỗi con tiếng Việt; Atlas Search thêm cấu hình/hạ tầng không cần thiết cho quy mô hiện tại.
 **Status:** CONFIRMED — user chọn tìm toàn bộ lịch sử phòng và mở tin nhắn từ kết quả. API: `docs/api/endpoint.md` mục Chat.
+
+## ADR-037 — Tìm kiếm toàn cục phòng và cuộc họp `[phát sinh kỹ thuật]`
+**Decision:** Header tìm kiếm dùng `GET /rooms/search?q=...` để tìm tên phòng và tiêu đề cuộc họp trong các phòng user là thành viên; trả tối đa 5 kết quả mỗi loại.
+**Reason:** Người dùng yêu cầu tìm kiếm phòng học và cuộc họp. Một endpoint server-side giữ kết quả trong phạm vi quyền thành viên và tránh gọi riêng API cho từng phòng.
+**Alternatives:** tải danh sách phòng rồi gọi API meeting cho từng phòng; chỉ lọc dữ liệu đã tải ở frontend.
+**Rejected because:** tạo nhiều request và không bao phủ đầy đủ lịch sử cuộc họp.
+**Status:** CONFIRMED — user duyệt phạm vi toàn bộ phòng của mình và các cuộc họp trong đó. API: `docs/api/endpoint.md` mục GET /rooms/search.
+
+## ADR-038 — Chỉ báo bảng vẽ có nội dung `[phát sinh kỹ thuật]`
+**Decision:** Lịch sử meeting trả `hasWhiteboard: true` khi snapshot đã lưu có `elementCount > 0`; bảng được xóa sạch được xem là không có nội dung.
+**Reason:** Người dùng yêu cầu phân biệt buổi họp có và không có bảng vẽ; truy vấn số element lưu sẵn tránh tải toàn bộ snapshot cho danh sách meeting.
+**Alternatives:** xem mọi snapshot, kể cả rỗng, là có bảng; gọi API xem bảng cho từng meeting.
+**Rejected because:** snapshot rỗng không có nội dung để xem lại; gọi từng API tốn request và tải dư dữ liệu.
+**Status:** CONFIRMED — user chọn chỉ hiển thị “Có bảng vẽ” khi snapshot có ít nhất một element. API: `docs/api/endpoint.md` mục GET /rooms/:roomId/meetings.
