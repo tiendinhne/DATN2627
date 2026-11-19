@@ -100,13 +100,13 @@ Phòng của tôi (chỉ phòng đang hoạt động), mới tham gia trước.
 Response `200`: `{ items: (RoomResponse & { hasActiveMeeting: boolean })[], page, limit, hasMore }`. `hasActiveMeeting` phản ánh phòng có meeting đang `ACTIVE` hay không.
 
 ### GET /rooms/search?q=... `[phát sinh kỹ thuật]`
-Tìm phòng và cuộc họp trong các phòng user là thành viên.
+Tìm phòng trong các phòng user là thành viên.
 
 | Query | Kiểu | Ràng buộc |
 |---|---|---|
 | q | string | trim, 1–100 ký tự |
 
-Response `200`: `{ rooms: [{ id, name }], meetings: [{ id, title, roomId, roomName }] }`; mỗi nhóm tối đa 5 kết quả, tìm không phân biệt hoa/thường theo chuỗi con. Meeting bao gồm cả buổi đang diễn ra và lịch sử.
+Response `200`: `{ rooms: [{ id, name }] }`; tối đa 5 kết quả, tìm không phân biệt hoa/thường theo chuỗi con.
 
 ### GET /rooms/:roomId
 Chi tiết phòng. Quyền: thành viên. Mọi thành viên đều thấy `joinCode` để chia sẻ.

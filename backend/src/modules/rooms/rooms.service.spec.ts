@@ -431,67 +431,44 @@ describe('listMyRooms', () => {
   });
 });
 
-describe('searchMyRoomsAndMeetings', () => {
+describe('searchMyRooms', () => {
   it('returns empty results when the user has no active rooms', async () => {
     const { service, memberModel } = build();
     memberModel.aggregate.mockReturnValue(query([]));
 
     await expect(
-      service.searchMyRoomsAndMeetings(userId, 'Toán'),
-    ).resolves.toEqual({ rooms: [], meetings: [] });
+      service.searchMyRooms(userId, 'Toán'),
+    ).resolves.toEqual({ rooms: [] });
   });
 
-  it('searches only joined rooms and returns matching room and meeting links', async () => {
+  it('searches only rooms joined by the user', async () => {
     const { service, memberModel } = build();
-    const meetingId = new Types.ObjectId();
     memberModel.aggregate.mockReturnValue(
       query([
         {
           rooms: [{ _id: new Types.ObjectId(roomId), name: 'Nhóm Toán' }],
-          meetings: [
-            {
-              _id: meetingId,
-              title: 'Ôn tập Toán',
-              roomId: new Types.ObjectId(roomId),
-              roomName: 'Nhóm Toán',
-            },
-          ],
         },
       ]),
     );
 
-    const result = await service.searchMyRoomsAndMeetings(userId, 'Toán');
+    const result = await service.searchMyRooms(userId, 'Toán');
     const pipeline = memberModel.aggregate.mock.calls[0][0];
 
     expect(pipeline[0]).toEqual({
       $match: { userId: new Types.ObjectId(userId) },
     });
-    expect(result).toEqual({
-      rooms: [{ id: roomId, name: 'Nhóm Toán' }],
-      meetings: [
-        {
-          id: String(meetingId),
-          title: 'Ôn tập Toán',
-          roomId,
-          roomName: 'Nhóm Toán',
-        },
-      ],
-    });
+    expect(result).toEqual({ rooms: [{ id: roomId, name: 'Nhóm Toán' }] });
   });
 
-  it('escapes search text before matching room names and meeting titles', async () => {
+  it('escapes search text before matching room names', async () => {
     const { service, memberModel } = build();
-    memberModel.aggregate.mockReturnValue(query([{ rooms: [], meetings: [] }]));
+    memberModel.aggregate.mockReturnValue(query([{ rooms: [] }]));
 
-    await service.searchMyRoomsAndMeetings(userId, 'a+b');
+    await service.searchMyRooms(userId, 'a+b');
 
     const pipeline = memberModel.aggregate.mock.calls[0][0];
     expect(pipeline[4].$facet.rooms).toContainEqual({
       $match: { 'room.name': { $regex: 'a\\+b', $options: 'i' } },
-    });
-    expect(pipeline[4].$facet.meetings[0].$lookup.pipeline[0].$match).toEqual({
-      $expr: { $eq: ['$roomId', '$$roomId'] },
-      title: { $regex: 'a\\+b', $options: 'i' },
     });
   });
 });

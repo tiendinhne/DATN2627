@@ -255,3 +255,10 @@ Phần này không nằm trong scope hiện tại
 **Alternatives:** xem mọi snapshot, kể cả rỗng, là có bảng; gọi API xem bảng cho từng meeting.
 **Rejected because:** snapshot rỗng không có nội dung để xem lại; gọi từng API tốn request và tải dư dữ liệu.
 **Status:** CONFIRMED — user chọn chỉ hiển thị “Có bảng vẽ” khi snapshot có ít nhất một element. API: `docs/api/endpoint.md` mục GET /rooms/:roomId/meetings.
+
+## ADR-039 — Giới hạn tìm kiếm toàn cục ở phòng học `[phát sinh kỹ thuật]`
+**Decision:** Header tìm kiếm chỉ tìm tên phòng user tham gia; không tìm meeting.
+**Reason:** Người dùng yêu cầu chỉ cần tìm phòng, không cần tìm cuộc họp.
+**Alternatives:** giữ tìm kiếm meeting cùng phòng.
+**Rejected because:** meeting search không cần thiết với nhu cầu hiện tại.
+**Status:** CONFIRMED — thay thế phần tìm meeting trong ADR-037; API trả tối đa 5 phòng tại `docs/api/endpoint.md` mục GET /rooms/search.

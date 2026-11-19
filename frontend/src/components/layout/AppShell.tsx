@@ -14,15 +14,14 @@ import {
   Sun,
   UserRound,
   UsersRound,
-  Video,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/auth.context";
-import { searchMyRoomsAndMeetings } from "@/services/room.service";
-import type { RoomMeetingSearchResponse } from "@/types/backend";
+import { searchMyRooms } from "@/services/room.service";
+import type { RoomSearchResponse } from "@/types/backend";
 
 export type NavPage = "dashboard" | "room" | "profile" | "settings";
 
@@ -55,7 +54,7 @@ export function AppShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] =
-    useState<RoomMeetingSearchResponse | null>(null);
+    useState<RoomSearchResponse | null>(null);
   const [searchError, setSearchError] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const searchRequestIdRef = useRef(0);
@@ -116,7 +115,7 @@ export function AppShell({
     setSearchError("");
     setIsSearching(true);
     const timer = setTimeout(() => {
-      searchMyRoomsAndMeetings(token, query)
+      searchMyRooms(token, query)
         .then((results) => {
           if (requestId === searchRequestIdRef.current) {
             setSearchResults(results);
@@ -147,11 +146,6 @@ export function AppShell({
   const openRoom = (roomId: string) => {
     setSearchQuery("");
     router.push(`/rooms/${roomId}`);
-  };
-
-  const openMeeting = (meetingId: string, roomId: string) => {
-    setSearchQuery("");
-    router.push(`/meetings/${meetingId}?roomId=${encodeURIComponent(roomId)}`);
   };
 
   return (
@@ -216,8 +210,8 @@ export function AppShell({
           <div className="search-box">
             <Search size={18} />
             <input
-              aria-label="Tìm kiếm phòng học và cuộc họp"
-              placeholder="Tìm phòng học, cuộc họp..."
+              aria-label="Tìm kiếm phòng học"
+              placeholder="Tìm phòng học..."
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
@@ -232,10 +226,9 @@ export function AppShell({
                 {!isSearching &&
                   !searchError &&
                   searchResults &&
-                  searchResults.rooms.length === 0 &&
-                  searchResults.meetings.length === 0 && (
+                  searchResults.rooms.length === 0 && (
                     <p className="global-search-status">
-                      Không tìm thấy phòng học hoặc cuộc họp.
+                      Không tìm thấy phòng học.
                     </p>
                   )}
                 {searchResults?.rooms.map((room) => (
@@ -249,20 +242,6 @@ export function AppShell({
                     <span>
                       <strong>{room.name}</strong>
                       <small>Phòng học</small>
-                    </span>
-                  </button>
-                ))}
-                {searchResults?.meetings.map((meeting) => (
-                  <button
-                    className="global-search-result"
-                    key={`meeting-${meeting.id}`}
-                    type="button"
-                    onClick={() => openMeeting(meeting.id, meeting.roomId)}
-                  >
-                    <Video size={15} />
-                    <span>
-                      <strong>{meeting.title}</strong>
-                      <small>Cuộc họp · {meeting.roomName}</small>
                     </span>
                   </button>
                 ))}

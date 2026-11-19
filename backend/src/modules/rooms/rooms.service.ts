@@ -193,7 +193,7 @@ export class RoomsService {
     };
   }
 
-  async searchMyRoomsAndMeetings(userId: string, query: string) {
+  async searchMyRooms(userId: string, query: string) {
     const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const [matches] = await this.memberModel
       .aggregate([
@@ -225,62 +225,18 @@ export class RoomsService {
               { $limit: 5 },
               { $project: { _id: '$room._id', name: '$room.name' } },
             ],
-            meetings: [
-              {
-                $lookup: {
-                  from: 'meetings',
-                  let: { roomId: '$room._id' },
-                  pipeline: [
-                    {
-                      $match: {
-                        $expr: { $eq: ['$roomId', '$$roomId'] },
-                        title: { $regex: escapedQuery, $options: 'i' },
-                      },
-                    },
-                    { $sort: { startedAt: -1 } },
-                    { $limit: 5 },
-                    { $project: { _id: 1, title: 1, startedAt: 1 } },
-                  ],
-                  as: 'meeting',
-                },
-              },
-              { $unwind: '$meeting' },
-              { $sort: { 'meeting.startedAt': -1 } },
-              { $limit: 5 },
-              {
-                $project: {
-                  _id: '$meeting._id',
-                  title: '$meeting.title',
-                  roomId: '$room._id',
-                  roomName: '$room.name',
-                },
-              },
-            ],
           },
         },
       ])
       .exec();
 
-    if (!matches) return { rooms: [], meetings: [] };
+    if (!matches) return { rooms: [] };
 
     return {
       rooms: matches.rooms.map((room: { _id: Types.ObjectId; name: string }) => ({
         id: String(room._id),
         name: room.name,
       })),
-      meetings: matches.meetings.map(
-        (meeting: {
-          _id: Types.ObjectId;
-          title: string;
-          roomId: Types.ObjectId;
-          roomName: string;
-        }) => ({
-          id: String(meeting._id),
-          title: meeting.title,
-          roomId: String(meeting.roomId),
-          roomName: meeting.roomName,
-        }),
-      ),
     };
   }
 

@@ -1,7 +1,7 @@
 import type {
   Room,
   RoomListResponse,
-  RoomMeetingSearchResponse,
+  RoomSearchResponse,
   RoomMember,
   RoomUserSearchResult,
 } from '@/types/backend';
@@ -10,8 +10,8 @@ import { request } from './api';
 export const listMyRooms = (token: string, page = 1) =>
   request<RoomListResponse>(token, `/rooms?page=${page}&limit=20`);
 
-export const searchMyRoomsAndMeetings = (token: string, query: string) =>
-  request<RoomMeetingSearchResponse>(
+export const searchMyRooms = (token: string, query: string) =>
+  request<RoomSearchResponse>(
     token,
     `/rooms/search?q=${encodeURIComponent(query)}`,
   );

@@ -21,14 +21,8 @@ export interface RoomListResponse {
   hasMore: boolean;
 }
 
-export interface RoomMeetingSearchResponse {
+export interface RoomSearchResponse {
   rooms: Array<{ id: string; name: string }>;
-  meetings: Array<{
-    id: string;
-    title: string;
-    roomId: string;
-    roomName: string;
-  }>;
 }
 
 export interface RoomMember {

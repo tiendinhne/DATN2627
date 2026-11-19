@@ -35,13 +35,10 @@ export class RoomsController {
     return this.roomsService.listMyRooms(req.user.id, query.page, query.limit);
   }
 
-  // GET /rooms/search?q=... — tìm trong phòng và meeting mà user tham gia
+  // GET /rooms/search?q=... — tìm trong các phòng user tham gia
   @Get('search')
-  searchMyRoomsAndMeetings(
-    @Req() req: any,
-    @Query() query: SearchMyRoomsQueryDto,
-  ) {
-    return this.roomsService.searchMyRoomsAndMeetings(req.user.id, query.q);
+  searchMyRooms(@Req() req: any, @Query() query: SearchMyRoomsQueryDto) {
+    return this.roomsService.searchMyRooms(req.user.id, query.q);
   }
 
   // GET /rooms/:roomId
