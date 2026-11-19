@@ -39,7 +39,10 @@ function fakeRedisClient(hash: Record<string, string>, seq: string | null) {
 }
 
 function build(hash: Record<string, string> = {}, seq: string | null = null) {
-  const whiteboardModel = { updateOne: q({ acknowledged: true }) };
+  const whiteboardModel = {
+    updateOne: q({ acknowledged: true }),
+    find: q([]),
+  };
   const meetingModel = {
     findById: q({ _id: new Types.ObjectId(meetingId), roomId: new Types.ObjectId(roomId), status: MeetingStatus.ACTIVE }),
   };
@@ -49,6 +52,23 @@ function build(hash: Record<string, string> = {}, seq: string | null = null) {
   const service = new WhiteboardService(whiteboardModel as any, meetingModel as any, access as any, redis as any);
   return { service, whiteboardModel, meetingModel, access, client };
 }
+
+describe('listMeetingIdsWithElements', () => {
+  it('returns only meetings whose saved board has visible elements', async () => {
+    const { service, whiteboardModel } = build();
+    whiteboardModel.find.mockReturnValue(
+      query([{ meetingId: new Types.ObjectId(meetingId) }]),
+    );
+
+    await expect(
+      service.listMeetingIdsWithElements([meetingId]),
+    ).resolves.toEqual([meetingId]);
+    expect(whiteboardModel.find).toHaveBeenCalledWith({
+      meetingId: { $in: [meetingId] },
+      elementCount: { $gt: 0 },
+    });
+  });
+});
 
 describe('assertCanJoin', () => {
   it('thành viên + meeting ACTIVE → trả roomId, kiểm quyền theo roomId của meeting', async () => {

@@ -23,6 +23,7 @@ function query(result: unknown) {
 function build() {
   const messageModel = {
     findOne: vi.fn(() => query(null)),
+    find: vi.fn(() => query([])),
     create: vi.fn(),
   };
   const fileModel = {
@@ -364,5 +365,114 @@ describe('sendMessage', () => {
         sizeBytes: 12,
       }),
     );
+  });
+});
+
+describe('searchMessages', () => {
+  it('searches all room messages with an escaped, case-insensitive substring', async () => {
+    const { service, messageModel, roomAccess } = build();
+    const message = {
+      _id: new Types.ObjectId(),
+      senderName: 'Student',
+      content: 'a+b is literal text',
+      createdAt: new Date(),
+    };
+    messageModel.find.mockReturnValue(query([message]));
+
+    const result = await service.searchMessages(userId, roomId, {
+      q: 'a+b',
+      limit: 20,
+    });
+
+    expect(roomAccess.assertRoomAccess).toHaveBeenCalledWith(userId, roomId);
+    expect(messageModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: new Types.ObjectId(roomId),
+        deletedAt: null,
+        content: { $regex: 'a\\+b', $options: 'i' },
+      }),
+    );
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: String(message._id),
+        senderName: 'Student',
+        content: 'a+b is literal text',
+      }),
+    ]);
+  });
+
+  it('limits meeting search results to messages tagged with a meeting', async () => {
+    const { service, messageModel } = build();
+    messageModel.find.mockReturnValue(query([]));
+
+    await service.searchMessages(userId, roomId, {
+      q: 'review',
+      limit: 20,
+      scope: 'meeting',
+    });
+
+    expect(messageModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: new Types.ObjectId(roomId),
+        deletedAt: null,
+        meetingId: { $ne: null },
+      }),
+    );
+  });
+
+  it('limits room chat search results to messages without a meeting tag', async () => {
+    const { service, messageModel } = build();
+    messageModel.find.mockReturnValue(query([]));
+
+    await service.searchMessages(userId, roomId, {
+      q: 'review',
+      limit: 20,
+      scope: 'room',
+    });
+
+    expect(messageModel.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: new Types.ObjectId(roomId),
+        deletedAt: null,
+        meetingId: null,
+      }),
+    );
+  });
+});
+
+describe('listMessages around a match', () => {
+  it('returns a chronological window centered on the selected message', async () => {
+    const { service, messageModel } = build();
+    const makeMessage = (minute: number) => ({
+      _id: new Types.ObjectId(),
+      roomId: new Types.ObjectId(roomId),
+      meetingId: null,
+      senderId: new Types.ObjectId(userId),
+      senderName: 'Student',
+      type: MessageType.TEXT,
+      content: `message ${minute}`,
+      fileId: null,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, minute)),
+    });
+    const older = [makeMessage(2), makeMessage(1)];
+    const target = makeMessage(3);
+    const newer = [makeMessage(4), makeMessage(5)];
+    messageModel.findOne.mockReturnValue(query(target));
+    messageModel.find
+      .mockReturnValueOnce(query(older))
+      .mockReturnValueOnce(query(newer));
+
+    const result = await service.listMessages(userId, roomId, {
+      around: String(target._id),
+      limit: 5,
+    });
+
+    expect(result.items.map((message) => message.id)).toEqual([
+      String(newer[1]._id),
+      String(newer[0]._id),
+      String(target._id),
+      String(older[0]._id),
+      String(older[1]._id),
+    ]);
   });
 });

@@ -58,5 +58,6 @@ export function mapBackendMeeting(m: BackendMeeting): Meeting {
     startedAt: m.startedAt,
     endedAt: m.endedAt,
     durationSeconds: m.durationSeconds,
+    hasWhiteboard: m.hasWhiteboard ?? false,
   };
 }

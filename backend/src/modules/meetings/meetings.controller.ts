@@ -29,6 +29,12 @@ export class MeetingsController {
     return this.meetings.getMyStats(req.user.id);
   }
 
+  // GET /meetings/me/stats/all-time — thống kê tích lũy từ các buổi đã kết thúc
+  @Get('meetings/me/stats/all-time')
+  allTimeStats(@Req() req: any) {
+    return this.meetings.getMyLifetimeStats(req.user.id);
+  }
+
   // POST /meetings/:meetingId/join — trả { token, livekitUrl, myRole, meeting }
   @Post('meetings/:meetingId/join')
   @HttpCode(200)

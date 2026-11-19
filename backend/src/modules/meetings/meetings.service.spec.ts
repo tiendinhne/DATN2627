@@ -98,7 +98,10 @@ function build() {
     parseWebhook: vi.fn(),
   };
   // Whiteboard + publisher giả: lưu bản cuối / đóng kênh khi kết thúc, rời kênh khi kick (spec whiteboard §3.3, §5)
-  const whiteboard = { finalizeBoard: vi.fn().mockResolvedValue(undefined) };
+  const whiteboard = {
+    finalizeBoard: vi.fn().mockResolvedValue(undefined),
+    listMeetingIdsWithElements: vi.fn().mockResolvedValue([]),
+  };
   const realtime = {
     closeMeetingChannel: vi.fn().mockResolvedValue(undefined),
     leaveMeeting: vi.fn().mockResolvedValue(undefined),
@@ -236,6 +239,23 @@ describe('listMeetings', () => {
     expect(res.items).toHaveLength(2);
     expect(res).toMatchObject({ page: 2, limit: 2, hasMore: true });
   });
+
+  it('marks only meetings with saved elements as having a whiteboard', async () => {
+    const { service, meetingModel, whiteboard } = build();
+    const rows = [fakeMeeting(), fakeMeeting({ _id: new Types.ObjectId() })];
+    meetingModel.find.mockReturnValue(query(rows));
+    whiteboard.listMeetingIdsWithElements.mockResolvedValue([meetingId]);
+
+    const result = await service.listMeetings(userId, roomId, 1, 20);
+
+    expect(whiteboard.listMeetingIdsWithElements).toHaveBeenCalledWith(
+      rows.map((meeting) => String(meeting._id)),
+    );
+    expect(result.items.map((meeting) => meeting.hasWhiteboard)).toEqual([
+      true,
+      false,
+    ]);
+  });
 });
 
 describe('getMyStats', () => {
@@ -275,6 +295,21 @@ describe('getMyStats', () => {
       meetingCount: 0,
       totalDurationSeconds: 0,
     });
+  });
+
+  it('tính thống kê trọn đời chỉ từ các meeting đã kết thúc', async () => {
+    const { service, participantModel } = build();
+    participantModel.aggregate.mockReturnValue(
+      query([{ meetingCount: 5, totalDurationSeconds: 10800 }]),
+    );
+
+    const stats = await service.getMyLifetimeStats(userId);
+    const pipeline = participantModel.aggregate.mock.calls[0][0];
+
+    expect(pipeline[3]).toEqual({
+      $match: { 'meeting.status': MeetingStatus.ENDED },
+    });
+    expect(stats).toEqual({ meetingCount: 5, totalDurationSeconds: 10800 });
   });
 });
 

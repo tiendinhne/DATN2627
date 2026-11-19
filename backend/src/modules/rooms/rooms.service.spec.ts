@@ -383,6 +383,7 @@ describe('listMyRooms', () => {
     const rows = [1, 2, 3].map(() => ({
       role: RoomRole.MEMBER,
       room: fakeRoom({ _id: new Types.ObjectId() }),
+      activeMeetings: [],
     }));
     memberModel.aggregate.mockReturnValue(query(rows));
 
@@ -393,19 +394,82 @@ describe('listMyRooms', () => {
     expect(pipeline).toContainEqual({ $match: { 'room.status': RoomStatus.ACTIVE, 'room.deletedAt': null } });
     expect(pipeline).toContainEqual({ $skip: 2 });
     expect(pipeline).toContainEqual({ $limit: 3 });
+    expect(pipeline).toContainEqual(
+      expect.objectContaining({
+        $lookup: expect.objectContaining({
+          from: 'meetings',
+          as: 'activeMeetings',
+        }),
+      }),
+    );
     expect(res).toMatchObject({ page: 2, limit: 2, hasMore: true });
     expect(res.items).toHaveLength(2);
     expect(res.items[0].myRole).toBe(RoomRole.MEMBER);
+    expect(res.items[0].hasActiveMeeting).toBe(false);
   });
 
   it('trang cuối → hasMore false', async () => {
     const { service, memberModel } = build();
-    memberModel.aggregate.mockReturnValue(query([{ role: RoomRole.HOST, room: fakeRoom() }]));
+    memberModel.aggregate.mockReturnValue(
+      query([
+        {
+          role: RoomRole.HOST,
+          room: fakeRoom(),
+          activeMeetings: [{ _id: new Types.ObjectId() }],
+        },
+      ]),
+    );
 
     const res = await service.listMyRooms(userId, 1, 20);
 
     expect(res.hasMore).toBe(false);
-    expect(res.items[0]).toMatchObject({ id: roomId, myRole: RoomRole.HOST });
+    expect(res.items[0]).toMatchObject({
+      id: roomId,
+      myRole: RoomRole.HOST,
+      hasActiveMeeting: true,
+    });
+  });
+});
+
+describe('searchMyRooms', () => {
+  it('returns empty results when the user has no active rooms', async () => {
+    const { service, memberModel } = build();
+    memberModel.aggregate.mockReturnValue(query([]));
+
+    await expect(
+      service.searchMyRooms(userId, 'Toán'),
+    ).resolves.toEqual({ rooms: [] });
+  });
+
+  it('searches only rooms joined by the user', async () => {
+    const { service, memberModel } = build();
+    memberModel.aggregate.mockReturnValue(
+      query([
+        {
+          rooms: [{ _id: new Types.ObjectId(roomId), name: 'Nhóm Toán' }],
+        },
+      ]),
+    );
+
+    const result = await service.searchMyRooms(userId, 'Toán');
+    const pipeline = memberModel.aggregate.mock.calls[0][0];
+
+    expect(pipeline[0]).toEqual({
+      $match: { userId: new Types.ObjectId(userId) },
+    });
+    expect(result).toEqual({ rooms: [{ id: roomId, name: 'Nhóm Toán' }] });
+  });
+
+  it('escapes search text before matching room names', async () => {
+    const { service, memberModel } = build();
+    memberModel.aggregate.mockReturnValue(query([{ rooms: [] }]));
+
+    await service.searchMyRooms(userId, 'a+b');
+
+    const pipeline = memberModel.aggregate.mock.calls[0][0];
+    expect(pipeline[4].$facet.rooms).toContainEqual({
+      $match: { 'room.name': { $regex: 'a\\+b', $options: 'i' } },
+    });
   });
 });
 
@@ -454,7 +518,12 @@ describe('listMembers', () => {
   it('HOST đứng đầu, map userId/displayName, bỏ bản ghi có user đã bị xoá', async () => {
     const { service, memberModel } = build();
     const joinedAt = new Date('2026-09-26T00:00:00Z');
-    const hostUser = { _id: new Types.ObjectId(userId), displayName: 'Chủ phòng', avatarUrl: null };
+    const hostUser = {
+      _id: new Types.ObjectId(userId),
+      email: 'host@example.com',
+      displayName: 'Chủ phòng',
+      avatarUrl: null,
+    };
     const find = query([
       { userId: hostUser, role: RoomRole.HOST, joinedAt },
       { userId: null, role: RoomRole.MEMBER, joinedAt },
@@ -465,9 +534,16 @@ describe('listMembers', () => {
 
     expect(memberModel.find).toHaveBeenCalledWith({ roomId });
     expect(find.sort).toHaveBeenCalledWith({ role: 1, joinedAt: 1 });
-    expect(find.populate).toHaveBeenCalledWith('userId', 'displayName avatarUrl');
+    expect(find.populate).toHaveBeenCalledWith('userId', 'email displayName avatarUrl');
     expect(res).toEqual([
-      { userId, displayName: 'Chủ phòng', avatarUrl: null, role: RoomRole.HOST, joinedAt },
+      {
+        userId,
+        email: 'host@example.com',
+        displayName: 'Chủ phòng',
+        avatarUrl: null,
+        role: RoomRole.HOST,
+        joinedAt,
+      },
     ]);
   });
 });

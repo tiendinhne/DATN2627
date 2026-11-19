@@ -95,6 +95,16 @@ export class WhiteboardService {
     };
   }
 
+  async listMeetingIdsWithElements(meetingIds: string[]): Promise<string[]> {
+    if (meetingIds.length === 0) return [];
+    const boards = await this.whiteboardModel
+      .find({ meetingId: { $in: meetingIds }, elementCount: { $gt: 0 } })
+      .select('meetingId')
+      .lean()
+      .exec();
+    return boards.map((board) => String(board.meetingId));
+  }
+
   // Snapshot gửi người vừa join / reconnect: toàn bộ Hash, GỒM tombstone (để người reconnect xoá được element đã bị xoá)
   async getSnapshot(meetingId: string): Promise<{ seq: number | null; elements: unknown[] }> {
     const { hash, seq } = await this.readBoard(meetingId);

@@ -103,7 +103,7 @@ export function SettingsView({
           description={
             hasPassword
               ? "Đổi xong, các thiết bị khác sẽ bị đăng xuất"
-              : "Tài khoản đăng nhập bằng Google — đặt mật khẩu để đăng nhập thêm bằng mật khẩu"
+              : "Tài khoản đăng nhập bằng Google đặt mật khẩu để đăng nhập thêm bằng mật khẩu"
           }
         >
           <form className="profile-form" onSubmit={handleChangePassword}>

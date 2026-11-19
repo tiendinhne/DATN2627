@@ -97,7 +97,16 @@ Phòng của tôi (chỉ phòng đang hoạt động), mới tham gia trước.
 | page | number | 1 | 1–1000 |
 | limit | number | 20 | 1–50 |
 
-Response `200`: `{ items: RoomResponse[], page, limit, hasMore }`.
+Response `200`: `{ items: (RoomResponse & { hasActiveMeeting: boolean })[], page, limit, hasMore }`. `hasActiveMeeting` phản ánh phòng có meeting đang `ACTIVE` hay không.
+
+### GET /rooms/search?q=... `[phát sinh kỹ thuật]`
+Tìm phòng trong các phòng user là thành viên.
+
+| Query | Kiểu | Ràng buộc |
+|---|---|---|
+| q | string | trim, 1–100 ký tự |
+
+Response `200`: `{ rooms: [{ id, name }] }`; tối đa 5 kết quả, tìm không phân biệt hoa/thường theo chuỗi con.
 
 ### GET /rooms/:roomId
 Chi tiết phòng. Quyền: thành viên. Mọi thành viên đều thấy `joinCode` để chia sẻ.
@@ -115,7 +124,7 @@ Phải có ít nhất 1 field (không thì `400`). `403` nếu không phải HOS
 
 ### GET /rooms/:roomId/members
 Danh sách thành viên, HOST đứng đầu rồi theo thời gian vào phòng. Quyền: thành viên.
-Response `200`: `[{ userId, displayName, avatarUrl, role, joinedAt }]`.
+Response `200`: `[{ userId, email, displayName, avatarUrl, role, joinedAt }]`.
 
 ### GET /rooms/:roomId/members/search?q=...
 Tìm user theo tiền tố email hoặc username để HOST chọn thêm vào phòng. Chỉ trả tối đa 10 kết quả và loại user đã là thành viên.
@@ -183,10 +192,14 @@ Lịch sử buổi học, mới nhất trước (buổi đang diễn ra đứng 
 | page | number | 1 | 1–1000 |
 | limit | number | 20 | 1–50 |
 
-Response `200`: `{ items: MeetingResponse[], page, limit, hasMore }`.
+Response `200`: `{ items: (MeetingResponse & { hasWhiteboard: boolean })[], page, limit, hasMore }`. `hasWhiteboard` chỉ true khi snapshot có ít nhất một element hiển thị (`elementCount > 0`).
 
 ### GET /meetings/me/stats
 [phát sinh kỹ thuật] Thống kê các cuộc họp user đã tham gia trong tuần lịch hiện tại (Thứ Hai–Chủ Nhật, giờ Việt Nam). Chỉ tính meeting đã kết thúc; tổng thời gian là thời lượng tham gia của user đó.
+- Response `200`: `{ meetingCount, totalDurationSeconds }`.
+
+### GET /meetings/me/stats/all-time
+[phát sinh kỹ thuật] Thống kê tích lũy các cuộc họp user đã tham gia. Chỉ tính meeting đã kết thúc; tổng thời gian là thời lượng tham gia của user đó.
 - Response `200`: `{ meetingCount, totalDurationSeconds }`.
 
 ### POST /meetings/:meetingId/join
@@ -229,9 +242,22 @@ Header: `Authorization: Bearer <accessToken>`.
 | before | messageId | — | cursor: lấy tin cũ hơn tin này |
 | limit | number | 50 | tối đa 100 |
 | meetingId | ObjectId | — | có thì chỉ lấy tin của meeting đó; Meeting phải thuộc room |
+| around | messageId | — | lấy tối đa `limit` tin quanh tin này để mở từ kết quả tìm kiếm; không dùng chung với `before` |
 
 Quyền: thành viên room.
 Response: `{ items: [{ id, roomId, meetingId, meetingTitle?, senderId, senderName, type, content, fileId, file, createdAt }], nextCursor }`. `file` là metadata `{ id, originalName, mimeType, sizeBytes }` hoặc `null`; response không chứa object key hay URL tải xuống.
+
+### GET /rooms/:roomId/messages/search `[phát sinh kỹ thuật]`
+Tìm nội dung tin nhắn trong toàn bộ lịch sử Room. Tìm chuỗi con, không phân biệt hoa/thường; không tìm tên file hoặc metadata đính kèm.
+
+| Query | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| q | string | bắt buộc | trim, 1–100 ký tự |
+| scope | `all` \| `room` \| `meeting` | `all` | lọc tất cả tin, tin chat phòng không gắn meeting, hoặc tin được gửi trong meeting |
+| before | messageId | — | cursor để lấy trang kết quả cũ hơn |
+| limit | number | 20 | tối đa 50 |
+
+Quyền: thành viên Room. Kết quả mới nhất trước, chỉ trả `id`, `senderName`, `content`, `createdAt`; `nextCursor` dùng để tải thêm kết quả. Gửi `around=<id>` tới `GET /rooms/:roomId/messages` để tải tin nhắn và ngữ cảnh quanh một kết quả.
 
 ### POST /rooms/:roomId/uploads
 Cấp quyền PUT file trực tiếp lên Object Storage; không gửi nội dung file qua Backend.
@@ -288,6 +314,22 @@ Sau khi lưu thành công, server phát đúng một `chat:new` vào `room:{room
 `meetingId` được Backend kiểm tra rồi mới lưu; tin nhắn vẫn thuộc luồng Room. Client lọc theo `meetingId` để hiển thị khung chat Meeting. Sự kiện chỉ mang nội dung tin nhắn và metadata, không mang bytes hay URL tải file. Lỗi quyền/validate phát qua event `error` `{ statusCode, error, message }`.
 
 Khi thành viên rời/bị kick hoặc Room giải tán, server phát `room:access_revoked` (envelope chuẩn, `data.reason` là `LEFT`, `KICKED` hoặc `DISSOLVED`) rồi buộc các socket trên mọi Backend instance rời `room:{roomId}` qua Redis Adapter.
+
+#### Room-page presence `[phát sinh kỹ thuật]`
+Trang phòng dùng kết nối Socket.IO riêng, không dùng kênh chat hay `meeting:join` để xác định presence. Các event chỉ phản ánh user đang mở trang phòng; chúng không cập nhật attendance của Meeting (attendance vẫn do webhook LiveKit quyết định).
+
+| Client → Server | Payload | Xử lý |
+|---|---|---|
+| `room:presence:subscribe` | `{ roomId }` | Kiểm tra thành viên, join `room-page:{roomId}`, trả snapshot |
+| `room:presence:heartbeat` | `{ roomId }` | Kiểm tra quyền và gia hạn TTL; chỉ hợp lệ sau subscribe |
+| `room:presence:unsubscribe` | `{ roomId }` | Rời kênh; chỉ báo offline khi user không còn socket trang phòng nào |
+
+| Server → Client | `data` | Gửi tới |
+|---|---|---|
+| `room:presence_snapshot` | `{ onlineUserIds[] }`, `seq: null` | Riêng socket vừa subscribe |
+| `room:presence_changed` | `{ userId, online }`, `seq: null` | `room-page:{roomId}` trừ socket gửi |
+
+Heartbeat mỗi 20 giây gia hạn TTL 60 giây cho user trong Redis. Snapshot loại bỏ user có TTL hết hạn; khi disconnect/unsubscribe, chỉ socket cuối cùng của user mới xoá trạng thái online. Reconnect subscribe lại để lấy snapshot mới. `room:access_revoked` làm client đóng presence socket.
 
 ### Socket.IO whiteboard
 Cùng namespace `/meeting`. Spec: `docs/task/whiteboard/whiteboard_sync_spec.md` §3.

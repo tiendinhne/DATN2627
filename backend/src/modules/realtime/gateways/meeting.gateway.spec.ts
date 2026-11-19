@@ -17,6 +17,15 @@ function build() {
   const roomAccess = {
     assertRoomAccess: vi.fn().mockResolvedValue(undefined),
   };
+  const redis = {
+    smembers: vi.fn().mockResolvedValue([]),
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
+    sadd: vi.fn().mockResolvedValue(1),
+    srem: vi.fn().mockResolvedValue(1),
+    expire: vi.fn().mockResolvedValue(true),
+    del: vi.fn().mockResolvedValue(1),
+  };
   const chat = {
     sendMessage: vi.fn().mockResolvedValue({
       created: true,
@@ -36,6 +45,7 @@ function build() {
     jwt as any,
     users as any,
     roomAccess as any,
+    redis as any,
     chat as any,
     publisher,
     whiteboard as any,
@@ -45,11 +55,14 @@ function build() {
   const except = vi.fn().mockReturnValue({ emit });
   const to = vi.fn().mockReturnValue({ emit, except });
   publisher.setNamespace({ to, volatile: { to } } as any);
+  const fetchSockets = vi.fn();
+  const nsp = { in: vi.fn().mockReturnValue({ fetchSockets }) };
   // socket.rooms giả: join / leave cập nhật như Socket.IO thật
   const socket = {
     id: 'socket-1',
     rooms: new Set<string>(['socket-1']),
     data: { userId, displayName: 'Student' } as Record<string, any>,
+    nsp,
     join: vi.fn(async (channel: string) => {
       socket.rooms.add(channel);
     }),
@@ -58,7 +71,22 @@ function build() {
     }),
     emit: vi.fn(),
   };
-  return { gateway, jwt, users, roomAccess, chat, whiteboard, ai, socket, emit, except, to };
+  fetchSockets.mockResolvedValue([socket]);
+  return {
+    gateway,
+    jwt,
+    users,
+    roomAccess,
+    redis,
+    chat,
+    whiteboard,
+    ai,
+    socket,
+    fetchSockets,
+    emit,
+    except,
+    to,
+  };
 }
 
 describe('MeetingGateway chat events', () => {
@@ -86,6 +114,110 @@ describe('MeetingGateway chat events', () => {
 
     expect(roomAccess.assertRoomAccess).toHaveBeenCalledWith(userId, roomId);
     expect(socket.join).toHaveBeenCalledWith(`room:${roomId}`);
+  });
+
+  it('subscribes room-page presence, sends a snapshot, and broadcasts the first online transition', async () => {
+    const { gateway, roomAccess, redis, socket, emit, except, to } = build();
+
+    await gateway.handleRoomPresenceSubscribe(socket as any, { roomId });
+
+    expect(roomAccess.assertRoomAccess).toHaveBeenCalledWith(userId, roomId);
+    expect(socket.join).toHaveBeenCalledWith(`room-page:${roomId}`);
+    expect(redis.sadd).toHaveBeenCalledWith(`room-presence:${roomId}`, userId);
+    expect(redis.expire).toHaveBeenCalledWith(`room-presence:${roomId}`, 60);
+    expect(socket.emit).toHaveBeenCalledWith(
+      'room:presence_snapshot',
+      expect.objectContaining({
+        v: 1,
+        seq: null,
+        actorId: userId,
+        roomId,
+        meetingId: null,
+        data: { onlineUserIds: [userId] },
+      }),
+    );
+    expect(to).toHaveBeenCalledWith(`room-page:${roomId}`);
+    expect(except).toHaveBeenCalledWith(socket.id);
+    expect(emit).toHaveBeenCalledWith(
+      'room:presence_changed',
+      expect.objectContaining({
+        v: 1,
+        seq: null,
+        actorId: userId,
+        roomId,
+        meetingId: null,
+        data: { userId, online: true },
+      }),
+    );
+  });
+
+  it('does not rebroadcast online when another socket adds the user concurrently', async () => {
+    const { gateway, redis, socket, emit } = build();
+    redis.sadd.mockResolvedValue(0);
+
+    await gateway.handleRoomPresenceSubscribe(socket as any, { roomId });
+
+    expect(socket.emit).toHaveBeenCalledWith(
+      'room:presence_snapshot',
+      expect.objectContaining({ data: { onlineUserIds: [userId] } }),
+    );
+    expect(emit).not.toHaveBeenCalledWith(
+      'room:presence_changed',
+      expect.anything(),
+    );
+  });
+
+  it('does not mark a user offline while another room-page socket remains', async () => {
+    const { gateway, redis, socket, fetchSockets, emit } = build();
+    socket.data.presenceRoomIds = [roomId];
+    redis.smembers.mockResolvedValue([userId]);
+    fetchSockets.mockResolvedValue([{ data: { userId } }]);
+
+    await gateway.handleRoomPresenceUnsubscribe(socket as any, { roomId });
+
+    expect(socket.leave).toHaveBeenCalledWith(`room-page:${roomId}`);
+    expect(redis.srem).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalledWith('room:presence_changed', expect.anything());
+  });
+
+  it('refreshes room-page presence on an authorized heartbeat', async () => {
+    const { gateway, roomAccess, redis, socket, emit } = build();
+    socket.rooms.add(`room-page:${roomId}`);
+    socket.data.presenceRoomIds = [roomId];
+    redis.smembers.mockResolvedValue([userId]);
+    redis.get.mockResolvedValue('1');
+
+    await gateway.handleRoomPresenceHeartbeat(socket as any, { roomId });
+
+    expect(roomAccess.assertRoomAccess).toHaveBeenCalledWith(userId, roomId);
+    expect(redis.set).toHaveBeenCalledWith(
+      `room-presence:${roomId}:user:${userId}`,
+      '1',
+      60,
+    );
+    expect(redis.expire).toHaveBeenCalledWith(`room-presence:${roomId}`, 60);
+    expect(emit).not.toHaveBeenCalledWith(
+      'room:presence_changed',
+      expect.anything(),
+    );
+  });
+
+  it('removes a disconnected user after their last room-page socket leaves', async () => {
+    const { gateway, redis, socket, fetchSockets, emit } = build();
+    socket.data.presenceRoomIds = [roomId];
+    redis.smembers.mockResolvedValue([userId]);
+    fetchSockets.mockResolvedValue([]);
+
+    await gateway.handleDisconnect(socket as any);
+
+    expect(redis.srem).toHaveBeenCalledWith(`room-presence:${roomId}`, userId);
+    expect(redis.del).toHaveBeenCalledWith(
+      `room-presence:${roomId}:user:${userId}`,
+    );
+    expect(emit).toHaveBeenCalledWith(
+      'room:presence_changed',
+      expect.objectContaining({ data: { userId, online: false } }),
+    );
   });
 
   it('emits persisted messages to the room with the standard envelope', async () => {

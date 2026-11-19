@@ -24,6 +24,7 @@ export interface Meeting {
   startedAt?: string;
   endedAt?: string | null;
   durationSeconds?: number;
+  hasWhiteboard?: boolean;
 }
 
 export interface Participant {

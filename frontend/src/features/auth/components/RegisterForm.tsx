@@ -1,6 +1,7 @@
 "use client";
 
 import { Eye } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -64,8 +65,17 @@ export function RegisterForm({
       <h1>Tạo tài khoản mới</h1>
       <p>Tham gia không gian học nhóm và sáng tạo cùng bạn bè.</p>
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-700 text-sm">{error}</p>
+        <div
+          role="alert"
+          className="mb-4 flex items-center gap-2 rounded-md bg-red-50 px-3 py-2"
+        >
+          <AlertCircle
+            size={16}
+            className="shrink-0 text-red-500"
+          />
+          <p className="text-xs font-medium text-red-700">
+            {error}
+          </p>
         </div>
       )}
       <div className="field-grid">

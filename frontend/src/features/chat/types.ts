@@ -7,9 +7,22 @@ export interface ChatMessage {
   text: string;
   color: string;
   meeting?: string;
+  meetingId: string | null;
   file?: ChatFileMetadata | null;
   isOwn: boolean;
   createdAt: string;
+}
+
+export interface ChatSearchResult {
+  id: string;
+  senderName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatSearchPage {
+  items: ChatSearchResult[];
+  nextCursor: string | null;
 }
 
 export interface ChatFileMetadata {

@@ -27,6 +27,9 @@ import { validateElementsBatch } from '../../whiteboard/element.validator.js';
 import type { WbElement } from '../../whiteboard/element.validator.js';
 import { AiAssistantService } from '../../ai-assistant/ai-assistant.service.js';
 import { AiGenerateDto } from '../../ai-assistant/dto/ai-generate.dto.js';
+import { RedisService } from '../../../common/services/redis.service.js';
+
+const ROOM_PRESENCE_TTL_SECONDS = 60;
 
 class RoomIdDto {
   @IsMongoId()
@@ -50,6 +53,7 @@ export class MeetingGateway
     private readonly jwt: JwtService,
     private readonly users: UsersService,
     private readonly roomAccess: RoomAccessService,
+    private readonly redis: RedisService,
     private readonly chat: ChatService,
     private readonly publisher: RealtimePublisher,
     private readonly whiteboard: WhiteboardService,
@@ -76,8 +80,12 @@ export class MeetingGateway
     this.logger.log(`Client connected: ${socket.id}`);
   }
 
-  handleDisconnect(socket: Socket) {
+  async handleDisconnect(socket: Socket) {
     this.logger.log(`Client disconnected: ${socket.id}`);
+    const roomIds: string[] = socket.data.presenceRoomIds ?? [];
+    for (const roomId of roomIds) {
+      await this.removeRoomPresence(socket, roomId, false);
+    }
   }
 
   private async authenticate(socket: Socket) {
@@ -121,6 +129,97 @@ export class MeetingGateway
     try {
       const dto = await this.validatePayload(RoomIdDto, data);
       await socket.leave(`room:${dto.roomId}`);
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  @SubscribeMessage('room:presence:subscribe')
+  async handleRoomPresenceSubscribe(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(RoomIdDto, data);
+      await this.roomAccess.assertRoomAccess(socket.data.userId, dto.roomId);
+
+      const channel = `room-page:${dto.roomId}`;
+      await socket.join(channel);
+      socket.data.presenceRoomIds = [
+        ...new Set([...(socket.data.presenceRoomIds ?? []), dto.roomId]),
+      ];
+
+      const onlineUserIds = await this.getOnlineUserIds(
+        dto.roomId,
+        socket.data.userId,
+      );
+      const wasOnline = onlineUserIds.includes(socket.data.userId);
+      const addedToSet = await this.refreshRoomPresence(
+        dto.roomId,
+        socket.data.userId,
+      );
+      const snapshot = wasOnline
+        ? onlineUserIds
+        : [...onlineUserIds, socket.data.userId];
+
+      this.publisher.sendRoomPresenceSnapshot(socket, {
+        actorId: socket.data.userId,
+        roomId: dto.roomId,
+        onlineUserIds: snapshot,
+      });
+      if (!wasOnline && addedToSet) {
+        this.publisher.publishRoomPresenceChanged(socket.id, {
+          actorId: socket.data.userId,
+          roomId: dto.roomId,
+          userId: socket.data.userId,
+          online: true,
+        });
+      }
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  @SubscribeMessage('room:presence:heartbeat')
+  async handleRoomPresenceHeartbeat(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(RoomIdDto, data);
+      await this.roomAccess.assertRoomAccess(socket.data.userId, dto.roomId);
+      if (
+        !socket.rooms.has(`room-page:${dto.roomId}`) ||
+        !(socket.data.presenceRoomIds ?? []).includes(dto.roomId)
+      ) {
+        throw new ForbiddenException('Bạn chưa đăng ký trạng thái phòng');
+      }
+
+      const onlineUserIds = await this.getOnlineUserIds(
+        dto.roomId,
+        socket.data.userId,
+      );
+      const wasOnline = onlineUserIds.includes(socket.data.userId);
+      const addedToSet = await this.refreshRoomPresence(
+        dto.roomId,
+        socket.data.userId,
+      );
+      if (!wasOnline && addedToSet) {
+        this.publisher.publishRoomPresenceChanged(socket.id, {
+          actorId: socket.data.userId,
+          roomId: dto.roomId,
+          userId: socket.data.userId,
+          online: true,
+        });
+      }
+    } catch (error) {
+      this.sendExpectedError(socket, error);
+    }
+  }
+
+  @SubscribeMessage('room:presence:unsubscribe')
+  async handleRoomPresenceUnsubscribe(socket: Socket, data: unknown) {
+    try {
+      const dto = await this.validatePayload(RoomIdDto, data);
+      await this.roomAccess.assertRoomAccess(socket.data.userId, dto.roomId);
+      if (!(socket.data.presenceRoomIds ?? []).includes(dto.roomId)) {
+        throw new ForbiddenException('Bạn chưa đăng ký trạng thái phòng');
+      }
+      await this.removeRoomPresence(socket, dto.roomId, true);
     } catch (error) {
       this.sendExpectedError(socket, error);
     }
@@ -286,6 +385,85 @@ export class MeetingGateway
       throw new BadRequestException(messages);
     }
     return dto;
+  }
+
+  private async getOnlineUserIds(roomId: string, actorId: string): Promise<string[]> {
+    const key = this.roomPresenceKey(roomId);
+    const userIds = await this.redis.smembers(key);
+    const onlineUserIds: string[] = [];
+
+    for (const userId of userIds) {
+      if (await this.redis.get(this.roomPresenceUserKey(roomId, userId))) {
+        onlineUserIds.push(userId);
+      } else if (await this.redis.srem(key, userId)) {
+        this.publisher.publishRoomPresenceChanged(null, {
+          actorId,
+          roomId,
+          userId,
+          online: false,
+        });
+      }
+    }
+
+    return onlineUserIds;
+  }
+
+  private async refreshRoomPresence(
+    roomId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const addedToSet = await this.redis.sadd(
+      this.roomPresenceKey(roomId),
+      userId,
+    );
+    await this.redis.set(
+      this.roomPresenceUserKey(roomId, userId),
+      '1',
+      ROOM_PRESENCE_TTL_SECONDS,
+    );
+    await this.redis.expire(
+      this.roomPresenceKey(roomId),
+      ROOM_PRESENCE_TTL_SECONDS,
+    );
+    return addedToSet > 0;
+  }
+
+  private async removeRoomPresence(
+    socket: Socket,
+    roomId: string,
+    leaveChannel: boolean,
+  ) {
+    const channel = `room-page:${roomId}`;
+    if (leaveChannel) await socket.leave(channel);
+    socket.data.presenceRoomIds = (socket.data.presenceRoomIds ?? []).filter(
+      (id: string) => id !== roomId,
+    );
+
+    const remainingSockets = await socket.nsp.in(channel).fetchSockets();
+    const hasOtherSocket = remainingSockets.some(
+      (remainingSocket) => remainingSocket.data.userId === socket.data.userId,
+    );
+    if (hasOtherSocket) return;
+
+    const key = this.roomPresenceKey(roomId);
+    const removed = await this.redis.srem(key, socket.data.userId);
+    await this.redis.del(this.roomPresenceUserKey(roomId, socket.data.userId));
+    if (removed) {
+      this.publisher.publishRoomPresenceChanged(socket.id, {
+        actorId: socket.data.userId,
+        roomId,
+        userId: socket.data.userId,
+        online: false,
+      });
+    }
+  }
+
+  private roomPresenceKey(roomId: string) {
+    return `room-presence:${roomId}`;
+  }
+
+  private roomPresenceUserKey(roomId: string, userId: string) {
+    return `room-presence:${roomId}:user:${userId}`;
   }
 
   private sendExpectedError(socket: Socket, error: unknown) {

@@ -20,7 +20,7 @@ import type { UserDocument } from '../users/schemas/user.schema.js';
 import { RoomAccessService } from '../room-members/room-access.service.js';
 import { MeetingsService } from '../meetings/meetings.service.js';
 import { RedisService } from '../../common/services/redis.service.js';
-import { RoomRole, RoomStatus } from '../../shared/enums.js';
+import { MeetingStatus, RoomRole, RoomStatus } from '../../shared/enums.js';
 import { RoomAction } from '../../shared/permissions.js';
 import { CreateRoomDto } from './dto/create-room.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
@@ -159,14 +159,84 @@ export class RoomsService {
         { $skip: (page - 1) * limit },
         // Lấy dư 1 bản ghi để biết còn trang sau, khỏi phải đếm tổng
         { $limit: limit + 1 },
+        {
+          $lookup: {
+            from: 'meetings',
+            let: { roomId: '$room._id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$roomId', '$$roomId'] },
+                      { $eq: ['$status', MeetingStatus.ACTIVE] },
+                    ],
+                  },
+                },
+              },
+              { $limit: 1 },
+            ],
+            as: 'activeMeetings',
+          },
+        },
       ])
       .exec();
 
     return {
-      items: rows.slice(0, limit).map((row) => toRoomResponse(row.room, row.role)),
+      items: rows.slice(0, limit).map((row) => ({
+        ...toRoomResponse(row.room, row.role),
+        hasActiveMeeting: Boolean(row.activeMeetings?.length),
+      })),
       page,
       limit,
       hasMore: rows.length > limit,
+    };
+  }
+
+  async searchMyRooms(userId: string, query: string) {
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const [matches] = await this.memberModel
+      .aggregate([
+        { $match: { userId: new Types.ObjectId(userId) } },
+        {
+          $lookup: {
+            from: 'rooms',
+            localField: 'roomId',
+            foreignField: '_id',
+            as: 'room',
+          },
+        },
+        { $unwind: '$room' },
+        {
+          $match: {
+            'room.status': RoomStatus.ACTIVE,
+            'room.deletedAt': null,
+          },
+        },
+        {
+          $facet: {
+            rooms: [
+              {
+                $match: {
+                  'room.name': { $regex: escapedQuery, $options: 'i' },
+                },
+              },
+              { $sort: { 'room.name': 1 } },
+              { $limit: 5 },
+              { $project: { _id: '$room._id', name: '$room.name' } },
+            ],
+          },
+        },
+      ])
+      .exec();
+
+    if (!matches) return { rooms: [] };
+
+    return {
+      rooms: matches.rooms.map((room: { _id: Types.ObjectId; name: string }) => ({
+        id: String(room._id),
+        name: room.name,
+      })),
     };
   }
 
@@ -205,11 +275,12 @@ export class RoomsService {
   // GET /rooms/:roomId/members — chỉ thành viên, không phân trang (phòng học nhóm nhỏ)
   async listMembers(userId: string, roomId: string) {
     await this.access.assertRoomAccess(userId, roomId);
-    const members = await this.findMembersWithUser(roomId, 'displayName avatarUrl');
+    const members = await this.findMembersWithUser(roomId, 'email displayName avatarUrl');
     return members
       .filter((m) => m.userId !== null)
       .map((m) => ({
         userId: String(m.userId!._id),
+        email: m.userId!.email ?? '',
         displayName: m.userId!.displayName ?? '',
         avatarUrl: m.userId!.avatarUrl ?? null,
         role: m.role,

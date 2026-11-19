@@ -18,8 +18,7 @@ export function mapBackendMember(m: BackendRoomMember, index = 0): RoomMember {
   return {
     userId: m.userId,
     name,
-    // API members chưa trả email / trạng thái online (small_task #2, phần C) → không bịa
-    email: "—",
+    email: m.email,
     initials,
     role: m.role === "HOST" ? "Chủ phòng" : "Thành viên",
     color: MEMBER_COLORS[index % MEMBER_COLORS.length],

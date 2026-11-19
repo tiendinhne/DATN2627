@@ -4,6 +4,7 @@ import type {
   BackendChatMessage,
   ChatFileMetadata,
   ChatMessage,
+  ChatSearchPage,
   SendMessageDto,
 } from "../types";
 
@@ -40,10 +41,12 @@ export const chatService = {
     token: string,
     roomId: string,
     currentUserId: string,
-    meetingId?: string
+    meetingId?: string,
+    aroundMessageId?: string
   ): Promise<ChatMessage[]> {
     const query = new URLSearchParams({ limit: "50" });
     if (meetingId) query.set("meetingId", meetingId);
+    if (aroundMessageId) query.set("around", aroundMessageId);
 
     const response = await request<{
       items: BackendChatMessage[];
@@ -53,6 +56,21 @@ export const chatService = {
     return response.items
       .reverse()
       .map((message) => toChatMessage(message, currentUserId));
+  },
+
+  async searchRoomMessages(
+    token: string,
+    roomId: string,
+    search: string,
+    before?: string,
+    scope: "all" | "room" | "meeting" = "all",
+  ): Promise<ChatSearchPage> {
+    const query = new URLSearchParams({ q: search, limit: "20", scope });
+    if (before) query.set("before", before);
+    return request<ChatSearchPage>(
+      token,
+      `/rooms/${encodeURIComponent(roomId)}/messages/search?${query}`,
+    );
   },
 
   connect(token: string): Socket {
@@ -152,6 +170,7 @@ export function toChatMessage(
     text: message.content,
     color: colors[colorIndex],
     ...(message.meetingTitle ? { meeting: message.meetingTitle } : {}),
+    meetingId: message.meetingId,
     ...(message.file ? { file: message.file } : {}),
     isOwn: message.senderId === currentUserId,
     createdAt: message.createdAt,

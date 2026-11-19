@@ -28,7 +28,9 @@ interface RoomOverviewTabProps {
   } | null;
   recentMeetings?: Meeting[];
   onJoinMeeting: (meetingId?: string) => void;
+  onReviewMeeting: (meetingId: string) => void;
   onEndMeeting: () => void;
+  onShowAllMeetings: () => void;
 }
 
 export function RoomOverviewTab({
@@ -37,13 +39,15 @@ export function RoomOverviewTab({
   activeMeeting,
   recentMeetings,
   onJoinMeeting,
+  onReviewMeeting,
   onEndMeeting,
+  onShowAllMeetings,
 }: RoomOverviewTabProps) {
   const [copied, setCopied] = useState(false);
 
   const joinCode = roomInfo?.joinCode || "—";
-  // Chỉ hiện meeting thật từ backend; chưa có thì danh sách rỗng
-  const displayMeetings = recentMeetings ?? [];
+  // Backend trả meetings mới nhất trước; tổng quan chỉ hiện tối đa 4 meeting.
+  const displayMeetings = (recentMeetings ?? []).slice(0, 4);
 
   const handleCopyCode = () => {
     navigator.clipboard?.writeText(joinCode);
@@ -121,7 +125,7 @@ export function RoomOverviewTab({
               <h2>Cuộc họp gần đây</h2>
               <p>Whiteboard được lưu riêng theo từng cuộc họp</p>
             </div>
-            <button className="text-button" type="button">
+            <button className="text-button" onClick={onShowAllMeetings} type="button">
               Xem tất cả
             </button>
           </div>
@@ -134,7 +138,11 @@ export function RoomOverviewTab({
             <button
               className="history-row"
               key={meeting.id}
-              onClick={() => onJoinMeeting(meeting.id)}
+              onClick={() =>
+                meeting.status === "Completed"
+                  ? onReviewMeeting(meeting.id)
+                  : onJoinMeeting(meeting.id)
+              }
               type="button"
             >
               <span className="history-icon">
@@ -146,8 +154,11 @@ export function RoomOverviewTab({
                   {meeting.date} · {meeting.duration}
                 </small>
               </span>
-              <span className="board-badge">
-                <FileText size={14} /> Có bảng vẽ
+              <span
+                className={`board-badge${meeting.hasWhiteboard ? "" : " empty"}`}
+              >
+                {meeting.hasWhiteboard && <FileText size={14} />}
+                {meeting.hasWhiteboard ? "Có bảng vẽ" : "Không có bảng vẽ"}
               </span>
               <MoreHorizontal size={19} />
             </button>

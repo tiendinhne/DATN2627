@@ -17,6 +17,9 @@ export const listMeetings = (token: string, roomId: string) =>
 export const getMyMeetingStats = (token: string) =>
   request<MyMeetingStats>(token, '/meetings/me/stats');
 
+export const getMyLifetimeMeetingStats = (token: string) =>
+  request<MyMeetingStats>(token, '/meetings/me/stats/all-time');
+
 export const joinMeeting = (token: string, meetingId: string) =>
   request<JoinMeetingResponse>(token, `/meetings/${meetingId}/join`, { method: 'POST' });
 

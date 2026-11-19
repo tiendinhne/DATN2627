@@ -33,6 +33,7 @@ function isBackendChatMessage(value: unknown): value is BackendChatMessage {
     typeof message.senderName === "string" &&
     typeof message.content === "string" &&
     typeof message.createdAt === "string" &&
+    (typeof message.meetingId === "string" || message.meetingId === null) &&
     (message.file === null || isChatFileMetadata(message.file))
   );
 }
@@ -210,6 +211,25 @@ export function useRoomChat({
     [token, roomId, meetingId]
   );
 
+  const loadMessagesAround = useCallback(
+    async (messageId: string) => {
+      if (!token || !roomId) {
+        throw new Error("Chat chưa sẵn sàng để mở tin nhắn.");
+      }
+
+      const context = await chatService.getRoomMessages(
+        token,
+        roomId,
+        currentUserId ?? "",
+        meetingId,
+        messageId,
+      );
+      setMessages(context);
+      setError("");
+    },
+    [token, roomId, currentUserId, meetingId]
+  );
+
   return {
     messages,
     error,
@@ -217,5 +237,6 @@ export function useRoomChat({
     isUploading,
     sendMessage,
     sendFile,
+    loadMessagesAround,
   };
 }

@@ -2,6 +2,7 @@
 
 import { ArrowRight, Bot, PenTool, Video } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/auth.context";
 
 export function HeroSection({
   onNavigate,
@@ -9,12 +10,20 @@ export function HeroSection({
   onNavigate?: (page: string) => void;
 }) {
   const router = useRouter();
+  const { user, isLoading } = useAuth();
 
   const handleStart = () => {
+    // Chờ kiểm tra trạng thái đăng nhập hoàn tất
+    if (isLoading) return;
+
+    // Đã đăng nhập → Dashboard
+    // Chưa đăng nhập → Login
+    const targetPage = user ? "dashboard" : "login";
+
     if (onNavigate) {
-      onNavigate("dashboard");
+      onNavigate(targetPage);
     } else {
-      router.push("/dashboard");
+      router.push(user ? "/dashboard" : "/login");
     }
   };
 
@@ -42,7 +51,12 @@ export function HeroSection({
           bảng vẽ thông minh.
         </p>
         <div className="hero-actions">
-          <button className="button primary large" onClick={handleStart} type="button">
+          <button
+            className="button primary large"
+            onClick={handleStart}
+            type="button"
+            disabled={isLoading}
+          >
             Bắt đầu miễn phí <ArrowRight size={18} />
           </button>
           <button className="button secondary large" onClick={handleLogin} type="button">
