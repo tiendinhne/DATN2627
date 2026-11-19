@@ -7,7 +7,8 @@ import {
   Settings,
   Trash2,
   Users,
-  Video,
+  Video, 
+  LogOut
 } from "lucide-react";
 import type { RoomRole } from "../types";
 
@@ -80,26 +81,44 @@ export function RoomHero({
             </button>
             {actionsOpen && (
               <div className="room-actions-menu">
-                <p>THAO TÁC PHÒNG</p>
+                <p className="room-actions-title">THAO TÁC PHÒNG</p>
+
                 {role === "owner" ? (
                   <>
                     <button onClick={onEdit} type="button">
-                      <Edit3 size={16} /> Chỉnh sửa phòng
+                      <Edit3 size={16} />
+                      <span>Chỉnh sửa phòng</span>
                     </button>
+
                     <button onClick={onInvite} type="button">
-                      <Users size={16} /> Mời thành viên
+                      <Users size={16} />
+                      <span>Mời thành viên</span>
                     </button>
+
                     <button onClick={onSettings} type="button">
-                      <Settings size={16} /> Cài đặt phòng
+                      <Settings size={16} />
+                      <span>Cài đặt phòng</span>
                     </button>
-                    <span />
-                    <button className="destructive" onClick={onDelete} type="button">
-                      <Trash2 size={16} /> Xóa phòng
+
+                    <div className="room-actions-divider" />
+
+                    <button
+                      className="destructive"
+                      onClick={onDelete}
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                      <span>Xóa phòng</span>
                     </button>
                   </>
                 ) : (
-                  <button className="destructive" onClick={onLeave} type="button">
-                    <ArrowLeft size={16} /> Rời khỏi phòng
+                  <button
+                    className="destructive"
+                    onClick={onLeave}
+                    type="button"
+                  >
+                    <LogOut size={16} />
+                    <span>Rời khỏi phòng</span>
                   </button>
                 )}
               </div>

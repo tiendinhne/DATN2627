@@ -22,6 +22,7 @@ export interface RoomListResponse {
 
 export interface RoomMember {
   userId: string;
+  email: string;
   displayName: string;
   avatarUrl: string | null;
   role: RoomRole;

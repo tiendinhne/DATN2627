@@ -31,6 +31,38 @@ export class RealtimePublisher {
       });
   }
 
+  sendRoomPresenceSnapshot(
+    socket: Socket,
+    input: { actorId: string; roomId: string; onlineUserIds: string[] },
+  ) {
+    socket.emit('room:presence_snapshot', {
+      v: 1,
+      seq: null,
+      ts: new Date().toISOString(),
+      actorId: input.actorId,
+      roomId: input.roomId,
+      meetingId: null,
+      data: { onlineUserIds: input.onlineUserIds },
+    });
+  }
+
+  publishRoomPresenceChanged(
+    senderSocketId: string | null,
+    input: { actorId: string; roomId: string; userId: string; online: boolean },
+  ) {
+    const channel = this.requireNamespace().to(`room-page:${input.roomId}`);
+    const target = senderSocketId ? channel.except(senderSocketId) : channel;
+    target.emit('room:presence_changed', {
+      v: 1,
+      seq: null,
+      ts: new Date().toISOString(),
+      actorId: input.actorId,
+      roomId: input.roomId,
+      meetingId: null,
+      data: { userId: input.userId, online: input.online },
+    });
+  }
+
   sendError(
     socket: Socket,
     payload: { statusCode: number; error: string; message: string | string[] },

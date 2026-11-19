@@ -1,9 +1,10 @@
 "use client";
 
 import { Eye } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { SocialDivider } from "./SocialDivider";
 import { useAuth } from "@/context/auth.context";
 import { safeReturnUrl } from '@/lib/return-url';
@@ -20,11 +21,17 @@ export function LoginForm({
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const isSubmitting = useRef(false);
 
   const getReturnUrl = () => safeReturnUrl(new URLSearchParams(window.location.search).get('returnUrl'));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Chặn submit liên tục trước khi React kịp render lại
+    if (isSubmitting.current) return;
+
+    isSubmitting.current = true;
     setError('');
     setIsLoading(true);
 
@@ -34,6 +41,7 @@ export function LoginForm({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại');
     } finally {
+      isSubmitting.current = false;
       setIsLoading(false);
     }
   };
@@ -58,12 +66,26 @@ export function LoginForm({
     <form className="auth-form" onSubmit={handleSubmit}>
       <p className="eyebrow">CHÀO MỪNG TRỞ LẠI</p>
       <h1>Đăng nhập vào tài khoản</h1>
-      <p>Tiếp tục hành trình học tập cùng nhóm của bạn.</p>
-      {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
+      <p className="!mb-0">
+        Tiếp tục hành trình học tập cùng nhóm của bạn.
+      </p>
+      {/* Error message */}
+      <div className="mb-2 mt-2 min-h-[22px]" aria-live="polite">
+        {error && (
+          <div
+            role="alert"
+            className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-2"
+          >
+            <AlertCircle
+              size={16}
+              className="shrink-0 text-red-500"
+            />
+            <p className="text-xs font-medium text-red-700">
+              {error}
+            </p>
           </div>
         )}
+      </div>
       <label>
         Email hoặc tên đăng nhập
         <input
@@ -106,6 +128,7 @@ export function LoginForm({
       <button className="button primary large w-full" type="submit" disabled={isLoading}>
         {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
       </button>
+      
       <SocialDivider />
       <p className="register-link">
         Chưa có tài khoản?{" "}

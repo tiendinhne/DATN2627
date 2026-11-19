@@ -454,7 +454,12 @@ describe('listMembers', () => {
   it('HOST đứng đầu, map userId/displayName, bỏ bản ghi có user đã bị xoá', async () => {
     const { service, memberModel } = build();
     const joinedAt = new Date('2026-09-26T00:00:00Z');
-    const hostUser = { _id: new Types.ObjectId(userId), displayName: 'Chủ phòng', avatarUrl: null };
+    const hostUser = {
+      _id: new Types.ObjectId(userId),
+      email: 'host@example.com',
+      displayName: 'Chủ phòng',
+      avatarUrl: null,
+    };
     const find = query([
       { userId: hostUser, role: RoomRole.HOST, joinedAt },
       { userId: null, role: RoomRole.MEMBER, joinedAt },
@@ -465,9 +470,16 @@ describe('listMembers', () => {
 
     expect(memberModel.find).toHaveBeenCalledWith({ roomId });
     expect(find.sort).toHaveBeenCalledWith({ role: 1, joinedAt: 1 });
-    expect(find.populate).toHaveBeenCalledWith('userId', 'displayName avatarUrl');
+    expect(find.populate).toHaveBeenCalledWith('userId', 'email displayName avatarUrl');
     expect(res).toEqual([
-      { userId, displayName: 'Chủ phòng', avatarUrl: null, role: RoomRole.HOST, joinedAt },
+      {
+        userId,
+        email: 'host@example.com',
+        displayName: 'Chủ phòng',
+        avatarUrl: null,
+        role: RoomRole.HOST,
+        joinedAt,
+      },
     ]);
   });
 });

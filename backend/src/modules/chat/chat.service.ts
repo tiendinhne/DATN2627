@@ -27,6 +27,10 @@ import type { ObjectStoragePort } from './ports/object-storage.port.js';
 
 const UPLOAD_URL_TTL_SECONDS = 5 * 60;
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 const MIME_EXTENSIONS: Record<(typeof CHAT_FILE_MIME_TYPES)[number], string[]> =
   {
     'image/jpeg': ['.jpg', '.jpeg'],
@@ -310,11 +314,22 @@ export class ChatService {
   async listMessages(
     userId: string,
     roomId: string,
-    query: { before?: string; limit: number; meetingId?: string },
+    query: {
+      before?: string;
+      around?: string;
+      limit: number;
+      meetingId?: string;
+    },
   ) {
     await this.roomAccess.assertRoomAccess(userId, roomId);
     if (query.before && !Types.ObjectId.isValid(query.before)) {
       throw new BadRequestException('before không hợp lệ');
+    }
+    if (query.around && !Types.ObjectId.isValid(query.around)) {
+      throw new BadRequestException('around không hợp lệ');
+    }
+    if (query.before && query.around) {
+      throw new BadRequestException('Không thể dùng before và around cùng lúc');
     }
     if (query.meetingId && !Types.ObjectId.isValid(query.meetingId)) {
       throw new BadRequestException('meetingId không hợp lệ');
@@ -343,28 +358,82 @@ export class ChatService {
         ? { meetingId: new Types.ObjectId(query.meetingId) }
         : {}),
     };
-    if (query.before) {
-      const cursor = await this.messageModel
-        .findOne({ _id: query.before, ...filter })
-        .select('_id createdAt')
+    let messages;
+    let nextCursor: string | null = null;
+    if (query.around) {
+      const target = await this.messageModel
+        .findOne({ _id: query.around, ...filter })
         .lean()
         .exec();
-      if (!cursor)
-        throw new BadRequestException('before không thuộc luồng chat này');
-      filter.$or = [
-        { createdAt: { $lt: cursor.createdAt } },
-        { createdAt: cursor.createdAt, _id: { $lt: cursor._id } },
-      ];
+      if (!target)
+        throw new BadRequestException('Tin nhắn không thuộc luồng chat này');
+
+      const olderLimit = Math.floor((query.limit - 1) / 2);
+      const older = olderLimit
+        ? await this.messageModel
+            .find({
+              ...filter,
+              $or: [
+                { createdAt: { $lt: target.createdAt } },
+                {
+                  createdAt: target.createdAt,
+                  _id: { $lt: target._id },
+                },
+              ],
+            })
+            .sort({ createdAt: -1, _id: -1 })
+            .limit(olderLimit)
+            .lean()
+            .exec()
+        : [];
+      const newerLimit = query.limit - older.length - 1;
+      const newer = newerLimit
+        ? await this.messageModel
+            .find({
+              ...filter,
+              $or: [
+                { createdAt: { $gt: target.createdAt } },
+                {
+                  createdAt: target.createdAt,
+                  _id: { $gt: target._id },
+                },
+              ],
+            })
+            .sort({ createdAt: 1, _id: 1 })
+            .limit(newerLimit)
+            .lean()
+            .exec()
+        : [];
+      messages = [...newer].reverse().concat(target, older);
+    } else {
+      if (query.before) {
+        const cursor = await this.messageModel
+          .findOne({ _id: query.before, ...filter })
+          .select('_id createdAt')
+          .lean()
+          .exec();
+        if (!cursor)
+          throw new BadRequestException('before không thuộc luồng chat này');
+        filter.$or = [
+          { createdAt: { $lt: cursor.createdAt } },
+          { createdAt: cursor.createdAt, _id: { $lt: cursor._id } },
+        ];
+      }
+
+      const results = await this.messageModel
+        .find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(query.limit + 1)
+        .lean()
+        .exec();
+      const hasMore = results.length > query.limit;
+      messages = results.slice(0, query.limit);
+      nextCursor =
+        hasMore && messages.length
+          ? String(messages[messages.length - 1]._id)
+          : null;
     }
 
-    const results = await this.messageModel
-      .find(filter)
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(query.limit + 1)
-      .lean()
-      .exec();
-    const hasMore = results.length > query.limit;
-    const messages = results.slice(0, query.limit);
     const fileIds = messages.flatMap((message) =>
       message.fileId ? [message.fileId] : [],
     );
@@ -408,6 +477,68 @@ export class ChatService {
 
     return {
       items,
+      nextCursor,
+    };
+  }
+
+  async searchMessages(
+    userId: string,
+    roomId: string,
+    query: { q: string; before?: string; limit: number },
+  ) {
+    await this.roomAccess.assertRoomAccess(userId, roomId);
+    const term = query.q.trim();
+    if (!term) throw new BadRequestException('q không được để trống');
+    if (query.before && !Types.ObjectId.isValid(query.before)) {
+      throw new BadRequestException('before không hợp lệ');
+    }
+
+    const filter: {
+      roomId: Types.ObjectId;
+      deletedAt: null;
+      content: { $regex: string; $options: string };
+      $or?: Array<
+        | { createdAt: { $lt: Date } }
+        | { createdAt: Date; _id: { $lt: Types.ObjectId } }
+      >;
+    } = {
+      roomId: new Types.ObjectId(roomId),
+      deletedAt: null,
+      content: { $regex: escapeRegex(term), $options: 'i' },
+    };
+    if (query.before) {
+      const cursor = await this.messageModel
+        .findOne({ _id: query.before, ...filter })
+        .select('_id createdAt')
+        .lean()
+        .exec();
+      if (!cursor)
+        throw new BadRequestException(
+          'before không thuộc kết quả tìm kiếm này',
+        );
+      filter.$or = [
+        { createdAt: { $lt: cursor.createdAt } },
+        { createdAt: cursor.createdAt, _id: { $lt: cursor._id } },
+      ];
+    }
+
+    const results = await this.messageModel
+      .find(filter)
+      .select('_id senderName content createdAt')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(query.limit + 1)
+      .lean()
+      .exec();
+    const hasMore = results.length > query.limit;
+    const messages = results.slice(0, query.limit);
+
+    return {
+      items: messages.map((message) => ({
+        id: String(message._id),
+        senderName: message.senderName,
+        content: message.content ?? '',
+        createdAt: message.createdAt,
+      })),
       nextCursor:
         hasMore && messages.length
           ? String(messages[messages.length - 1]._id)

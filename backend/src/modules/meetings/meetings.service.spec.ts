@@ -276,6 +276,21 @@ describe('getMyStats', () => {
       totalDurationSeconds: 0,
     });
   });
+
+  it('tính thống kê trọn đời chỉ từ các meeting đã kết thúc', async () => {
+    const { service, participantModel } = build();
+    participantModel.aggregate.mockReturnValue(
+      query([{ meetingCount: 5, totalDurationSeconds: 10800 }]),
+    );
+
+    const stats = await service.getMyLifetimeStats(userId);
+    const pipeline = participantModel.aggregate.mock.calls[0][0];
+
+    expect(pipeline[3]).toEqual({
+      $match: { 'meeting.status': MeetingStatus.ENDED },
+    });
+    expect(stats).toEqual({ meetingCount: 5, totalDurationSeconds: 10800 });
+  });
 });
 
 describe('endMeeting', () => {

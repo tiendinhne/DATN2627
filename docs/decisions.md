@@ -227,3 +227,17 @@ Phần này không nằm trong scope hiện tại
 **Rejected because:** 20 request/ngày không đủ dev + demo; SDK thêm dependency; từ chối tốn thêm 1 lượt Gemini chỉ vì 1 nhãn.
 **Lưu ý báo cáo:** ở free tier, Google dùng nội dung gửi lên để cải thiện sản phẩm (trang giá Gemini API).
 **Status:** CONFIRMED — user chốt 2026-11-11 / 2026-11-12. Spec: `docs/task/AI/ai_module_spec.md` §1 câu 1, 10–12.
+
+## ADR-035 — Presence riêng cho trang Room, không phải Meeting `[phát sinh kỹ thuật]`
+**Decision:** Presence “đang hoạt động” nghĩa là user có Socket.IO connection đã subscribe `room-page:{roomId}`. Dùng Redis Set theo room và TTL riêng theo user (60 giây), gia hạn bằng heartbeat mỗi 20 giây; khi unsubscribe/disconnect chỉ đánh offline nếu không còn socket nào của user trong room-page channel. Snapshot và thay đổi dùng envelope chuẩn qua `RealtimePublisher`.
+**Reason:** Người dùng yêu cầu hiển thị hoạt động realtime trong danh sách thành viên. Đề cương yêu cầu presence nhưng xác định attendance Meeting qua LiveKit; dedicated room-page channel giữ hai khái niệm riêng và tránh coi chat/meeting socket là đang mở trang Room. Redis/TTL giúp trạng thái nhất quán giữa nhiều backend instance và dọn kết nối chết.
+**Alternatives:** dùng `room:subscribe` (chat); dùng Socket.IO để cập nhật meeting attendance; lưu presence trong RAM.
+**Rejected because:** chat socket không đồng nghĩa đang xem trang Room; meeting attendance chỉ webhook LiveKit được phép cập nhật; RAM vi phạm stateless và không đồng bộ instance.
+**Status:** CONFIRMED — user chấp thuận thiết kế trong task realtime presence. Contract: `docs/PROJECT_CONTEXT.md` §9 và `docs/api/endpoint.md` mục Socket.IO.
+
+## ADR-036 — Tìm tin nhắn bằng chuỗi con trong Room `[phát sinh kỹ thuật]`
+**Decision:** Tìm không phân biệt hoa/thường bằng regex đã escape trên `messages.content`, giới hạn truy vấn 1–100 ký tự; backend trả 20 kết quả mới nhất mỗi trang (tối đa 50). Kết quả dùng cursor `before`; mở tin dùng `around` để lấy cửa sổ ngữ cảnh quanh message.
+**Reason:** Người dùng yêu cầu tìm tin nhắn như Zalo trong toàn bộ lịch sử Room. Regex literal cho phép tìm chuỗi con tiếng Việt mà không thực thi regex do người dùng cung cấp; giới hạn query và room scope giữ implementation phù hợp quy mô đồ án.
+**Alternatives:** MongoDB text index hoặc Atlas Search.
+**Rejected because:** text index tìm theo từ/ngôn ngữ, không đúng yêu cầu chuỗi con tiếng Việt; Atlas Search thêm cấu hình/hạ tầng không cần thiết cho quy mô hiện tại.
+**Status:** CONFIRMED — user chọn tìm toàn bộ lịch sử phòng và mở tin nhắn từ kết quả. API: `docs/api/endpoint.md` mục Chat.

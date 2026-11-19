@@ -12,7 +12,10 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { ChatService } from './chat.service.js';
 import { CreateUploadDto } from './dto/create-upload.dto.js';
-import { ListMessagesQueryDto } from './dto/list-messages-query.dto.js';
+import {
+  ListMessagesQueryDto,
+  SearchMessagesQueryDto,
+} from './dto/list-messages-query.dto.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('rooms')
@@ -26,6 +29,15 @@ export class ChatController {
     @Query() query: ListMessagesQueryDto,
   ) {
     return this.chat.listMessages(req.user.id, roomId, query);
+  }
+
+  @Get(':roomId/messages/search')
+  searchMessages(
+    @Req() req: any,
+    @Param('roomId') roomId: string,
+    @Query() query: SearchMessagesQueryDto,
+  ) {
+    return this.chat.searchMessages(req.user.id, roomId, query);
   }
 
   @Post(':roomId/uploads')

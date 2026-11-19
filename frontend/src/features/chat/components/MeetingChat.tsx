@@ -195,9 +195,6 @@ export function MeetingChat({
             disabled={connectionState !== "connected"}
             maxLength={2000}
           />
-          <button type="button" aria-label="Emoji">
-            <Smile size={17} />
-          </button>
           {selectedFile && (
             <ChatPendingAttachment
               file={selectedFile}

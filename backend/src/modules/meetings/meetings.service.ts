@@ -165,6 +165,20 @@ export class MeetingsService {
     );
     const nextWeekStart = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
+    return this.aggregateMyStats(userId, {
+      $gte: weekStart,
+      $lt: nextWeekStart,
+    });
+  }
+
+  async getMyLifetimeStats(userId: string) {
+    return this.aggregateMyStats(userId);
+  }
+
+  private async aggregateMyStats(
+    userId: string,
+    endedAtRange?: { $gte: Date; $lt: Date },
+  ) {
     const [stats] = await this.participantModel
       .aggregate([
         { $match: { userId: new Types.ObjectId(userId) } },
@@ -178,10 +192,12 @@ export class MeetingsService {
         },
         { $unwind: '$meeting' },
         {
-          $match: {
-            'meeting.status': MeetingStatus.ENDED,
-            'meeting.endedAt': { $gte: weekStart, $lt: nextWeekStart },
-          },
+          $match: endedAtRange
+            ? {
+                'meeting.status': MeetingStatus.ENDED,
+                'meeting.endedAt': endedAtRange,
+              }
+            : { 'meeting.status': MeetingStatus.ENDED },
         },
         {
           $group: {

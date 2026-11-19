@@ -29,6 +29,7 @@ interface RoomOverviewTabProps {
   recentMeetings?: Meeting[];
   onJoinMeeting: (meetingId?: string) => void;
   onEndMeeting: () => void;
+  onShowAllMeetings: () => void;
 }
 
 export function RoomOverviewTab({
@@ -38,12 +39,13 @@ export function RoomOverviewTab({
   recentMeetings,
   onJoinMeeting,
   onEndMeeting,
+  onShowAllMeetings,
 }: RoomOverviewTabProps) {
   const [copied, setCopied] = useState(false);
 
   const joinCode = roomInfo?.joinCode || "—";
-  // Chỉ hiện meeting thật từ backend; chưa có thì danh sách rỗng
-  const displayMeetings = recentMeetings ?? [];
+  // Backend trả meetings mới nhất trước; tổng quan chỉ hiện tối đa 4 meeting.
+  const displayMeetings = (recentMeetings ?? []).slice(0, 4);
 
   const handleCopyCode = () => {
     navigator.clipboard?.writeText(joinCode);
@@ -121,7 +123,7 @@ export function RoomOverviewTab({
               <h2>Cuộc họp gần đây</h2>
               <p>Whiteboard được lưu riêng theo từng cuộc họp</p>
             </div>
-            <button className="text-button" type="button">
+            <button className="text-button" onClick={onShowAllMeetings} type="button">
               Xem tất cả
             </button>
           </div>

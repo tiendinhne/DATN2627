@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { Check, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { io } from "socket.io-client";
 import { useAuth } from "@/context/auth.context";
 import { RoomChat } from "@/features/chat";
+import { API_BASE_URL } from "@/services/api";
 import {
   addMember,
   dissolveRoom,
@@ -55,6 +57,7 @@ export function RoomView({
   const [ownerName, setOwnerName] = useState("Chủ phòng");
   const [memberCount, setMemberCount] = useState(1);
   const [members, setMembers] = useState<RoomMember[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string> | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeBackendMeeting, setActiveBackendMeeting] = useState<BackendMeeting | null>(null);
 
@@ -132,6 +135,99 @@ export function RoomView({
         console.warn("Không tải được cuộc họp từ backend:", err.message);
       });
   }, [token, roomId, reloadKey]);
+
+  useEffect(() => {
+    if (!token || !roomId) {
+      setOnlineUserIds(null);
+      return;
+    }
+
+    setOnlineUserIds(null);
+    const socket = io(`${API_BASE_URL}/meeting`, {
+      auth: { token },
+      transports: ["websocket"],
+    });
+    const pendingChanges = new Map<string, boolean>();
+    let hasSnapshot = false;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+    socket.on("connect", () => {
+      hasSnapshot = false;
+      pendingChanges.clear();
+      setOnlineUserIds(null);
+      socket.emit("room:presence:subscribe", { roomId });
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = setInterval(() => {
+        socket.emit("room:presence:heartbeat", { roomId });
+      }, 20_000);
+    });
+    socket.on("disconnect", () => {
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = null;
+      setOnlineUserIds(null);
+    });
+    socket.on("room:presence_snapshot", (event: unknown) => {
+      if (!event || typeof event !== "object") return;
+      const envelope = event as {
+        roomId?: unknown;
+        data?: { onlineUserIds?: unknown };
+      };
+      if (
+        envelope.roomId !== roomId ||
+        !Array.isArray(envelope.data?.onlineUserIds) ||
+        !envelope.data.onlineUserIds.every((id) => typeof id === "string")
+      ) {
+        return;
+      }
+      const onlineIds = new Set(envelope.data.onlineUserIds);
+      for (const [userId, online] of pendingChanges) {
+        if (online) onlineIds.add(userId);
+        else onlineIds.delete(userId);
+      }
+      pendingChanges.clear();
+      hasSnapshot = true;
+      setOnlineUserIds(onlineIds);
+    });
+    socket.on("room:presence_changed", (event: unknown) => {
+      if (!event || typeof event !== "object") return;
+      const envelope = event as {
+        roomId?: unknown;
+        data?: { userId?: unknown; online?: unknown };
+      };
+      const { userId, online } = envelope.data ?? {};
+      if (
+        envelope.roomId !== roomId ||
+        typeof userId !== "string" ||
+        typeof online !== "boolean"
+      ) {
+        return;
+      }
+      if (!hasSnapshot) {
+        pendingChanges.set(userId, online);
+        return;
+      }
+      setOnlineUserIds((current) => {
+        if (!current) return current;
+        const next = new Set(current);
+        if (online) next.add(userId);
+        else next.delete(userId);
+        return next;
+      });
+    });
+    socket.on("room:access_revoked", (event: unknown) => {
+      if (!event || typeof event !== "object") return;
+      const envelope = event as { roomId?: unknown };
+      if (envelope.roomId === roomId) socket.disconnect();
+    });
+
+    return () => {
+      if (heartbeat) clearInterval(heartbeat);
+      if (socket.connected) {
+        socket.emit("room:presence:unsubscribe", { roomId });
+      }
+      socket.disconnect();
+    };
+  }, [token, roomId]);
 
   // Bắt đầu cuộc họp mới
   const handleStartMeeting = async (titleInput?: string) => {
@@ -318,6 +414,7 @@ export function RoomView({
           recentMeetings={meetings}
           onJoinMeeting={handleJoinExistingMeeting}
           onEndMeeting={() => setDialog("end")}
+          onShowAllMeetings={() => setTab("Cuộc họp")}
         />
       )}
 
@@ -340,7 +437,16 @@ export function RoomView({
 
       {tab === "Thành viên" && (
         <MembersTab
-          members={members}
+          members={
+            onlineUserIds === null
+              ? members
+              : members.map((member) => ({
+                  ...member,
+                  online: member.userId
+                    ? onlineUserIds.has(member.userId)
+                    : false,
+                }))
+          }
           removedMembers={removedMembers}
           canManage={role === "owner"}
           onInvite={() => setDialog("invite")}

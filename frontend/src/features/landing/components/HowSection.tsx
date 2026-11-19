@@ -2,6 +2,7 @@
 
 import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/auth.context";
 
 const steps = [
   { step: "Tạo phòng", detail: "Thiết lập không gian học" },
@@ -17,12 +18,17 @@ export function HowSection({
   onNavigate?: (page: string) => void;
 }) {
   const router = useRouter();
+  const { user, isLoading } = useAuth();
 
   const handleStart = () => {
+    if (isLoading) return;
+
+    const targetPage = user ? "dashboard" : "login";
+
     if (onNavigate) {
-      onNavigate("dashboard");
+      onNavigate(targetPage);
     } else {
-      router.push("/dashboard");
+      router.push(user ? "/dashboard" : "/login");
     }
   };
 
@@ -41,7 +47,12 @@ export function HowSection({
           </div>
         ))}
       </div>
-      <button className="button primary large" onClick={handleStart} type="button">
+      <button
+        className="button primary large"
+        onClick={handleStart}
+        type="button"
+        disabled={isLoading}
+      >
         Tạo phòng đầu tiên <ArrowRight size={18} />
       </button>
     </section>

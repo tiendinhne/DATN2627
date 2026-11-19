@@ -1,12 +1,14 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
-import { Paperclip, Search, Send, Video } from "lucide-react";
+import { AlertCircle, Paperclip, Search, Send, Video, X } from "lucide-react";
 import { useRoomChat } from "../hooks/useRoomChat";
 import {
+  chatService,
   CHAT_FILE_ACCEPT,
   validateChatFile,
 } from "../services/chat.service";
+import type { ChatSearchResult } from "../types";
 import { ChatFileAttachment } from "./ChatFileAttachment";
 import { ChatPendingAttachment } from "./ChatPendingAttachment";
 
@@ -20,8 +22,18 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
   const [inputText, setInputText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
+  const [showError, setShowError] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ChatSearchResult[]>([]);
+  const [searchCursor, setSearchCursor] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const pendingJumpIdRef = useRef<string | null>(null);
+  const searchRequestIdRef = useRef(0);
   const {
     messages,
     error,
@@ -29,6 +41,7 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
     isUploading,
     sendMessage,
     sendFile,
+    loadMessagesAround,
   } = useRoomChat({
     roomId,
     token,
@@ -37,8 +50,83 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
 
   useEffect(() => {
     const messageList = messageListRef.current;
-    if (messageList) messageList.scrollTop = messageList.scrollHeight;
+    if (!messageList) return;
+
+    if (pendingJumpIdRef.current) {
+      const target = messageList.querySelector<HTMLElement>(
+        `[data-message-id="${pendingJumpIdRef.current}"]`,
+      );
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        pendingJumpIdRef.current = null;
+        return;
+      }
+    }
+
+    messageList.scrollTop = messageList.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    const requestId = ++searchRequestIdRef.current;
+    const query = searchQuery.trim();
+    if (!searchOpen || !token || !query) {
+      setSearchResults([]);
+      setSearchCursor(null);
+      setSearchError("");
+      setIsSearching(false);
+      return;
+    }
+
+    setSearchResults([]);
+    setSearchCursor(null);
+    setSearchError("");
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      chatService
+        .searchRoomMessages(token, roomId, query)
+        .then((page) => {
+          if (requestId !== searchRequestIdRef.current) return;
+          setSearchResults(page.items);
+          setSearchCursor(page.nextCursor);
+        })
+        .catch((searchFailure: unknown) => {
+          if (requestId !== searchRequestIdRef.current) return;
+          setSearchError(
+            searchFailure instanceof Error
+              ? searchFailure.message
+              : "Không thể tìm tin nhắn.",
+          );
+        })
+        .finally(() => {
+          if (requestId === searchRequestIdRef.current) {
+            setIsSearching(false);
+          }
+        });
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      if (requestId === searchRequestIdRef.current) {
+        searchRequestIdRef.current += 1;
+      }
+    };
+  }, [searchOpen, searchQuery, token, roomId]);
+
+  useEffect(() => {
+    if (!error && !fileError) {
+      setShowError(false);
+      return;
+    }
+
+    setShowError(true);
+
+    const timer = setTimeout(() => {
+      setShowError(false);
+      setFileError("");
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [error, fileError]);
 
   const handleSendMessage = async (event: FormEvent) => {
     event.preventDefault();
@@ -54,6 +142,55 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
     if (text && sendMessage(text)) setInputText("");
   };
 
+  const handleLoadMoreSearchResults = async () => {
+    const query = searchQuery.trim();
+    if (!token || !query || !searchCursor || isSearching) return;
+
+    const requestId = ++searchRequestIdRef.current;
+    setIsSearching(true);
+    setSearchError("");
+    try {
+      const page = await chatService.searchRoomMessages(
+        token,
+        roomId,
+        query,
+        searchCursor,
+      );
+      if (requestId !== searchRequestIdRef.current) return;
+      setSearchResults((current) => [...current, ...page.items]);
+      setSearchCursor(page.nextCursor);
+    } catch (searchFailure: unknown) {
+      if (requestId === searchRequestIdRef.current) {
+        setSearchError(
+          searchFailure instanceof Error
+            ? searchFailure.message
+            : "Không thể tìm tin nhắn.",
+        );
+      }
+    } finally {
+      if (requestId === searchRequestIdRef.current) {
+        setIsSearching(false);
+      }
+    }
+  };
+
+  const handleOpenSearchResult = async (result: ChatSearchResult) => {
+    pendingJumpIdRef.current = result.id;
+    setHighlightedMessageId(result.id);
+    try {
+      await loadMessagesAround(result.id);
+      setSearchOpen(false);
+      setSearchQuery("");
+    } catch (searchFailure: unknown) {
+      pendingJumpIdRef.current = null;
+      setSearchError(
+        searchFailure instanceof Error
+          ? searchFailure.message
+          : "Không thể mở tin nhắn.",
+      );
+    }
+  };
+
   return (
     <section className="panel-card room-chat-card">
       <div className="room-chat-header">
@@ -67,14 +204,79 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
                 : "Chưa kết nối chat"}
           </p>
         </div>
-        <button className="icon-button" aria-label="Tìm tin nhắn" type="button">
-          <Search size={17} />
+        <button
+          className="icon-button"
+          aria-label={searchOpen ? "Đóng tìm kiếm" : "Tìm tin nhắn"}
+          type="button"
+          onClick={() => {
+            setSearchOpen((open) => !open);
+            setSearchQuery("");
+            setSearchError("");
+          }}
+        >
+          {searchOpen ? <X size={17} /> : <Search size={17} />}
         </button>
       </div>
-      {(error || fileError) && (
-        <p className="px-4 text-sm text-red-400" role="alert">
-          {fileError || error}
-        </p>
+      {searchOpen && (
+        <div className="room-chat-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            autoFocus
+            aria-label="Tìm trong tin nhắn của phòng"
+            placeholder="Tìm tin nhắn trong phòng..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          {searchQuery.trim() && (
+            <div className="room-chat-search-results">
+              {isSearching && (
+                <p className="room-chat-search-status">Đang tìm tin nhắn...</p>
+              )}
+              {searchError && (
+                <p className="room-chat-search-status error">{searchError}</p>
+              )}
+              {!isSearching &&
+                !searchError &&
+                searchResults.length === 0 &&
+                searchQuery.trim().length > 0 && (
+                  <p className="room-chat-search-status">
+                    Không tìm thấy tin nhắn phù hợp.
+                  </p>
+                )}
+              {searchResults.map((result) => (
+                <button
+                  className="room-chat-search-result"
+                  key={result.id}
+                  type="button"
+                  onClick={() => void handleOpenSearchResult(result)}
+                >
+                  <span>
+                    <strong>{result.senderName}</strong>
+                    <time>
+                      {new Date(result.createdAt).toLocaleString("vi-VN", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </time>
+                  </span>
+                  <small>{result.content}</small>
+                </button>
+              ))}
+              {searchCursor && !isSearching && (
+                <button
+                  className="room-chat-search-more"
+                  type="button"
+                  onClick={() => void handleLoadMoreSearchResults()}
+                >
+                  Tải thêm kết quả
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
       <div className="room-chat-list" ref={messageListRef}>
         {messages.length === 0 ? (
@@ -114,7 +316,8 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
                   </div>
                 )}
                 <article
-                  className={`room-message${message.isOwn ? " own" : ""}${isFollowUp ? " follow-up" : ""}`}
+                  data-message-id={message.id}
+                  className={`room-message${message.isOwn ? " own" : ""}${isFollowUp ? " follow-up" : ""}${message.id === highlightedMessageId ? " search-hit" : ""}`}
                 >
                   {!message.isOwn && !isFollowUp && (
                     <span className={`room-message-avatar ${message.color}`}>
@@ -154,6 +357,17 @@ export function RoomChat({ roomId, token, currentUserId }: RoomChatProps) {
           })
         )}
       </div>
+      {showError && (error || fileError) && (
+        <div
+          role="alert"
+          className="mx-4 mb-2 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2"
+        >
+          <AlertCircle size={16} className="shrink-0 text-red-500" />
+          <p className="min-w-0 flex-1 text-xs font-medium text-red-700">
+            {fileError || error}
+          </p>
+        </div>
+      )}
       <form className="room-chat-input" onSubmit={handleSendMessage}>
         <input
           ref={fileInputRef}

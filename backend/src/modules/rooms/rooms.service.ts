@@ -205,11 +205,12 @@ export class RoomsService {
   // GET /rooms/:roomId/members — chỉ thành viên, không phân trang (phòng học nhóm nhỏ)
   async listMembers(userId: string, roomId: string) {
     await this.access.assertRoomAccess(userId, roomId);
-    const members = await this.findMembersWithUser(roomId, 'displayName avatarUrl');
+    const members = await this.findMembersWithUser(roomId, 'email displayName avatarUrl');
     return members
       .filter((m) => m.userId !== null)
       .map((m) => ({
         userId: String(m.userId!._id),
+        email: m.userId!.email ?? '',
         displayName: m.userId!.displayName ?? '',
         avatarUrl: m.userId!.avatarUrl ?? null,
         role: m.role,

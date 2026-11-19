@@ -1402,3 +1402,24 @@ Cập nhật lại các role * đọc file rule/role.md
 - **Kiểm tra:** test `meetings.service.spec.ts` 53/53 pass; backend build + lint pass; frontend `tsc --noEmit` + lint pass.
 - **Lệch khỏi tài liệu:** `[phát sinh kỹ thuật]` thống kê cá nhân theo tuần phục vụ dashboard, không được nêu trực tiếp trong đề cương đã duyệt.
 - **Commit:** chưa.
+
+## 2026-11-19 — Chuyển CTA tạo phòng đến đăng nhập nếu chưa xác thực
+
+- **Đã làm:** CTA “Tạo phòng đầu tiên” ở `HowSection` chờ kiểm tra phiên đăng nhập hoàn tất; người dùng đã đăng nhập đi tới dashboard, người chưa đăng nhập được chuyển đến login.
+- **Kiểm tra:** frontend `tsc --noEmit` pass; `npm run lint -- --file src/features/landing/components/HowSection.tsx` pass.
+- **Commit:** chưa.
+
+## 2026-11-19 — Hiển thị email thành viên trong danh sách phòng
+
+- **Đã làm:** `GET /rooms/:roomId/members` trả thêm email; frontend mapping hiển thị email trong danh sách thành viên. Phạm vi truy cập vẫn giới hạn ở thành viên phòng.
+- **Tài liệu:** cập nhật response trong `docs/api/endpoint.md`.
+- **Kiểm tra:** `rooms.service.spec.ts` 50/50 pass; backend build và lint pass; frontend `tsc --noEmit` và lint pass.
+- **Commit:** chưa.
+
+## 2026-11-19 — Presence realtime trên trang phòng
+
+- **Đã làm:** thêm event subscribe/heartbeat/unsubscribe riêng cho trang phòng; trạng thái online lưu Redis Set với TTL mỗi user, fan-out qua Socket.IO Redis adapter và chỉ offline khi socket cuối cùng rời phòng. RoomView nhận snapshot/thay đổi và truyền trạng thái vào danh sách thành viên. Presence trang phòng không làm thay đổi attendance do LiveKit webhook quản lý.
+- **Hiển thị:** breakpoint mobile ≤760px trước đây ẩn nhãn presence; hiện nhãn được đặt dưới thông tin thành viên.
+- **Tài liệu:** cập nhật PROJECT_CONTEXT §9, API Socket.IO và ADR-035; `[phát sinh kỹ thuật]` vì cách xác định “đang hoạt động” trên trang phòng không được nêu cụ thể trong đề cương.
+- **Kiểm tra:** gateway + publisher 42/42 test pass; backend lint/build pass; frontend `tsc --noEmit` và lint hai file TypeScript thay đổi pass. CSS responsive kiểm tra bằng diff; chưa chạy thật qua Docker.
+- **Commit:** chưa.

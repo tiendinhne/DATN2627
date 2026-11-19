@@ -167,6 +167,9 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 |---|---|
 | `room:subscribe` | `{ roomId }` |
 | `room:unsubscribe` | `{ roomId }` |
+| `room:presence:subscribe` | `{ roomId }` — presence riêng của trang phòng, không phải meeting attendance `[phát sinh kỹ thuật]` |
+| `room:presence:heartbeat` | `{ roomId }` — gia hạn TTL khi socket vẫn ở trang phòng `[phát sinh kỹ thuật]` |
+| `room:presence:unsubscribe` | `{ roomId }` — rời presence khi đóng trang phòng `[phát sinh kỹ thuật]` |
 | `meeting:join` | `{ meetingId }` |
 | `meeting:leave` | `{ meetingId }` |
 | `chat:send` | `{ roomId, clientMsgId, content, fileId?, meetingId? }` |
@@ -179,6 +182,8 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `meeting:snapshot` | envelope, `data: { elements[] }` — gửi riêng socket vừa join, gồm cả tombstone |
 | `meeting:member_changed` | `{ userId, action, role }` |
 | `meeting:ended` | `{ reason }` |
+| `room:presence_snapshot` | envelope `seq: null`, `data: { onlineUserIds[] }` — gửi riêng socket subscribe `[phát sinh kỹ thuật]` |
+| `room:presence_changed` | envelope `seq: null`, `data: { userId, online }` — kênh `room-page:{roomId}` trừ socket gửi `[phát sinh kỹ thuật]` |
 | `chat:new` | envelope chuẩn, `data: { message }` — emit tới `room:{roomId}`; client lọc theo `meetingId` cho khung chat meeting |
 | `room:access_revoked` | envelope chuẩn, `data: { reason: 'LEFT' \| 'KICKED' \| 'DISSOLVED' }`; server phát trước khi ép socket rời kênh Room |
 | `wb:ops` | envelope, `data: { elements[] }` — chỉ element thắng, kênh `meeting:{id}` trừ người gửi |
@@ -189,6 +194,8 @@ Socket.IO **chỉ** cho application data. Không bao giờ audio/video/screen.
 | `error` | `{ statusCode, error, message, details? }` |
 
 Quyền: `room:subscribe`, `chat:send` luôn gọi `RoomAccessService.assertRoomAccess`; có `meetingId` thì thêm `assertMeetingTag`. Chi tiết: spec chat-room-scope.
+
+Room-page presence gọi `assertRoomAccess` lúc subscribe và mỗi heartbeat. Redis Set + TTL riêng từng user lưu trạng thái dùng chung giữa các instance; client heartbeat mỗi 20 giây, TTL 60 giây. Khi mất kết nối, server chỉ báo offline sau khi không còn socket nào của user trong `room-page:{roomId}`. Presence này chỉ phản ánh trang phòng đang mở, tuyệt đối không dùng làm meeting attendance; attendance vẫn chỉ do webhook LiveKit cập nhật.
 
 **Ordering, duplicate, reconnection:**
 - `seq` đơn điệu tăng, cấp bằng **Redis `INCR`** → atomic across instances, tự nhiên có total order

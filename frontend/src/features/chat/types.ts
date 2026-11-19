@@ -12,6 +12,18 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export interface ChatSearchResult {
+  id: string;
+  senderName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatSearchPage {
+  items: ChatSearchResult[];
+  nextCursor: string | null;
+}
+
 export interface ChatFileMetadata {
   id: string;
   originalName: string;

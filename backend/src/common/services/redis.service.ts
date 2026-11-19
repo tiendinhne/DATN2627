@@ -66,6 +66,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.client.sRem(key, members);
   }
 
+  async smembers(key: string): Promise<string[]> {
+    return this.client.sMembers(key);
+  }
+
   // Kiểm tra member có trong Set không (dùng cho presence:{meetingId})
   async sismember(key: string, member: string): Promise<boolean> {
     return this.client.sIsMember(key, member);

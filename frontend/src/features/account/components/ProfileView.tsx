@@ -2,8 +2,10 @@
 
 import { Camera, Check, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/context/auth.context";
+import { getMyLifetimeMeetingStats } from "@/services/meeting.service";
 import { listMyRooms } from "@/services/room.service";
 import { getMyProfile } from "@/services/user.service";
+import type { MyMeetingStats } from "@/types/backend";
 import { useEffect, useState, type FormEvent } from "react";
 
 export function ProfileView() {
@@ -14,6 +16,7 @@ export function ProfileView() {
   const [displayName, setDisplayName] = useState("");
   // Số phòng thật từ GET /rooms; "—" khi chưa tải được
   const [roomCount, setRoomCount] = useState("—");
+  const [meetingStats, setMeetingStats] = useState<MyMeetingStats | null>(null);
   // Ngày tạo tài khoản từ GET /auth/me
   const [joinedDate, setJoinedDate] = useState("Chưa có dữ liệu");
 
@@ -31,6 +34,9 @@ export function ProfileView() {
     listMyRooms(token, 1)
       .then((res) => setRoomCount(`${res.items.length}${res.hasMore ? "+" : ""}`))
       .catch(() => setRoomCount("—"));
+    getMyLifetimeMeetingStats(token)
+      .then(setMeetingStats)
+      .catch((error) => console.error("Lỗi tải thống kê cuộc họp:", error));
   }, [token]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -51,6 +57,12 @@ export function ProfileView() {
       setIsSaving(false);
     }
   };
+
+  const studyDuration = meetingStats
+    ? meetingStats.totalDurationSeconds < 3600
+      ? `${Math.floor(meetingStats.totalDurationSeconds / 60)} phút`
+      : `${Math.floor(meetingStats.totalDurationSeconds / 3600)} giờ ${Math.floor((meetingStats.totalDurationSeconds % 3600) / 60)} phút`
+    : "—";
 
   return (
     <div className="content-wrap account-page">
@@ -83,13 +95,12 @@ export function ProfileView() {
               <strong>{roomCount}</strong>
               <span>Phòng học</span>
             </div>
-            {/* Cuộc họp / giờ học: chưa có API thống kê theo user (small_task #2, phần C) */}
             <div>
-              <strong>—</strong>
+              <strong>{meetingStats?.meetingCount ?? "—"}</strong>
               <span>Cuộc họp</span>
             </div>
             <div>
-              <strong>—</strong>
+              <strong>{studyDuration}</strong>
               <span>Thời gian học</span>
             </div>
           </div>
